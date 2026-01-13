@@ -1,15 +1,15 @@
-## ROS 2 Jazzy Docker (Raspberry Pi 5 / Raspberry Pi OS)
+# ROS 2 Jazzy Docker (Raspberry Pi 5 / Raspberry Pi OS)
 
 This workspace can be built into a container image that includes the full colcon overlay at `/ws/install`.
 
 For a complete Laptop + Raspberry Pi guide, see the repo root `README.md`.
 
-### Prereqs on the Pi
+## Prereqs on the Pi
 
 - Install Docker Engine + Compose plugin on Raspberry Pi OS (64-bit).
 - Use **ARM64** userspace (recommended on Pi 5).
 
-### Build the image
+## Build the image
 
 From the repo root:
 
@@ -23,7 +23,7 @@ If the build fails with `cc1plus ... Killed` / `cannot allocate memory`, rebuild
 docker build --build-arg COLCON_PARALLEL_WORKERS=1 -t rhapsodi-promtek:jazzy .
 ```
 
-### Run (recommended for ROS 2 discovery)
+## Run (recommended for ROS 2 discovery)
 
 ```bash
 docker run --rm -it --net=host --ipc=host rhapsodi-promtek:jazzy bash
@@ -35,7 +35,7 @@ Inside the container your environment is already sourced (ROS + `/ws/install` ov
 ros2 pkg list | head
 ```
 
-### Using docker compose
+## Using docker compose
 
 - Runtime (no source mounts):
 
@@ -58,7 +58,7 @@ colcon build --merge-install
 source /ws/install/setup.bash
 ```
 
-### Dashboard (React + rosbridge)
+## Dashboard (React + rosbridge)
 
 Your React dashboard lives under `src/dashboard` and uses `roslib` to connect to rosbridge.
 
@@ -83,7 +83,7 @@ If you open the dashboard from another machine (not the Pi), set:
 VITE_ROSBRIDGE_URL=ws://<pi-ip>:9090 docker compose up --build dashboard
 ```
 
-### Hardware access (serial/USB/cameras)
+## Hardware access (serial/USB/cameras)
 
 For drivers that need device access on the Pi, add one of the following when running:
 
@@ -98,5 +98,3 @@ docker run --rm -it --net=host --ipc=host --device=/dev/ttyACM0 rhapsodi-promtek
 ```bash
 docker run --rm -it --net=host --ipc=host --privileged rhapsodi-promtek:jazzy bash
 ```
-
-
