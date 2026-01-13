@@ -7,3 +7,6 @@
 pyyaml
 # roslibpy is required by niryo_ned_ros2_driver for ROS 1/ROS 2 bridge
 roslibpy
+
+# system monitoring utilities (used by some nodes/tools)
+psutil
