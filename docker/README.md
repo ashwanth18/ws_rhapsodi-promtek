@@ -2,6 +2,8 @@
 
 This workspace can be built into a container image that includes the full colcon overlay at `/ws/install`.
 
+For a complete Laptop + Raspberry Pi guide, see the repo root `README.md`.
+
 ### Prereqs on the Pi
 
 - Install Docker Engine + Compose plugin on Raspberry Pi OS (64-bit).
