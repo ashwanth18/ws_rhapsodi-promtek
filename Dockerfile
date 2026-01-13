@@ -39,6 +39,12 @@ WORKDIR /ws
 # Copy only the source tree into the image (keeps builds smaller)
 COPY src/ /ws/src/
 
+# If this repo uses vcstool, fetch external dependencies into /ws/src.
+# This keeps the GitHub repo clean while still making the Docker build self-contained.
+RUN if [ -f /ws/src/ros2.repos ] && ! grep -qE '^repositories:\\s*\\{\\}\\s*$' /ws/src/ros2.repos; then \
+      vcs import /ws/src < /ws/src/ros2.repos; \
+    fi
+
 # Non-ROS Python deps:
 # Install into a venv so we don't fight system/apt Python packages (PEP 668 / RECORD issues).
 RUN python3 -m venv /opt/venv \

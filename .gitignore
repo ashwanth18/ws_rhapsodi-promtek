@@ -30,4 +30,11 @@ src/robot_data.db
 **/*.bag.active
 **/*.bag.metadata.yaml
 
+# External git dependencies fetched via src/ros2.repos (do not commit vendored copies)
+src/BehaviorTree.CPP/
+src/micro_ros_setup/
+src/uros/drive_base/
+src/uros/micro-ROS-Agent/
+src/uros/micro_ros_msgs/
+
 

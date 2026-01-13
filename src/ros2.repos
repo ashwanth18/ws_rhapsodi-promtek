@@ -1,2 +1,26 @@
-repositories: {}
+repositories:
+  BehaviorTree.CPP:
+    type: git
+    url: https://github.com/BehaviorTree/BehaviorTree.CPP.git
+    version: cdaca9c2c68f4b3aa187040f72b02b8dc8a1ed25
+
+  micro_ros_setup:
+    type: git
+    url: https://github.com/micro-ROS/micro_ros_setup.git
+    version: 3ed703f13289c712621490aea48d0ed31fd3a6a5
+
+  uros/drive_base:
+    type: git
+    url: https://github.com/micro-ROS/drive_base.git
+    version: fc55ef35fbdb99c999ad6f9d5b5c6b6968093376
+
+  uros/micro-ROS-Agent:
+    type: git
+    url: https://github.com/micro-ROS/micro-ROS-Agent.git
+    version: 52abdf5a9897637b2539cb1c239e1ec4fa92e01c
+
+  uros/micro_ros_msgs:
+    type: git
+    url: https://github.com/micro-ROS/micro_ros_msgs.git
+    version: e65ab21bd0733ebff2af6317d573cc584efa5893
 
