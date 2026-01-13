@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Robot Dashboard</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!--
+      roslibjs is CommonJS and uses top-level `this`, which can break when bundled as ESM.
+      Load it as a classic script so it defines `window.ROSLIB`.
+    -->
+    <script src="https://cdn.jsdelivr.net/npm/roslib@1.4.1/build/roslib.min.js"></script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+  </html>

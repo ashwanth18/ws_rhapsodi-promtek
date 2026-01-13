@@ -1,0 +1,6 @@
+rosbridge_port: 9090
+robot_namespaces:
+  - ""
+robot_ips:
+  - "ned3pro-20-869-cef.local"
+ 

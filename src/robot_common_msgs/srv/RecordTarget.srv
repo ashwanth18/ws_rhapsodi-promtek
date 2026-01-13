@@ -1,0 +1,13 @@
+string name
+bool joints
+---
+bool success
+string message
+
+
+
+
+
+
+
+

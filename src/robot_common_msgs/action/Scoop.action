@@ -1,0 +1,24 @@
+# Goal
+string scoop_profile
+int32 retries
+---
+# Result
+bool success
+string message
+---
+# Feedback
+string phase
+float32 progress
+
+
+
+
+
+
+
+
+
+
+
+
+

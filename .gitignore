@@ -1,0 +1,33 @@
+# Colcon / ROS2 build artifacts
+build/
+install/
+log/
+
+# Python envs/caches
+.venv/
+.cache/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+.pytest_cache/
+
+# Node/JS (dashboard)
+src/dashboard/node_modules/
+src/dashboard/dist/
+src/dashboard/.vite/
+
+# IDE/editor
+.vscode/
+.idea/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Data/artifacts that usually shouldn't be committed
+src/robot_data.db
+**/*.bag
+**/*.bag.active
+**/*.bag.metadata.yaml
+
+

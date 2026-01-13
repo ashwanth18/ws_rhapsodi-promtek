@@ -1,0 +1,31 @@
+# Goal
+string target_name
+geometry_msgs/PoseStamped target_pose
+# Optional multi-point path
+geometry_msgs/PoseStamped[] waypoints
+## New: list of names to resolve from targets.yaml and append as waypoints (in order)
+## If both waypoint_names and waypoints are provided, waypoint_names are applied first,
+## then literal waypoints are appended. Any unknown name aborts the goal with an error.
+string[] waypoint_names
+## New: per-goal speed scaling (clamped to [0,1]). If <= 0, node params are used.
+float32 velocity_scaling
+float32 acceleration_scaling
+## Optional per-waypoint scaling (applies to sequential joint-space segments only).
+## Length should match the final number of waypoints (names + literals). Missing/short arrays
+## fall back to per-goal scaling. Ignored for Cartesian (single trajectory).
+float32[] waypoint_velocity_scaling
+float32[] waypoint_acceleration_scaling
+bool use_cartesian
+float32 eef_step
+float32 jump_threshold
+---
+# Result
+bool success
+string message
+---
+# Feedback
+float32 progress
+
+
+
+

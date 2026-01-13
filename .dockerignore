@@ -1,0 +1,55 @@
+# Keep Docker build context small (this repo has large build/install/log trees)
+build/
+install/
+log/
+
+# VCS/editor noise
+.git/
+.github/
+.vscode/
+.idea/
+
+# Python cache
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Node/JS (dashboard) - use dockerignore-safe patterns (avoid relying on ** behavior)
+node_modules
+node_modules/**
+**/node_modules
+**/node_modules/**
+dist
+dist/**
+**/dist
+**/dist/**
+.vite
+.vite/**
+**/.vite
+**/.vite/**
+.turbo
+.turbo/**
+**/.turbo
+**/.turbo/**
+
+# Explicit (your repo currently contains this tree)
+src/dashboard/node_modules/
+src/dashboard/node_modules/**
+
+# ROS/colcon artifacts (in case they exist under src/)
+**/build/
+**/install/
+**/log/
+
+# Common compiled artifacts
+**/*.o
+**/*.a
+**/*.so
+**/*.dylib
+**/*.dll
+**/*.exe
+
+# Big/irrelevant media (avoid shipping into the image unless you really need it)
+src/video_solution.mp4
+
+

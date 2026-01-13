@@ -1,0 +1,35 @@
+# Goal
+float32 target_weight
+float32 tolerance
+float32 max_time_s
+---
+# Result
+bool achieved
+bool overshoot
+bool timeout
+float32 final_weight
+# Extended flags for BT branching
+bool need_rescoop
+bool proceed_next
+float32 final_net_g
+string message
+---
+# Feedback
+float32 current_weight
+string phase
+float32 error_to_next_band   # remaining absolute weight to reach next phase band (kg)
+float32 band_threshold       # current band threshold (kg) (coarse/fine), 0 otherwise
+float32 hold_time_remaining  # seconds remaining to meet hold_within_tol_count (when inside tolerance), -1 otherwise
+
+
+
+
+
+
+
+
+
+
+
+
+

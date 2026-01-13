@@ -1,0 +1,49 @@
+name: rhapsodi-promtek
+
+services:
+  # Prebuilt runtime container (uses the baked-in /ws/install overlay)
+  runtime:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rhapsodi-promtek:jazzy
+    network_mode: host
+    ipc: host
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+    tty: true
+    stdin_open: true
+    command: bash
+
+  # Dev container (mounts your local src/ so you can edit and rebuild in-container)
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rhapsodi-promtek:jazzy
+    network_mode: host
+    ipc: host
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+    volumes:
+      - ./src:/ws/src:rw
+    tty: true
+    stdin_open: true
+    command: bash
+
+  # React dashboard (static build served via nginx)
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/dashboard.Dockerfile
+      args:
+        # This gets baked into the bundle at build time.
+        # If you browse the dashboard from another machine, use the Pi/host IP here.
+        VITE_ROSBRIDGE_URL: ${VITE_ROSBRIDGE_URL:-ws://localhost:9090}
+    image: rhapsodi-promtek-dashboard:latest
+    ports:
+      - "${DASHBOARD_PORT:-8080}:80"
+
+

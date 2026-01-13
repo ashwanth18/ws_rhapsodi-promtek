@@ -1,0 +1,24 @@
+# Goal
+string expected_lot
+---
+# Result
+bool match
+string lot
+string message
+---
+# Feedback
+string detected_lot
+float32 confidence
+
+
+
+
+
+
+
+
+
+
+
+
+

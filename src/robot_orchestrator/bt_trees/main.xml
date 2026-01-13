@@ -1,0 +1,57 @@
+<root BTCPP_format="4" main_tree_to_execute="Main">
+  <BehaviorTree ID="Main">
+    <Sequence name="PowderFlow">
+      <!-- Build queue from containers vector once -->
+      <FetchBatch/>
+      <WaitSeconds seconds="1.5"/>
+
+      <!-- Consume ingredients until queue empty -->
+      <LoopContainerSpec queue="{ingredients_q}" if_empty="SUCCESS" value="{task}">
+        <Sequence>
+          <!-- Project popped task to blackboard keys used by the flow -->
+          <ProjectContainer task="{task}"/>
+          <QueueStatus/>
+          <WaitSeconds seconds="1.5"/>
+
+          <!-- Re-scoop/pour cycle until PourToTarget succeeds (achieved or overshoot) -->
+          <Sequence>
+            <MoveTo name="MoveToQr" target_name="{qr_target_name}" use_cartesian="false" />
+            <WaitSeconds seconds="1.5"/>
+            <RetryUntilSuccessful num_attempts="3">
+              <ScanQr expected_lot="{expected_lot}"/>
+            </RetryUntilSuccessful>
+            <WaitSeconds seconds="1.5"/>
+
+            <!-- Retry the scoop→scale→pour sequence until PourToTarget returns SUCCESS -->
+            <RetryUntilSuccessful num_attempts="-1">
+              <Sequence name="RescoopCycle">
+                <MoveTo name="MoveToContainer" target_name="{container_name}" use_cartesian="false" />
+                <WaitSeconds seconds="1.5"/>
+                <MoveTo name="MoveToScale" target_name="scale" use_cartesian="false"/>
+                <!-- Brief settle to ensure sequencing is perceptible and sensors update -->
+                <WaitSeconds seconds="2.5"/>
+                <PourToTarget target_weight="{container_target_g}"
+                              tolerance="{batch_weight_tolerance}"
+                              max_time_s="30"/>
+                <WaitSeconds seconds="1.5"/>
+              </Sequence>
+            </RetryUntilSuccessful>
+            <WaitSeconds seconds="1.5"/>
+
+            <Sequence name="CleanupIfDone">
+              <MoveTo target_name="{container_name}" use_cartesian="false"/>
+              <WaitSeconds seconds="1.5"/>
+              <!-- <MoveTo name="cleanup_container" target_name="{qr_target_name}" use_cartesian="false"/> -->
+              <Vibrate duration_s="5.0" value="180" vibration_topic="/motor_speed"/>
+              <WaitSeconds seconds="1.5"/>
+
+              <MoveTo name="finish" target_name="test2" use_cartesian="false"/>
+            </Sequence>
+          </Sequence>
+        </Sequence>
+      </LoopContainerSpec>
+    </Sequence>
+  </BehaviorTree>
+</root>
+
+

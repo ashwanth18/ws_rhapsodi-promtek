@@ -1,0 +1,5 @@
+trajectory_execution:
+  allowed_start_tolerance: 0.05   # increase tolerance from default 0.01
+  execution_duration_monitoring: true
+  allowed_execution_duration_scaling: 1.2
+  allowed_goal_duration_margin: 0.5

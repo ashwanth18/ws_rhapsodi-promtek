@@ -1,0 +1,9 @@
+# Python dependencies for ROS 2 workspace
+# Note: Due to externally-managed-environment protection in Python 3.12+,
+# install with: pip install --break-system-packages -r src/requirements.txt
+# Or individually: pip install --break-system-packages <package-name>
+#
+# pyyaml is usually already installed with ROS 2
+pyyaml
+# roslibpy is required by niryo_ned_ros2_driver for ROS 1/ROS 2 bridge
+roslibpy

@@ -1,0 +1,4 @@
+robot_common_msgs/ContainerSpec[] containers
+---
+bool accepted
+string message
