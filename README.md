@@ -141,4 +141,8 @@ docker run --rm -it --net=host --ipc=host --privileged rhapsodi-promtek:jazzy ba
 
 See `docker/README.md` for additional notes.
 
+## Git workflow
+
+See `GIT_WORKFLOW.md` for the commands to push to GitHub and pull/update on the laptop/Pi.
+
 
