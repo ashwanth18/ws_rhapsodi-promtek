@@ -32,7 +32,7 @@ services:
     network_mode: host
     environment:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/robot_data
-      CORS_ORIGINS: http://localhost:5173,http://localhost:3000,http://localhost:8080
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000,http://localhost:8080,http://10.42.0.72:8080
     volumes:
       - ${WORKSPACE_ROOT:-.}/data:/data
     depends_on:
