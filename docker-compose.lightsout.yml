@@ -22,24 +22,24 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     volumes:
-      - /home/ashwanth/ws_rhapsodi-promtek/data/db:/var/lib/postgresql/data
+      - ${WORKSPACE_ROOT:-.}/data/db:/var/lib/postgresql/data
 
   backend:
     build:
-      context: /home/ashwanth/ws_rhapsodi-promtek/src/backend
+      context: ${WORKSPACE_ROOT:-.}/src/backend
       dockerfile: Dockerfile
     network_mode: host
     environment:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/robot_data
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000,http://localhost:8080
     volumes:
-      - /home/ashwanth/ws_rhapsodi-promtek/data:/data
+      - ${WORKSPACE_ROOT:-.}/data:/data
     depends_on:
       - db
 
   processing:
     build:
-      context: /home/ashwanth/ws_rhapsodi-promtek/src/backend/processing
+      context: ${WORKSPACE_ROOT:-.}/src/backend/processing
       dockerfile: Dockerfile
     network_mode: host
     environment:
@@ -47,7 +47,7 @@ services:
       PATH_MAP_FROM: /home/ashwanth/ws_rhapsodi-promtek/data
       PATH_MAP_TO: /data
     volumes:
-      - /home/ashwanth/ws_rhapsodi-promtek/data:/data
+      - ${WORKSPACE_ROOT:-.}/data:/data
     depends_on:
       - db
 
@@ -81,7 +81,7 @@ services:
   data_collection:
     <<: *ros-service
     volumes:
-      - /home/ashwanth/ws_rhapsodi-promtek/data:/data
+      - ${WORKSPACE_ROOT:-.}/data:/data
     command: >
       ros2 run data_collection_manager data_collection_manager
       --ros-args
