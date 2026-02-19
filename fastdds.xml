@@ -1,0 +1,12 @@
+<profiles>
+  <participant profile_name="default_participant" is_default_profile="true">
+    <rtps>
+      <builtin>
+        <initialPeersList>
+          <locator><udpv4><address>10.42.0.1</address></udpv4></locator>
+          <locator><udpv4><address>10.42.0.72</address></udpv4></locator>
+        </initialPeersList>
+      </builtin>
+    </rtps>
+  </participant>
+</profiles>

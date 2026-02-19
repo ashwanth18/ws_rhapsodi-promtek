@@ -11,6 +11,7 @@ x-ros-service: &ros-service
     ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
     ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
     RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+    FASTRTPS_DEFAULT_PROFILES_FILE: /fastdds.xml
 
 services:
 
@@ -56,11 +57,15 @@ services:
   # Pouring action server
   pouring_controller:
     <<: *ros-service
+    volumes:
+      - ${WORKSPACE_ROOT:-.}/fastdds.xml:/fastdds.xml:ro
     command: ros2 run pouring_controller pour_server_node
 
   # Behavior tree orchestrator
   orchestrator:
     <<: *ros-service
+    volumes:
+      - ${WORKSPACE_ROOT:-.}/fastdds.xml:/fastdds.xml:ro
     command: >
       ros2 run robot_orchestrator orchestrator_node
       --ros-args
@@ -69,6 +74,8 @@ services:
   # Weight sensor simulator
   weight_sim:
     <<: *ros-service
+    volumes:
+      - ${WORKSPACE_ROOT:-.}/fastdds.xml:/fastdds.xml:ro
     command: >
       ros2 run data_collection_manager weight_sim
       --ros-args
@@ -81,6 +88,7 @@ services:
   data_collection:
     <<: *ros-service
     volumes:
+      - ${WORKSPACE_ROOT:-.}/fastdds.xml:/fastdds.xml:ro
       - ${WORKSPACE_ROOT:-.}/data:/data
     command: >
       ros2 run data_collection_manager data_collection_manager
@@ -99,7 +107,9 @@ services:
       ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
       ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
       RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+      FASTRTPS_DEFAULT_PROFILES_FILE: /fastdds.xml
     volumes:
+      - ${WORKSPACE_ROOT:-.}/fastdds.xml:/fastdds.xml:ro
       - /dev:/dev
     command: serial --dev /dev/ttyACM0
 
@@ -126,4 +136,7 @@ services:
       ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
       ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
       RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+      FASTRTPS_DEFAULT_PROFILES_FILE: /fastdds.xml
+    volumes:
+      - ${WORKSPACE_ROOT:-.}/fastdds.xml:/fastdds.xml:ro
     command: ros2 launch niryo_robot_simulation_client rosbridge_websocket_fixed.launch.py address:=0.0.0.0 port:=9090
