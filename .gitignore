@@ -38,3 +38,5 @@ src/uros/micro-ROS-Agent/
 src/uros/micro_ros_msgs/
 
 
+data/db/
+src/realsense-ros/

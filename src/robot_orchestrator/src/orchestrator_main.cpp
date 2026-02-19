@@ -7,9 +7,14 @@
 #include <robot_common_msgs/msg/system_status.hpp>
 #include <sstream>
 #include <robot_common_msgs/srv/start_batch.hpp>
+#include <robot_common_msgs/srv/start_lights_out.hpp>
+#include <algorithm>
 #include <atomic>
 #include "robot_orchestrator/register.hpp"
 #include <std_msgs/msg/float64.hpp>
+#include <std_msgs/msg/bool.hpp>
+#include <std_msgs/msg/int32.hpp>
+#include <std_msgs/msg/string.hpp>
 
 int main(int argc, char ** argv)
 {
@@ -34,6 +39,19 @@ int main(int argc, char ** argv)
 
   // Status publisher
   auto status_pub = ros_node->create_publisher<robot_common_msgs::msg::SystemStatus>("/system_status", 10);
+
+  auto latched_qos = rclcpp::QoS(1).transient_local();
+
+  // Lights-out training status/metadata publishers
+  auto lightsout_active_pub = ros_node->create_publisher<std_msgs::msg::Bool>("/lightsout_training/active", 10);
+  auto lightsout_meta_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/metadata", latched_qos);
+  auto lightsout_run_id_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/run_id", latched_qos);
+  auto lightsout_batch_id_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/batch_id", latched_qos);
+  auto lightsout_ingredient_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/ingredient_id", latched_qos);
+  auto lightsout_target_pub = ros_node->create_publisher<std_msgs::msg::Float64>("/lightsout_training/target_weight_g", latched_qos);
+  auto lightsout_mode_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/mode", latched_qos);
+  auto lightsout_robot_id_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/robot_id", latched_qos);
+  auto lightsout_episodes_total_pub = ros_node->create_publisher<std_msgs::msg::Int32>("/lightsout_training/episodes_total", latched_qos);
 
   // Subscribe to weight topic and keep blackboard updated continuously
   ros_node->declare_parameter<std::string>("weight_topic", "/weight");
@@ -68,6 +86,7 @@ int main(int argc, char ** argv)
   std::atomic<bool> start_requested{false};
   std::atomic<bool> pause_requested{false};
   std::atomic<bool> stop_requested{false};
+  std::atomic<bool> lightsout_active{false};
 
   using StartBatch = robot_common_msgs::srv::StartBatch;
   auto start_batch_srv = ros_node->create_service<StartBatch>(
@@ -85,6 +104,77 @@ int main(int argc, char ** argv)
       stop_requested = false;
       resp->accepted = true;
       resp->message = "Batch accepted";
+    });
+
+  using StartLightsOut = robot_common_msgs::srv::StartLightsOut;
+  auto start_lightsout_srv = ros_node->create_service<StartLightsOut>(
+    "bt_start_lightsout",
+    [&, blackboard, lightsout_meta_pub, lightsout_active_pub,
+      lightsout_run_id_pub, lightsout_batch_id_pub, lightsout_ingredient_pub,
+      lightsout_target_pub, lightsout_mode_pub, lightsout_robot_id_pub,
+      lightsout_episodes_total_pub](const std::shared_ptr<StartLightsOut::Request> req,
+                    std::shared_ptr<StartLightsOut::Response> resp){
+      const int episodes = std::max(1, req->episodes);
+      const double target_g = static_cast<double>(req->target_weight_g);
+      const auto now = std::chrono::system_clock::now();
+      const std::time_t now_t = std::chrono::system_clock::to_time_t(now);
+      std::tm tm{};
+      gmtime_r(&now_t, &tm);
+      char ts_buf[32];
+      std::strftime(ts_buf, sizeof(ts_buf), "%Y%m%dT%H%M%SZ", &tm);
+      const std::string run_id = std::string(ts_buf);
+
+      blackboard->set("lightsout_powder_name", req->powder_name);
+      blackboard->set("lightsout_cycle_end_limit", req->cycle_end_limit);
+      blackboard->set("lightsout_target_weight_g", target_g);
+      blackboard->set("lightsout_tolerance_g", 0.5);
+      blackboard->set("lightsout_episodes", episodes);
+      blackboard->set("lightsout_batch_id", req->batch_id);
+      blackboard->set("lightsout_container_name", req->powder_name);
+      blackboard->set("lightsout_episode_index", 0);
+
+      start_requested = true;
+      pause_requested = false;
+      stop_requested = false;
+      lightsout_active = true;
+
+      std_msgs::msg::Bool active_msg;
+      active_msg.data = true;
+      lightsout_active_pub->publish(active_msg);
+
+      std_msgs::msg::String run_msg;
+      run_msg.data = run_id;
+      lightsout_run_id_pub->publish(run_msg);
+
+      std_msgs::msg::String batch_msg;
+      batch_msg.data = req->batch_id;
+      lightsout_batch_id_pub->publish(batch_msg);
+
+      std_msgs::msg::String ingredient_msg;
+      ingredient_msg.data = req->powder_name;
+      lightsout_ingredient_pub->publish(ingredient_msg);
+
+      std_msgs::msg::Float64 target_msg;
+      target_msg.data = target_g;
+      lightsout_target_pub->publish(target_msg);
+
+      std_msgs::msg::String mode_msg;
+      mode_msg.data = "lightsout";
+      lightsout_mode_pub->publish(mode_msg);
+
+      if (!ros_node->has_parameter("robot_id")) {
+        ros_node->declare_parameter<std::string>("robot_id", "robot-1");
+      }
+      std_msgs::msg::String robot_msg;
+      robot_msg.data = ros_node->get_parameter("robot_id").as_string();
+      lightsout_robot_id_pub->publish(robot_msg);
+
+      std_msgs::msg::Int32 episodes_msg;
+      episodes_msg.data = episodes;
+      lightsout_episodes_total_pub->publish(episodes_msg);
+
+      resp->accepted = true;
+      resp->message = "Lights-out training accepted";
     });
 
   auto pause_srv = ros_node->create_service<std_srvs::srv::Trigger>(
@@ -172,6 +262,13 @@ int main(int argc, char ** argv)
     // After a cycle, clear start request unless auto-restart
     if (!auto_restart) {
       start_requested = false;
+    }
+
+    if (lightsout_active.load()) {
+      lightsout_active = false;
+      std_msgs::msg::Bool active_msg;
+      active_msg.data = false;
+      lightsout_active_pub->publish(active_msg);
     }
 
     // Brief idle between cycles

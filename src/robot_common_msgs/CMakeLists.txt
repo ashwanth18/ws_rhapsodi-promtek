@@ -15,6 +15,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/Scoop.action"
   "action/PourToTarget.action"
   "srv/StartBatch.srv"
+  "srv/StartLightsOut.srv"
   "srv/RecordTarget.srv"
   DEPENDENCIES std_msgs geometry_msgs
 )

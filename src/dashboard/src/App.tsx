@@ -2,17 +2,14 @@
 // Heavily commented to explain each concept and decision
 
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useRos } from './ros/RosContext'
 import { ROSLIB } from './ros/roslib'
 import axios from 'axios'
 import KpiCard from './components/KpiCard'
-import EChartsLine from './components/EChartsLine'
-import PlotlyLine from './components/PlotlyLine'
 import GlassCard from './components/GlassCard'
 import PhaseTimeline from './components/PhaseTimeline'
-import EChartsScatter from './components/EChartsScatter'
 import Button from './components/ui/button'
-import Select from './components/ui/select'
 // Removed Chart.js; using D3 for visualizations
 
 // Type definitions for joint state rows
@@ -24,13 +21,20 @@ interface JointRow {
 }
 
 // Central configuration for services; replace hostnames/IPs as needed
-const ROSBRIDGE_URL: string = (import.meta as any).env.VITE_ROSBRIDGE_URL || 'ws://localhost:9090'
 const API_BASE: string = (import.meta as any).env.VITE_API_BASE || 'http://localhost:8000'
 const WEIGHT_TOPIC: string = (import.meta as any).env.VITE_WEIGHT_TOPIC || '/weight'
-const BT_QUEUE_TOPIC: string = (import.meta as any).env.VITE_BT_QUEUE_TOPIC || '/bt_queue_remaining'
+const PHASE_TOPIC: string = (import.meta as any).env.VITE_PHASE_TOPIC || '/lightsout_training/phase'
+const EPISODE_TOPIC: string = (import.meta as any).env.VITE_EPISODE_TOPIC || '/lightsout_training/episode'
+const EPISODES_TOTAL_TOPIC: string =
+  (import.meta as any).env.VITE_EPISODES_TOTAL_TOPIC || '/lightsout_training/episodes_total'
+const EPISODE_END_TOPIC: string =
+  (import.meta as any).env.VITE_EPISODE_END_TOPIC || '/lightsout_training/episode_end'
+const LIGHTSOUT_ACTIVE_TOPIC: string =
+  (import.meta as any).env.VITE_LIGHTSOUT_ACTIVE_TOPIC || '/lightsout_training/active'
 const POUR_STATUS_TOPIC: string = (import.meta as any).env.VITE_POUR_STATUS_TOPIC || '/pour_status'
 
 function App() {
+  const navigate = useNavigate()
   const ros = useRos()
   // ------------------------------ State --------------------------------------
   // Latest ROS-reported status line for the real-time panel
@@ -51,9 +55,11 @@ function App() {
   const [weight, setWeight] = useState<number | null>(null)
   const [weightHistory, setWeightHistory] = useState<{ x: string; y: number }[]>([])
   const [lastWeightTs, setLastWeightTs] = useState<number | null>(null)
-  // Queue status (remaining ingredients)
-  const [queueRemaining, setQueueRemaining] = useState<number | null>(null)
-  const [lastQueueTs, setLastQueueTs] = useState<number | null>(null)
+  // Episode status (remaining episodes)
+  const [currentEpisode, setCurrentEpisode] = useState<number | null>(null)
+  const [totalEpisodes, setTotalEpisodes] = useState<number | null>(null)
+  const [lastEpisodeTs, setLastEpisodeTs] = useState<number | null>(null)
+  const [lastEpisodeEndTs, setLastEpisodeEndTs] = useState<number | null>(null)
   // Dynamic tolerance from PourToTarget feedback (grams)
   const [activeBandThresholdG, setActiveBandThresholdG] = useState<number | null>(null)
   const [lastPourFeedbackTs, setLastPourFeedbackTs] = useState<number | null>(null)
@@ -63,27 +69,26 @@ function App() {
   const [selectedJoint, setSelectedJoint] = useState<string | null>(null)
   const [jointHistory, setJointHistory] = useState<Record<string, { x: number; y: number }[]>>({})
   // Simple phase timeline (Scooping → Transporting → Pouring → Settling)
-  const phases = useMemo(() => ['Scooping', 'Transporting', 'Pouring', 'Settling'], [])
+  const phases = useMemo(() => ['Scooping', 'Transporting', 'Pouring'], [])
   const [phaseIndex, setPhaseIndex] = useState<number>(-1) // -1 = Idle, 0..n-1 active/completed
-  // Demo mode: simulate ROS topics locally
-  const [demoMode, setDemoMode] = useState<boolean>(false)
   const startTsRef = useState<number>(Date.now())[0]
   const [elapsed, setElapsed] = useState<number>(0)
   useEffect(() => {
     const t = setInterval(() => setElapsed(((Date.now() - startTsRef) / 1000)), 500)
     return () => clearInterval(t)
   }, [startTsRef])
-  // Demo scatter data for overshoot percentage
-  const [overshoot, setOvershoot] = useState<{ x: number; y: number }[]>([])
   // Last finished cycle snapshot (for dashboard preview)
   type LastCycle = {
     batch_id?: string
+    episode_index?: number
     start_time?: string
     end_time?: string
-    target_weight?: number
-    actual_weight?: number
-    success?: boolean
-    cycle_time?: number
+    target_weight_g?: number
+    final_weight_g?: number
+    net_weight_g?: number
+    avg_flow_rate_g_s?: number
+    total_episode_time_s?: number
+    overshoot_g?: number
   }
   const [lastCycle, setLastCycle] = useState<LastCycle | null>(null)
   const [cycleStartMs, setCycleStartMs] = useState<number | null>(null)
@@ -101,12 +106,11 @@ function App() {
   const batchStale = !lastBatchStatusTs || nowMs - lastBatchStatusTs > BATCH_STALE_MS
   const jointStale = !lastJointStatesTs || nowMs - lastJointStatesTs > JOINT_STALE_MS
   const weightStale = !lastWeightTs || nowMs - lastWeightTs > WEIGHT_STALE_MS
-  const queueStale = !lastQueueTs || nowMs - lastQueueTs > 5000
+  const queueStale = !lastEpisodeTs || nowMs - lastEpisodeTs > 5000
   const pourActive = !!lastPourFeedbackTs && (nowMs - lastPourFeedbackTs) < 2000
 
   // ------------------------------ ROS Bridge ---------------------------------
   useEffect(() => {
-    if (demoMode) return
     const r = ros
     if (!r) return
 
@@ -120,39 +124,23 @@ function App() {
       // Disconnected
     })
 
-    // Subscribe to the String topic that the ROS2 node publishes
-    const statusTopic = new ROSLIB.Topic({
+    const phaseTopic = new ROSLIB.Topic({
       ros: r,
-      name: '/batch_status',
+      name: PHASE_TOPIC,
       messageType: 'std_msgs/String',
     })
-    statusTopic.subscribe((msg: { data: string }) => {
-      setRealTimeStatus(msg.data)
+    phaseTopic.subscribe((msg: { data: string }) => {
+      const phase = (msg.data || '').toLowerCase()
+      setRealTimeStatus(phase || 'Waiting for robot status...')
       setLastBatchStatusTs(Date.now())
-      const t = msg.data.toLowerCase()
-      if (t.includes('scoop')) { setPhaseIndex(0); setCycleStartMs(Date.now()) }
-      else if (t.includes('transport')) setPhaseIndex(1)
-      else if (t.includes('pour')) setPhaseIndex(2)
-      else if (t.includes('settle')) setPhaseIndex(3)
-      else if (t.includes('success') || t.includes('complete')) {
-        setPhaseIndex(phases.length) // all done
-        // fetch latest completed row from backend
-        fetch(`${API_BASE}/historical_data?days=1`).then(r => r.json()).then(json => {
-          const row = (json.raw_data && json.raw_data[0]) || null
-          if (row) {
-            setLastCycle({
-              batch_id: row.batch_id,
-              start_time: row.start_time,
-              end_time: row.end_time,
-              target_weight: row.target_weight,
-              actual_weight: row.actual_weight,
-              success: row.success === 1,
-              cycle_time: row.cycle_time,
-            })
-          }
-        }).catch(() => {})
+      if (phase.includes('scoop')) {
+        setPhaseIndex(0)
+        setCycleStartMs(Date.now())
+      } else if (phase.includes('transport')) {
+        setPhaseIndex(1)
+      } else if (phase.includes('pour')) {
+        setPhaseIndex(2)
       }
-      else if (t.includes('fail') || t.includes('error')) setPhaseIndex(phases.length) // terminal
     })
 
     // Subscribe to /joint_states to visualize robot joints
@@ -213,16 +201,49 @@ function App() {
       }
     })
 
-    // Queue remaining subscriber
-    const queueTopic = new ROSLIB.Topic({
+    const episodeTopic = new ROSLIB.Topic({
       ros: r,
-      name: BT_QUEUE_TOPIC,
+      name: EPISODE_TOPIC,
       messageType: 'std_msgs/Int32',
     })
-    queueTopic.subscribe((msg: { data: number }) => {
+    episodeTopic.subscribe((msg: { data: number }) => {
       if (typeof msg.data === 'number') {
-        setQueueRemaining(msg.data)
-        setLastQueueTs(Date.now())
+        setCurrentEpisode(msg.data)
+        setLastEpisodeTs(Date.now())
+      }
+    })
+
+    const episodesTotalTopic = new ROSLIB.Topic({
+      ros: r,
+      name: EPISODES_TOTAL_TOPIC,
+      messageType: 'std_msgs/Int32',
+    })
+    episodesTotalTopic.subscribe((msg: { data: number }) => {
+      if (typeof msg.data === 'number') {
+        setTotalEpisodes(msg.data)
+      }
+    })
+
+    const episodeEndTopic = new ROSLIB.Topic({
+      ros: r,
+      name: EPISODE_END_TOPIC,
+      messageType: 'std_msgs/Int32',
+    })
+    episodeEndTopic.subscribe(() => {
+      setPhaseIndex(phases.length)
+      setLastEpisodeEndTs(Date.now())
+    })
+
+    const lightsoutActive = new ROSLIB.Topic({
+      ros: r,
+      name: LIGHTSOUT_ACTIVE_TOPIC,
+      messageType: 'std_msgs/Bool',
+    })
+    lightsoutActive.subscribe((msg: { data: boolean }) => {
+      if (!msg.data) {
+        setPhaseIndex(-1)
+        setCurrentEpisode(null)
+        setTotalEpisodes(null)
       }
     })
 
@@ -252,87 +273,16 @@ function App() {
 
     // Cleanup on unmount to avoid lingering subscriptions
     return () => {
-      statusTopic.unsubscribe()
+      phaseTopic.unsubscribe()
       jointStatesTopic.unsubscribe()
       weightTopic.unsubscribe()
-      queueTopic.unsubscribe()
+      episodeTopic.unsubscribe()
+      episodesTotalTopic.unsubscribe()
+      episodeEndTopic.unsubscribe()
+      lightsoutActive.unsubscribe()
       pourStatus.unsubscribe()
     }
-  }, [demoMode, ros])
-
-  // Demo mode simulation
-  useEffect(() => {
-    if (!demoMode) return
-    let raf: any
-    let phaseTimer: any
-    const t0 = Date.now()
-    // ensure a joint is selected
-    if (!selectedJoint) setSelectedJoint('joint1')
-    // phases loop
-    const seq = [...phases, 'Success']
-    let pi = -1
-    const advance = () => {
-      pi = (pi + 1) % seq.length
-      if (seq[pi] === 'Success') {
-        setPhaseIndex(phases.length)
-        // synthesize last cycle snapshot from current simulated state
-        const end = new Date()
-        const start = cycleStartMs ? new Date(cycleStartMs) : new Date(end.getTime() - 6000)
-        const target = 1.0 + Math.random() * 0.2
-        const actual = (weight ?? target) as number
-        setLastCycle({
-          batch_id: `demo-${Math.floor(Math.random()*1000)}`,
-          start_time: start.toISOString(),
-          end_time: end.toISOString(),
-          target_weight: +target.toFixed(3),
-          actual_weight: +actual.toFixed(3),
-          success: Math.abs(actual - target) / target < 0.05,
-          cycle_time: ((end.getTime() - start.getTime())/1000)|0,
-        })
-      } else {
-        setPhaseIndex(phases.indexOf(seq[pi]))
-        if (seq[pi] === 'Scooping') setCycleStartMs(Date.now())
-      }
-      setRealTimeStatus(seq[pi] === 'Success' ? 'Batch Success' : `${seq[pi]}...`)
-      phaseTimer = setTimeout(advance, 2000)
-    }
-    advance()
-
-    const tick = () => {
-      const tsec = (Date.now() - t0) / 1000
-      // joint sine wave
-      const name = selectedJoint || 'joint1'
-      const pos = Math.sin(tsec) * 0.5
-      setJointHistory((prev) => {
-        const next = { ...prev }
-        const arr = next[name] ?? []
-        const updated = [...arr, { x: tsec, y: pos }]
-        next[name] = updated.slice(Math.max(0, updated.length - 300))
-        return next
-      })
-      if (!selectedJoint) setSelectedJoint(name)
-      // weight around target 1.0kg
-      const val = 1.0 + 0.05 * Math.sin(tsec * 0.7) + (Math.random() - 0.5) * 0.01
-      setWeight(val)
-      setLastWeightTs(Date.now())
-      // overshoot: add random point every ~0.5s up to 100
-      setOvershoot((prev) => {
-        const next = [...prev, { x: prev.length + 1, y: Math.max(-5, Math.min(15, (Math.random() - 0.5) * 12)) }]
-        return next.slice(Math.max(0, next.length - 100))
-      })
-      setWeightHistory((prev) => {
-        const iso = new Date().toISOString()
-        const next = [...prev, { x: iso, y: val }]
-        return next.slice(Math.max(0, next.length - 120))
-      })
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => {
-      cancelAnimationFrame(raf)
-      clearTimeout(phaseTimer)
-    }
-  }, [demoMode])
+  }, [ros, phases.length])
 
   // ------------------------------ Data Fetch ---------------------------------
   useEffect(() => {
@@ -342,11 +292,11 @@ function App() {
       try {
         const [metricsRes, histRes] = await Promise.all([
           axios.get(`${API_BASE}/metrics`),
-          axios.get(`${API_BASE}/historical_data`),
+          axios.get(`${API_BASE}/lightsout_processed?limit=50`),
         ])
         if (!cancelled) {
           setMetrics(metricsRes.data.metrics || {})
-          setHistoricalData(histRes.data.raw_data || [])
+          setHistoricalData(histRes.data.rows || [])
         }
       } catch {
         // Surface error in production
@@ -362,28 +312,45 @@ function App() {
     }
   }, [])
 
-  // ------------------------------ Charts (D3) ---------------------------------
-  const deviationSeries = useMemo(() => {
-    // Build series for D3 from historical data; if empty, provide mock data so UI is demonstrable
-    if (historicalData.length === 0) {
-      const now = new Date()
-      const mock: { x: string; y: number }[] = []
-      for (let i = 29; i >= 0; i -= 1) {
-        const d = new Date(now)
-        d.setDate(now.getDate() - i)
-        // Smooth wave + small noise to resemble deviation (kg)
-        const wave = 0.15 + 0.35 * Math.abs(Math.sin((i / 10) * Math.PI))
-        const noise = (Math.random() - 0.5) * 0.05
-        const val = Math.max(0, +(wave + noise).toFixed(3))
-        mock.push({ x: d.toISOString().slice(0, 10), y: val })
+  const lastEpisodeRemaining =
+    totalEpisodes != null && currentEpisode != null
+      ? Math.max(totalEpisodes - currentEpisode, 0)
+      : null
+
+  const fetchLastCycle = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/lightsout_processed?limit=1`)
+      const row = res.data?.rows?.[0]
+      if (row) {
+        setLastCycle({
+          batch_id: row.batch_id,
+          episode_index: row.episode_index,
+          start_time: row.start_time_ns ? new Date(row.start_time_ns / 1e6).toLocaleString() : undefined,
+          end_time: row.end_time_ns ? new Date(row.end_time_ns / 1e6).toLocaleString() : undefined,
+          target_weight_g: row.target_weight_g,
+          final_weight_g: row.final_weight_g,
+          net_weight_g: row.net_weight_g,
+          avg_flow_rate_g_s: row.avg_flow_rate_g_s,
+          total_episode_time_s: row.total_episode_time_s,
+          overshoot_g: row.overshoot_g,
+        })
       }
-      return mock
+    } catch {
+      // ignore fetch errors
     }
-    return historicalData.map((row: any) => ({
-      x: (row.start_time as string) ?? '',
-      y: Math.abs(((row.actual_weight ?? 0) as number) - ((row.target_weight ?? 0) as number)),
-    })) as { x: string; y: number }[]
-  }, [historicalData])
+  }
+
+  useEffect(() => {
+    fetchLastCycle()
+  }, [])
+
+  useEffect(() => {
+    if (!lastEpisodeEndTs) return
+    const id = setTimeout(() => {
+      fetchLastCycle()
+    }, 1500)
+    return () => clearTimeout(id)
+  }, [lastEpisodeEndTs])
 
   // ------------------------------ UI -----------------------------------------
   return (
@@ -395,8 +362,7 @@ function App() {
           <p className="text-white/70">Real-time operations and historical analytics</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className={`text-xs ${demoMode ? 'text-emerald-400' : 'text-white/60'}`}>{demoMode ? 'Demo Mode' : 'Live Mode'}</span>
-          <Button onClick={() => setDemoMode((v) => !v)}>{demoMode ? 'Disable Demo' : 'Enable Demo'}</Button>
+          <Button onClick={() => navigate('/training')}>Start Lights-Out</Button>
         </div>
       </div>
 
@@ -471,15 +437,17 @@ function App() {
         <div className="col-span-12 md:col-span-3">
           <GlassCard>
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Ingredients Remaining</h3>
+              <h3 className="text-lg font-semibold">Episodes Remaining</h3>
               <span className={`text-xs px-2 py-0.5 rounded-md ${queueStale ? 'bg-rose-400/15 text-rose-400' : 'bg-emerald-400/15 text-emerald-400'}`}>
                 {queueStale ? 'Stale' : 'Live'}
               </span>
             </div>
             <div className="mt-2 text-4xl font-bold tracking-tight" style={{ fontFamily: 'Space Grotesk' }}>
-              {queueRemaining != null ? queueRemaining : '—'}
+              {lastEpisodeRemaining != null ? lastEpisodeRemaining : '—'}
             </div>
-            <div className="text-xs text-white/60 mt-1">Topic: {BT_QUEUE_TOPIC}</div>
+            <div className="text-xs text-white/60 mt-1">
+              Episode {currentEpisode ?? '—'} of {totalEpisodes ?? '—'}
+            </div>
           </GlassCard>
         </div>
         {/* Weighing scale widget (horizontal bar) */}
@@ -488,22 +456,27 @@ function App() {
             <div className={`flex flex-col gap-2 ${!pourActive ? 'opacity-50' : ''} transition-opacity`}>
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">Weighing Scale</h3>
-                <span className={`text-xs px-2 py-0.5 rounded-md ${pourActive ? 'bg-emerald-400/15 text-emerald-400' : 'bg-white/10 text-white/60'}`}>
-                  {pourActive ? 'Active' : 'Inactive'}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-2 py-0.5 rounded-md ${pourActive ? 'bg-emerald-400/15 text-emerald-400' : 'bg-white/10 text-white/60'}`}>
+                    {pourActive ? 'Active' : 'Inactive'}
+                  </span>
+                  <span className={`text-xs px-2 py-0.5 rounded-md ${weightStale ? 'bg-white/10 text-white/60' : 'bg-sky-400/15 text-sky-300'}`}>
+                    {weightStale ? 'Scale Disconnected' : 'Scale Connected'}
+                  </span>
+                </div>
               </div>
               <div className="flex items-center justify-between text-sm text-white/70">
                 <span>Target</span>
                 <span>
                   {(() => {
-                    const target = activeTargetG ?? ((historicalData?.[0]?.target_weight as number) || 5000)
+                    const target = activeTargetG ?? ((historicalData?.[0]?.target_weight_g as number) || 5000)
                     return `${Math.round(target)} g`
                   })()}
                 </span>
               </div>
               <div className="w-full h-4 bg-white/10 rounded">
                 {(() => {
-                  const target = activeTargetG ?? ((historicalData?.[0]?.target_weight as number) || 5000)
+                  const target = activeTargetG ?? ((historicalData?.[0]?.target_weight_g as number) || 5000)
                   // Always-visible base band ±10 g (yellow)
                   const baseTolG = 10
                   // Final tolerance band (green) shown only during TRICKLE
@@ -564,16 +537,15 @@ function App() {
               {lastCycle ? (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-y-2 text-sm">
                   <div><span className="text-white/60">Batch</span><div>{lastCycle.batch_id}</div></div>
-                  <div><span className="text-white/60">Start</span><div>{lastCycle.start_time}</div></div>
-                  <div><span className="text-white/60">End</span><div>{lastCycle.end_time}</div></div>
-                  <div className="text-right"><span className="text-white/60">Target</span><div>{lastCycle.target_weight?.toFixed(3)} kg</div></div>
-                  <div className="text-right"><span className="text-white/60">Actual</span><div>{lastCycle.actual_weight?.toFixed(3)} kg</div></div>
-                  <div className="text-right"><span className="text-white/60">Cycle</span><div>{lastCycle.cycle_time?.toFixed(2)} s</div></div>
-                  <div className="col-span-2 md:col-span-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-md ${lastCycle.success ? 'bg-emerald-400/15 text-emerald-400' : 'bg-rose-400/15 text-rose-400'}`}>
-                      {lastCycle.success ? 'Success' : 'Failed'}
-                    </span>
-                  </div>
+                  <div><span className="text-white/60">Episode</span><div>{lastCycle.episode_index ?? '—'}</div></div>
+                  <div><span className="text-white/60">Start</span><div>{lastCycle.start_time ?? '—'}</div></div>
+                  <div><span className="text-white/60">End</span><div>{lastCycle.end_time ?? '—'}</div></div>
+                  <div className="text-right"><span className="text-white/60">Target</span><div>{lastCycle.target_weight_g != null ? lastCycle.target_weight_g.toFixed(2) : '—'} g</div></div>
+                  <div className="text-right"><span className="text-white/60">Final</span><div>{lastCycle.final_weight_g != null ? lastCycle.final_weight_g.toFixed(2) : '—'} g</div></div>
+                  <div className="text-right"><span className="text-white/60">Net</span><div>{lastCycle.net_weight_g != null ? lastCycle.net_weight_g.toFixed(2) : '—'} g</div></div>
+                  <div className="text-right"><span className="text-white/60">Avg Flow</span><div>{lastCycle.avg_flow_rate_g_s != null ? lastCycle.avg_flow_rate_g_s.toFixed(2) : '—'} g/s</div></div>
+                  <div className="text-right"><span className="text-white/60">Duration</span><div>{lastCycle.total_episode_time_s != null ? lastCycle.total_episode_time_s.toFixed(2) : '—'} s</div></div>
+                  <div className="text-right"><span className="text-white/60">Overshoot</span><div>{lastCycle.overshoot_g != null ? lastCycle.overshoot_g.toFixed(2) : '—'} g</div></div>
                 </div>
               ) : (
                 <span className="text-sm text-white/70">No finished cycle yet</span>

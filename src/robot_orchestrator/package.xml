@@ -13,6 +13,7 @@
   <depend>robot_common_msgs</depend>
   <depend>behaviortree_cpp</depend>
   <depend>behaviortree_ros2</depend>
+  <depend>std_msgs</depend>
   <depend>std_srvs</depend>
   <depend>ament_index_cpp</depend>
 

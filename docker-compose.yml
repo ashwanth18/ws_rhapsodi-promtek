@@ -12,6 +12,7 @@ services:
     environment:
       ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
       ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
     tty: true
     stdin_open: true
     command: bash
@@ -27,6 +28,7 @@ services:
     environment:
       ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
       ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
     volumes:
       - ./src:/ws/src:rw
     tty: true
@@ -45,5 +47,109 @@ services:
     image: rhapsodi-promtek-dashboard:latest
     ports:
       - "${DASHBOARD_PORT:-8080}:80"
+
+  # Rosbridge websocket (exposed to host)
+  rosbridge:
+    image: rhapsodi-promtek:jazzy
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+    ports:
+      - "9090:9090"
+    command: ros2 launch niryo_robot_simulation_client rosbridge_websocket_fixed.launch.py address:=0.0.0.0 port:=9090
+
+  # RealSense lifecycle launcher
+  realsense_launcher:
+    image: rhapsodi-promtek:jazzy
+    ipc: host
+    privileged: true
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+    command: ros2 run realsense_snapshot_analyzer realsense_camera_launcher
+    restart: unless-stopped
+
+  # Weighing scale lifecycle launcher
+  scale_launcher:
+    image: rhapsodi-promtek:jazzy
+    network_mode: host
+    ipc: host
+    privileged: true
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+    command: >
+      ros2 run sensor_lifecycle scale_launcher
+      --ros-args
+      -p port:=${SCALE_PORT:-/dev/ttyUSB0}
+      -p baud:=${SCALE_BAUD:-9600}
+      -p topic:=${SCALE_TOPIC:-weight}
+    restart: unless-stopped
+
+  # micro-ROS lifecycle launcher
+  micro_ros_launcher:
+    image: rhapsodi-promtek:jazzy
+    network_mode: host
+    ipc: host
+    privileged: true
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+    command: >
+      ros2 run sensor_lifecycle micro_ros_launcher
+      --ros-args
+      -p agent_args:="${MICRO_ROS_AGENT_ARGS:-serial --dev /dev/ttyACM0}"
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: robot_data
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/robot_data
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000,http://localhost:8080
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    depends_on:
+      - db
+
+  processing:
+    build:
+      context: ./src/backend/processing
+      dockerfile: Dockerfile
+    environment:
+      BACKEND_URL: http://backend:8000
+      PATH_MAP_FROM: /home/ashwanth/ws_rhapsodi-promtek/data
+      PATH_MAP_TO: /data
+    volumes:
+      - ./data:/data
+    depends_on:
+      - db
+    ports:
+      - "8002:8002"
+
+volumes:
+  db_data:
 
 

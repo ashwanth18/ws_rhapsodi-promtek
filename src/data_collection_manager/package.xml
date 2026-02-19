@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>data_collection_manager</name>
+  <version>0.1.0</version>
+  <description>Data collection manager for lights-out experiments.</description>
+  <maintainer email="ashwanth@todo.todo">ashwanth</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+
+  <exec_depend>rosidl_default_runtime</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
+

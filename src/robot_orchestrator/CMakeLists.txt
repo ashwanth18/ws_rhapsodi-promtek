@@ -9,6 +9,7 @@ find_package(behaviortree_cpp REQUIRED)
 find_package(behaviortree_ros2 REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(std_srvs REQUIRED)
+find_package(std_msgs REQUIRED)
 
 add_library(${PROJECT_NAME} SHARED
   src/pour_to_target_node.cpp
@@ -27,7 +28,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 ament_target_dependencies(${PROJECT_NAME}
-  rclcpp rclcpp_action robot_common_msgs ament_index_cpp behaviortree_cpp behaviortree_ros2 std_srvs
+  rclcpp rclcpp_action robot_common_msgs ament_index_cpp behaviortree_cpp behaviortree_ros2 std_srvs std_msgs
 )
 
 target_link_libraries(${PROJECT_NAME}
@@ -37,7 +38,7 @@ target_link_libraries(${PROJECT_NAME}
 
 add_executable(orchestrator_node src/orchestrator_main.cpp)
 target_link_libraries(orchestrator_node ${PROJECT_NAME} behaviortree_cpp::behaviortree_cpp behaviortree_ros2::behaviortree_ros2)
-ament_target_dependencies(orchestrator_node rclcpp ament_index_cpp std_srvs)
+ament_target_dependencies(orchestrator_node rclcpp ament_index_cpp std_srvs std_msgs)
 
 install(TARGETS ${PROJECT_NAME} orchestrator_node
   ARCHIVE DESTINATION lib

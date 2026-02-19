@@ -25,9 +25,13 @@ setup(
     entry_points={
         "console_scripts": [
             "snapshot_analyzer = realsense_snapshot_analyzer.snapshot_analyzer_node:main",
+            "realsense_camera_launcher = realsense_snapshot_analyzer.camera_start_service:main",
         ],
     },
 )
+
+
+
 
 
 

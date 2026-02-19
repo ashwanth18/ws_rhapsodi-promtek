@@ -1,3 +1,84 @@
+# RealSense Snapshot Analyzer
+
+This package includes a snapshot analyzer node and a lifecycle-based launcher
+for the RealSense camera driver used by the dashboard Controls page.
+
+## Nodes
+
+### `realsense_camera_launcher` (lifecycle)
+
+A ROS 2 lifecycle node that starts/stops the RealSense driver by running:
+
+```bash
+ros2 launch realsense2_camera rs_launch.py
+```
+
+Lifecycle control happens via standard services:
+
+- `/<node>/change_state`
+- `/<node>/get_state`
+- `/<node>/transition_event`
+
+Default node name is `/realsense_camera_launcher`.
+
+#### Start/stop (CLI)
+
+```bash
+ros2 run realsense_snapshot_analyzer realsense_camera_launcher
+
+ros2 lifecycle set /realsense_camera_launcher configure
+ros2 lifecycle set /realsense_camera_launcher activate
+ros2 lifecycle set /realsense_camera_launcher deactivate
+```
+
+#### Parameters
+
+- `launch_package` (default: `realsense2_camera`)
+- `launch_file` (default: `rs_launch.py`)
+- `launch_args` (default: `""`)
+
+Example:
+
+```bash
+ros2 run realsense_snapshot_analyzer realsense_camera_launcher \
+  --ros-args -p launch_args:="enable_color:=true enable_depth:=true"
+```
+
+#### Dashboard integration
+
+The dashboard uses the lifecycle services to manage start/stop and subscribes
+to the transition events for real-time state updates.
+
+Set these env vars at dashboard build time:
+
+```bash
+VITE_REALSENSE_LIFECYCLE_NODE=/realsense_camera_launcher
+VITE_REALSENSE_CAMERA_INFO_TOPIC=/camera/camera/color/camera_info
+```
+
+### `snapshot_analyzer`
+
+Subscribes to RealSense image/pointcloud topics and exposes a Trigger service to
+capture a synchronized snapshot and compute simple depth statistics.
+
+---
+
+## Snapshot analyzer service
+
+The analyzer exposes:
+
+```bash
+/realsense_snapshot_analyzer/capture  (std_srvs/srv/Trigger)
+```
+
+It listens to:
+
+- image: `/camera/color/image_raw`
+- pointcloud: `/camera/depth/color/points`
+- depth: `/camera/aligned_depth_to_color/image_raw`
+
+All topics are configurable via ROS parameters in the node or launch file.
+
 ## realsense_snapshot_analyzer (ROS 2 Jazzy)
 
 This package exposes a **service** that captures the **next** synced pair of:
@@ -98,5 +179,3 @@ You typically do one (or more) of these:
 Implementation entrypoint:
 
 - `realsense_snapshot_analyzer/snapshot_analyzer_node.py`
-
-

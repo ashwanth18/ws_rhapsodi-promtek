@@ -1,0 +1,23 @@
+{
+  "run_id": "sim-001",
+  "episode_index": 1,
+  "metadata": {
+    "powder_name": "boxA",
+    "cycle_end_limit": "n/a",
+    "target_weight_g": 50.0,
+    "episodes": 5,
+    "batch_id": "sim-001"
+  },
+  "metadata_json": "{\"powder_name\":\"boxA\",\"cycle_end_limit\":\"n/a\",\"target_weight_g\":50.000000,\"episodes\":5,\"batch_id\":\"sim-001\"}",
+  "topics": [
+    "/weight",
+    "/system_status",
+    "/lightsout_training/phase"
+  ],
+  "start_time_ros_ns": 1769657745474232322,
+  "start_time_wall_ns": 1769657745474244352,
+  "bag_path": "/home/ashwanth/ws_rhapsodi-promtek/data/lightsout/20260129T033545Z_episode_1/data",
+  "end_time_ros_ns": 1769657748160709856,
+  "end_time_wall_ns": 1769657748160732160,
+  "end_reason": "run_end"
+}

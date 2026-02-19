@@ -28,7 +28,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3-rosdep \
       python3-venv \
       python3-vcstool \
+      python3-tornado \
+      python3-argcomplete \
+      ros-jazzy-rmw-cyclonedds-cpp \
     && rm -rf /var/lib/apt/lists/*
+
+# Ensure rosbridge/rosapi Python deps are available on the runtime venv
 
 # rosdep setup (idempotent)
 RUN if [ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]; then rosdep init; fi \
@@ -45,11 +50,9 @@ RUN if [ -f /ws/src/ros2.repos ] && ! grep -qE '^repositories:\\s*\\{\\}\\s*$' /
       vcs import /ws/src < /ws/src/ros2.repos; \
     fi
 
-# Non-ROS Python deps:
-# Install into a venv so we don't fight system/apt Python packages (PEP 668 / RECORD issues).
-RUN python3 -m venv /opt/venv \
-    && /opt/venv/bin/python -m pip install --upgrade pip setuptools wheel
-RUN if [ -f /ws/src/requirements.txt ]; then /opt/venv/bin/pip install -r /ws/src/requirements.txt; fi \
+# Non-ROS Python deps in a venv (avoids Debian package conflicts)
+RUN python3 -m venv --system-site-packages /opt/venv \
+    && /opt/venv/bin/pip install -r /ws/src/requirements.txt \
     && if [ -f /ws/src/backend/requirements.txt ]; then /opt/venv/bin/pip install -r /ws/src/backend/requirements.txt; fi
 
 # Install ROS/system deps declared in package.xml files
@@ -75,8 +78,8 @@ ENV MAKEFLAGS="-j${COLCON_PARALLEL_WORKERS}" \
 RUN source /opt/ros/jazzy/setup.bash \
     && colcon build \
         --merge-install \
-        --executor sequential \
-        --parallel-workers ${COLCON_PARALLEL_WORKERS} \
+        # --executor sequential \
+        # --parallel-workers ${COLCON_PARALLEL_WORKERS} \
         --cmake-args \
           -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
           "-DCMAKE_CXX_FLAGS_RELEASE=${CMAKE_CXX_FLAGS_RELEASE}"

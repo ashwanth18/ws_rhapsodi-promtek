@@ -10,3 +10,9 @@ roslibpy
 
 # system monitoring utilities (used by some nodes/tools)
 psutil
+
+# rosbridge / rosapi runtime deps (ROS Python tools)
+tornado
+argcomplete
+pymongo
+pillow

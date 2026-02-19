@@ -1,0 +1,15 @@
+string powder_name
+string cycle_end_limit
+float32 target_weight_g
+int32 episodes
+string batch_id
+---
+bool accepted
+string message
+
+
+
+
+
+
+

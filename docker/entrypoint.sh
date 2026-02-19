@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eEo pipefail
 
-# Prefer the image's venv for runtime Python deps (roslibpy, backend deps, etc.)
+# Prefer the image's venv for runtime Python deps
 if [ -d "/opt/venv" ]; then
   export VIRTUAL_ENV="/opt/venv"
   export PATH="/opt/venv/bin:${PATH}"

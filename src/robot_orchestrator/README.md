@@ -97,6 +97,25 @@ ros2 run robot_orchestrator orchestrator_node --ros-args -p tree_file:=/home/ash
 ```
 4) Open Groot2 (connect to port 1666) to visualize.
 
+## Lights-out training (repeat episodes)
+
+Use the dedicated lights-out tree to repeat scoop → weigh → pour for a fixed
+number of episodes. Start it with the `/bt_start_lightsout` service.
+
+1) Run orchestrator with the lights-out tree:
+```
+ros2 run robot_orchestrator orchestrator_node --ros-args -p tree_file:=/home/ashwanth/rhapsodi-promtek/src/robot_orchestrator/bt_trees/lightsout.xml
+```
+
+2) Start a lights-out run:
+```
+ros2 service call /bt_start_lightsout robot_common_msgs/srv/StartLightsOut "{powder_name: 'alumina', cycle_end_limit: '10 episodes', target_weight_g: 125.0, episodes: 10, batch_id: 'batch-2026-01-19'}"
+```
+
+Lights-out topics:
+- `/lightsout_training/active` (`std_msgs/Bool`)
+- `/lightsout_training/metadata` (`std_msgs/String`, JSON payload)
+
 ### Control services
 
 - Start batch: `/bt_start_batch` (`robot_common_msgs/srv/StartBatch`)

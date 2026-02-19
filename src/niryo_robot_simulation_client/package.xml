@@ -30,6 +30,10 @@
   <!-- rosbridge websocket (used by launch/rosbridge_websocket_fixed.launch.py) -->
   <exec_depend>rosbridge_server</exec_depend>
   <exec_depend>rosapi</exec_depend>
+  <exec_depend>python3-tornado</exec_depend>
+  <exec_depend>python3-argcomplete</exec_depend>
+  <exec_depend>python3-pymongo</exec_depend>
+  <exec_depend>python3-pil</exec_depend>
 
   <!-- ros2_control -->
   <exec_depend>ackermann_steering_controller</exec_depend>

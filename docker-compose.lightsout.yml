@@ -1,0 +1,124 @@
+name: rhapsodi-promtek-lightsout
+
+x-ros-service: &ros-service
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: rhapsodi-promtek:jazzy
+  network_mode: host
+  ipc: host
+  environment:
+    ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+    ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+    RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+
+services:
+
+  db:
+    image: postgres:16-alpine
+    network_mode: host
+    environment:
+      POSTGRES_DB: robot_data
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - /home/ashwanth/ws_rhapsodi-promtek/data/db:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: /home/ashwanth/ws_rhapsodi-promtek/src/backend
+      dockerfile: Dockerfile
+    network_mode: host
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/robot_data
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000,http://localhost:8080
+    volumes:
+      - /home/ashwanth/ws_rhapsodi-promtek/data:/data
+    depends_on:
+      - db
+
+  processing:
+    build:
+      context: /home/ashwanth/ws_rhapsodi-promtek/src/backend/processing
+      dockerfile: Dockerfile
+    network_mode: host
+    environment:
+      BACKEND_URL: http://localhost:8000
+      PATH_MAP_FROM: /home/ashwanth/ws_rhapsodi-promtek/data
+      PATH_MAP_TO: /data
+    volumes:
+      - /home/ashwanth/ws_rhapsodi-promtek/data:/data
+    depends_on:
+      - db
+
+  
+
+  # Pouring action server
+  pouring_controller:
+    <<: *ros-service
+    command: ros2 run pouring_controller pour_server_node
+
+  # Behavior tree orchestrator
+  orchestrator:
+    <<: *ros-service
+    command: >
+      ros2 run robot_orchestrator orchestrator_node
+      --ros-args
+      -p tree_file:=/ws/install/share/robot_orchestrator/bt_trees/lightsout.xml
+
+  # Weight sensor simulator
+  weight_sim:
+    <<: *ros-service
+    command: >
+      ros2 run data_collection_manager weight_sim
+      --ros-args
+      -p publish_when_active:=true
+      -p gate_on_phase:=true
+    depends_on:
+      - orchestrator
+
+  # Data collection + MCAP recording
+  data_collection:
+    <<: *ros-service
+    volumes:
+      - /home/ashwanth/ws_rhapsodi-promtek/data:/data
+    command: >
+      ros2 run data_collection_manager data_collection_manager
+      --ros-args
+      -p output_root:=/data/lightsout
+      -p processing_url:=http://localhost:8002/process
+    depends_on:
+      - processing
+
+  # micro-ROS agent (serial)
+  micro_ros_agent:
+    image: microros/micro-ros-agent:jazzy
+    network_mode: host
+    privileged: true
+    volumes:
+      - /dev:/dev
+    command: serial --dev /dev/ttyACM0
+
+  # React dashboard (static build served via nginx)
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/dashboard.Dockerfile
+      args:
+        # This gets baked into the bundle at build time.
+        # If you browse the dashboard from another machine, use the Pi/host IP here.
+        VITE_ROSBRIDGE_URL: ${VITE_ROSBRIDGE_URL:-ws://localhost:9090}
+    image: rhapsodi-promtek-dashboard:latest
+    ports:
+      - "${DASHBOARD_PORT:-8080}:80"
+
+  # Rosbridge websocket (exposed to host)
+  rosbridge:
+    image: rhapsodi-promtek:jazzy
+    network_mode: host
+    ipc: host
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+    command: ros2 launch niryo_robot_simulation_client rosbridge_websocket_fixed.launch.py address:=0.0.0.0 port:=9090

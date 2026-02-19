@@ -1,0 +1,31 @@
+<root BTCPP_format="4" main_tree_to_execute="LightsOut">
+  <BehaviorTree ID="LightsOut">
+    <Sequence name="LightsOutFlow">
+      <WaitSeconds seconds="0.5"/>
+      <Repeat num_cycles="{lightsout_episodes}">
+        <Sequence name="LightsOutEpisode">
+          <EpisodeMarker/>
+          <PhaseMarker phase="scoop_start"/>
+
+          <MoveTo name="MoveToContainer" target_name="{lightsout_container_name}" use_cartesian="false" />
+          <PhaseMarker phase="scoop_end"/>
+          <WaitSeconds seconds="1.0"/>
+          <PhaseMarker phase="transport_start"/>
+          <MoveTo name="MoveToScale" target_name="scale" use_cartesian="false"/>
+          <PhaseMarker phase="transport_end"/>
+
+          <WaitSeconds seconds="7.0"/>
+          <PhaseMarker phase="pour_start"/>
+          <PourToTarget target_weight="{lightsout_target_weight_g}"
+                        tolerance="{lightsout_tolerance_g}"
+                        max_time_s="30"/>
+          <PhaseMarker phase="pour_end"/>
+          <WaitSeconds seconds="1.0"/>
+          <MoveTo name="MoveBackToContainer" target_name="{lightsout_container_name}" use_cartesian="false"/>
+          <EpisodeEndMarker/>
+        </Sequence>
+      </Repeat>
+    </Sequence>
+  </BehaviorTree>
+</root>
+

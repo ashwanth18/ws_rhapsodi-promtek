@@ -29,7 +29,7 @@ docker build --build-arg COLCON_PARALLEL_WORKERS=1 -t rhapsodi-promtek:jazzy .
 docker run --rm -it --net=host --ipc=host rhapsodi-promtek:jazzy bash
 ```
 
-Inside the container your environment is already sourced (ROS + `/ws/install` overlay). Example:
+Inside the container your environment is already sourced (ROS + `/ws/install` overlay).tage Example:
 
 ```bash
 ros2 pkg list | head
@@ -81,6 +81,30 @@ If you open the dashboard from another machine (not the Pi), set:
 
 ```bash
 VITE_ROSBRIDGE_URL=ws://<pi-ip>:9090 docker compose up --build dashboard
+```
+
+## Sensor lifecycle (Docker-native)
+
+Start lifecycle launchers (camera + scale + micro-ROS):
+
+```bash
+docker compose up realsense_launcher scale_launcher micro_ros_launcher
+```
+
+The dashboard uses lifecycle services to start/stop each sensor.
+If your RealSense info topic differs, set:
+
+```bash
+VITE_REALSENSE_CAMERA_INFO_TOPIC=/camera/camera/color/camera_info \
+docker compose up --build dashboard
+```
+
+## Open a container shell
+
+Enter a running container and list ROS 2 topics:
+
+```bash
+docker compose exec rosbridge bash -lc "source /opt/ros/jazzy/setup.bash && source /ws/install/setup.bash && ros2 topic list"
 ```
 
 ## Hardware access (serial/USB/cameras)

@@ -13,10 +13,8 @@ export function RosProvider({ children }: { children: React.ReactNode }) {
     // Create a single ROS connection for the app
     const conn = new ROSLIB.Ros({ url })
     setRos(conn)
-    // Optional: add event listeners for diagnostics/logging
-    // conn.on('connection', () => console.log('rosbridge connected'))
-    // conn.on('error', (e) => console.warn('rosbridge error', e))
-    // conn.on('close', () => console.log('rosbridge closed'))
+    // Attach error handler to avoid unhandled error events from roslib
+    conn.on('error', () => {})
     return () => { try { conn.close() } catch {} }
   }, [url])
 

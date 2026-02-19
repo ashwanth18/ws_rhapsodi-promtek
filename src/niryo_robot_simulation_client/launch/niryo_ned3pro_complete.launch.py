@@ -252,15 +252,17 @@ def generate_launch_description():
         arguments=["--frame-id", "world", "--child-frame-id", "base_link"],
         condition=IfCondition(PythonExpression(["'", mode, "' == 'sim'"]))
     )
-    moveTo =  Node(
-            package="robot_moveit",
-            executable="move_to_server_node",
-            output="screen",
-            parameters=[moveit_config.to_dict(), {
-                "planning_group": "arm",
-                "targets_yaml": "/home/ashwanth/rhapsodi-promtek/src/robot_moveit/config/targets.yaml",
-            }],
-        )
+    moveTo = Node(
+        package="robot_moveit",
+        executable="move_to_server_node",
+        output="screen",
+        parameters=[moveit_config.to_dict(), {
+            "planning_group": "arm",
+            "targets_yaml": PathJoinSubstitution(
+                [FindPackageShare("robot_moveit"), "targets.yaml"]
+            ),
+        }],
+    )
     # incline_executor removed; using pouring controller to drive joints
   
     # ============================================================================

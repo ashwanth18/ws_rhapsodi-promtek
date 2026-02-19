@@ -33,6 +33,7 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
             <NavLink to="/" label="Dashboard" />
             <NavLink to="/logs" label="Historical Logs" />
             <NavLink to="/controls" label="Controls & Sensors" />
+            <NavLink to="/training" label="Training" />
           </nav>
         )}
       </aside>
