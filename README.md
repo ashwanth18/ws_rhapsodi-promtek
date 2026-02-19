@@ -121,6 +121,53 @@ Then open:
 
 ---
 
+## Laptop ↔ Pi Ethernet + Internet sharing
+
+If your Pi is connected to your laptop over Ethernet and you want the Pi to use
+the laptop’s internet (Wi‑Fi or another uplink), use NetworkManager sharing.
+
+### 1) Enable sharing on the laptop (Linux)
+
+- Open `nm-connection-editor`
+- Select the **Ethernet** connection to the Pi
+- IPv4 Settings → **Method: Shared to other computers** → Save
+- Disconnect/reconnect that Ethernet interface
+
+### 2) Verify the laptop side
+
+```bash
+ip a | grep 10.42
+```
+
+You should see `10.42.0.1/24` on the Ethernet interface to the Pi.
+
+### 3) Verify the Pi side
+
+```bash
+ip r
+ping -c 3 10.42.0.1
+ping -c 3 8.8.8.8
+curl -I https://files.pythonhosted.org/
+```
+
+If the Pi can ping `10.42.0.1` but not `8.8.8.8`, enable forwarding/NAT on the
+laptop (replace `<UPLINK_IFACE>` with your internet interface from
+`ip r | grep default`):
+
+```bash
+sudo sysctl -w net.ipv4.ip_forward=1
+sudo iptables -t nat -A POSTROUTING -o <UPLINK_IFACE> -j MASQUERADE
+sudo iptables -A FORWARD -i <UPLINK_IFACE> -o <PI_ETH_IFACE> -m state --state RELATED,ESTABLISHED -j ACCEPT
+sudo iptables -A FORWARD -i <PI_ETH_IFACE> -o <UPLINK_IFACE> -j ACCEPT
+```
+
+Typical interface names:
+
+- `<UPLINK_IFACE>`: `wlan0` or `wlp*` (Wi‑Fi) or `enx*` (USB‑Ethernet)
+- `<PI_ETH_IFACE>`: the Ethernet interface to the Pi (e.g., `enp*`)
+
+---
+
 ## Hardware access (serial/USB/camera)
 
 Example serial device:

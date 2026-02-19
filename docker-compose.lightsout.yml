@@ -95,6 +95,10 @@ services:
     image: microros/micro-ros-agent:jazzy
     network_mode: host
     privileged: true
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
     volumes:
       - /dev:/dev
     command: serial --dev /dev/ttyACM0
@@ -108,6 +112,7 @@ services:
         # This gets baked into the bundle at build time.
         # If you browse the dashboard from another machine, use the Pi/host IP here.
         VITE_ROSBRIDGE_URL: ${VITE_ROSBRIDGE_URL:-ws://localhost:9090}
+        VITE_MICROROS_HEARTBEAT_TOPIC: ${VITE_MICROROS_HEARTBEAT_TOPIC:-/microros/heartbeat}
     image: rhapsodi-promtek-dashboard:latest
     ports:
       - "${DASHBOARD_PORT:-8080}:80"
