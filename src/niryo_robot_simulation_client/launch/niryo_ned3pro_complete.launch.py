@@ -40,6 +40,7 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
     use_rviz = LaunchConfiguration('use_rviz', default='true')
     use_gazebo_gui = LaunchConfiguration('use_gazebo_gui', default='true')
+    headless = LaunchConfiguration('headless', default='false')
     
     # Declare launch arguments
     declare_mode = DeclareLaunchArgument(
@@ -70,6 +71,11 @@ def generate_launch_description():
         'use_gazebo_gui',
         default_value='true',
         description='Launch Gazebo GUI'
+    )
+    declare_headless = DeclareLaunchArgument(
+        'headless',
+        default_value='false',
+        description='Disable RViz and Gazebo GUI when true'
     )
       # ros2 warehouse sqlite
     warehouse_ros_config = {
@@ -240,7 +246,11 @@ def generate_launch_description():
             warehouse_ros_config,
             {"use_sim_time": PythonExpression(["'", mode, "' == 'sim'"])}
         ],
-        condition=IfCondition(use_rviz)
+        condition=IfCondition(
+            PythonExpression(
+                ["'", use_rviz, "' == 'true' and '", headless, "' == 'false'"]
+            )
+        )
     )
     
     # Static TF publisher
@@ -330,8 +340,24 @@ def generate_launch_description():
                                    'gz_sim.launch.py'])]
         ),
         launch_arguments=[
-            ('gz_args', [' -r -v 4 empty.sdf']),  # Use default empty world
-            ('gui', use_gazebo_gui)
+            (
+                'gz_args',
+                [
+                    PythonExpression(
+                        [
+                            "' -r -v 4 -s empty.sdf' if '",
+                            headless,
+                            "' == 'true' else ' -r -v 4 empty.sdf'",
+                        ]
+                    )
+                ],
+            ),
+            (
+                'gui',
+                PythonExpression(
+                    ["'false' if '", headless, "' == 'true' else '", use_gazebo_gui, "'"]
+                ),
+            )
         ],
         condition=IfCondition(PythonExpression(["'", mode, "' == 'sim'"]))
     )
@@ -348,6 +374,7 @@ def generate_launch_description():
         declare_use_sim_time,
         declare_use_rviz,
         declare_use_gazebo_gui,
+        declare_headless,
         rviz_config_arg,
         
         # Gazebo environment (sim only)

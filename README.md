@@ -168,6 +168,53 @@ Typical interface names:
 
 ---
 
+## Pi Ubuntu static IP (Netplan)
+
+If your Pi runs **Ubuntu**, configure a static IP using Netplan.
+
+1) Find the Ethernet interface (e.g., `eth0`):
+
+```bash
+ip link
+```
+
+2) Edit the Netplan config (example file name):
+
+```bash
+sudo nano /etc/netplan/01-netcfg.yaml
+```
+
+3) Example static IP config:
+
+```yaml
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth0:
+      dhcp4: no
+      addresses: [10.42.0.72/24]
+      gateway4: 10.42.0.1
+      nameservers:
+        addresses: [8.8.8.8, 1.1.1.1]
+```
+
+4) Apply:
+
+```bash
+sudo netplan apply
+```
+
+5) Verify:
+
+```bash
+ip a | grep 10.42
+ip r
+ping -c 3 10.42.0.1
+```
+
+---
+
 ## Hardware access (serial/USB/camera)
 
 Example serial device:
