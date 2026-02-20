@@ -15,6 +15,13 @@ x-ros-service: &ros-service
 
 services:
 
+  # Runtime shell (use for ad-hoc ros2 launch)
+  runtime:
+    <<: *ros-service
+    volumes:
+      - ${WORKSPACE_ROOT:-.}/fastdds.xml:/fastdds.xml:ro
+    command: bash
+
   db:
     image: postgres:16-alpine
     network_mode: host
