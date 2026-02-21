@@ -68,7 +68,7 @@ RUN apt-get update \
 #
 # Colcon build can be memory-hungry on constrained devices (and Docker Desktop defaults).
 # Tune with build args if you have more/less RAM available.
-ARG COLCON_PARALLEL_WORKERS=1
+ARG COLCON_PARALLEL_WORKERS=24
 ARG CMAKE_BUILD_TYPE=Release
 ARG CMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG"
 
@@ -79,7 +79,8 @@ RUN source /opt/ros/jazzy/setup.bash \
     && colcon build \
         --merge-install \
         # --executor sequential \
-        # --parallel-workers ${COLCON_PARALLEL_WORKERS} \
+        --parallel-workers ${COLCON_PARALLEL_WORKERS} \
+        --packages-skip micro_ros_agent \
         --cmake-args \
           -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
           "-DCMAKE_CXX_FLAGS_RELEASE=${CMAKE_CXX_FLAGS_RELEASE}"

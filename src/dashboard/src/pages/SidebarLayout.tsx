@@ -1,6 +1,7 @@
 import { ReactNode, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import Button from '../components/ui/button'
+import ConnectionPanel from '../components/ConnectionPanel'
 
 export default function SidebarLayout({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(true)
@@ -37,7 +38,12 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
           </nav>
         )}
       </aside>
-      <main className="flex-1">{children}</main>
+      <main className="flex-1">
+        <div className="px-6 pt-6">
+          <ConnectionPanel />
+        </div>
+        {children}
+      </main>
     </div>
   )
 }

@@ -10,6 +10,7 @@ import KpiCard from './components/KpiCard'
 import GlassCard from './components/GlassCard'
 import PhaseTimeline from './components/PhaseTimeline'
 import Button from './components/ui/button'
+import { useRuntimeConfig } from './config/RuntimeConfig'
 // Removed Chart.js; using D3 for visualizations
 
 // Type definitions for joint state rows
@@ -21,7 +22,6 @@ interface JointRow {
 }
 
 // Central configuration for services; replace hostnames/IPs as needed
-const API_BASE: string = (import.meta as any).env.VITE_API_BASE || 'http://localhost:8000'
 const WEIGHT_TOPIC: string = (import.meta as any).env.VITE_WEIGHT_TOPIC || '/weight'
 const PHASE_TOPIC: string = (import.meta as any).env.VITE_PHASE_TOPIC || '/lightsout_training/phase'
 const EPISODE_TOPIC: string = (import.meta as any).env.VITE_EPISODE_TOPIC || '/lightsout_training/episode'
@@ -36,6 +36,7 @@ const POUR_STATUS_TOPIC: string = (import.meta as any).env.VITE_POUR_STATUS_TOPI
 function App() {
   const navigate = useNavigate()
   const ros = useRos()
+  const { apiBase } = useRuntimeConfig()
   // ------------------------------ State --------------------------------------
   // Latest ROS-reported status line for the real-time panel
   const [realTimeStatus, setRealTimeStatus] = useState<string>('Waiting for robot status...')
@@ -291,8 +292,8 @@ function App() {
     async function fetchData() {
       try {
         const [metricsRes, histRes] = await Promise.all([
-          axios.get(`${API_BASE}/metrics`),
-          axios.get(`${API_BASE}/lightsout_processed?limit=50`),
+          axios.get(`${apiBase}/metrics`),
+          axios.get(`${apiBase}/lightsout_processed?limit=50`),
         ])
         if (!cancelled) {
           setMetrics(metricsRes.data.metrics || {})
@@ -310,7 +311,7 @@ function App() {
       cancelled = true
       clearInterval(id)
     }
-  }, [])
+  }, [apiBase])
 
   const lastEpisodeRemaining =
     totalEpisodes != null && currentEpisode != null
@@ -319,7 +320,7 @@ function App() {
 
   const fetchLastCycle = async () => {
     try {
-      const res = await axios.get(`${API_BASE}/lightsout_processed?limit=1`)
+      const res = await axios.get(`${apiBase}/lightsout_processed?limit=1`)
       const row = res.data?.rows?.[0]
       if (row) {
         setLastCycle({
@@ -342,7 +343,7 @@ function App() {
 
   useEffect(() => {
     fetchLastCycle()
-  }, [])
+  }, [apiBase])
 
   useEffect(() => {
     if (!lastEpisodeEndTs) return

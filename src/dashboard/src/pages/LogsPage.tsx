@@ -16,6 +16,7 @@ import {
   YAxis,
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
+import { useRuntimeConfig } from '../config/RuntimeConfig'
 
 type Row = {
   id: number
@@ -31,9 +32,8 @@ type Row = {
   overshoot_g: number | null
 }
 
-const API_BASE = (import.meta as any).env.VITE_API_BASE || 'http://localhost:8000'
-
 export default function LogsPage() {
+  const { apiBase } = useRuntimeConfig()
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(false)
   const [plotBatchFilter, setPlotBatchFilter] = useState<string>('all')
@@ -57,7 +57,7 @@ export default function LogsPage() {
   const loadRows = async () => {
     try {
       setLoading(true)
-      const res = await fetch(`${API_BASE}/lightsout_processed?limit=100`)
+      const res = await fetch(`${apiBase}/lightsout_processed?limit=100`)
       const json = await res.json()
       setRows(json.rows || [])
     } finally {
@@ -68,7 +68,7 @@ export default function LogsPage() {
   // init
   useEffect(() => {
     loadRows()
-  }, [])
+  }, [apiBase])
 
   const distinctBatches = Array.from(
     new Set(rows.map((row) => row.batch_id).filter((value): value is string => Boolean(value)))

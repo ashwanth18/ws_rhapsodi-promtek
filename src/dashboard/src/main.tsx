@@ -8,6 +8,7 @@ import LogsPage from './pages/LogsPage'
 import ControlsPage from './pages/ControlsPage'
 import TrainingPage from './pages/TrainingPage'
 import { RosProvider } from './ros/RosContext'
+import { RuntimeConfigProvider } from './config/RuntimeConfig'
 
 const router = createBrowserRouter([
   { path: '/', element: <DashboardPage /> },
@@ -18,9 +19,11 @@ const router = createBrowserRouter([
 
 createRoot(document.getElementById('root') as HTMLElement).render(
   <StrictMode>
-    {/* Provide a single shared ROS connection to all routes */}
-    <RosProvider>
-      <RouterProvider router={router} />
-    </RosProvider>
+    <RuntimeConfigProvider>
+      {/* Provide a single shared ROS connection to all routes */}
+      <RosProvider>
+        <RouterProvider router={router} />
+      </RosProvider>
+    </RuntimeConfigProvider>
   </StrictMode>,
 )

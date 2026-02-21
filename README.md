@@ -121,6 +121,75 @@ Then open:
 
 ---
 
+## Run dashboard on laptop (point to a Pi)
+
+Use this if you want the **dashboard container on your laptop** but the **ROS stack on the Pi**.
+
+1) Build the dashboard locally with the Pi IP:
+
+```bash
+VITE_API_BASE=http://<pi-ip>:8000 \
+VITE_ROSBRIDGE_URL=ws://<pi-ip>:9090 \
+VITE_MICROROS_HEARTBEAT_TOPIC=/microros/heartbeat \
+docker compose -f docker-compose.lightsout.yml build --no-cache dashboard
+```
+
+2) Start the dashboard container:
+
+```bash
+docker compose -f docker-compose.lightsout.yml up -d dashboard
+```
+
+3) Open:
+
+- `http://localhost:8080`
+
+To point at a different Pi, rebuild with the new IPs.
+
+---
+
+## Docker Hub push (ARM64 for Pi)
+
+If you use Docker Hub (single private repo), build and push ARM64 images from your laptop:
+
+```bash
+docker login
+docker buildx create --use
+```
+
+Base ROS image:
+
+```bash
+docker buildx build --platform linux/arm64 -t iserenity/rhapsodi-promtek:jazzy --push .
+```
+
+Backend:
+
+```bash
+docker buildx build --platform linux/arm64 -t iserenity/rhapsodi-promtek:backend --push ./src/backend
+```
+
+Processing:
+
+```bash
+docker buildx build --platform linux/arm64 -t iserenity/rhapsodi-promtek:processing --push ./src/backend/processing
+```
+
+Dashboard:
+
+```bash
+docker buildx build --platform linux/arm64 -t iserenity/rhapsodi-promtek:dashboard --push -f docker/dashboard.Dockerfile .
+```
+
+On each Pi:
+
+```bash
+docker compose -f docker-compose.lightsout.yml pull
+docker compose -f docker-compose.lightsout.yml up -d
+```
+
+---
+
 ## Laptop ↔ Pi Ethernet + Internet sharing
 
 If your Pi is connected to your laptop over Ethernet and you want the Pi to use

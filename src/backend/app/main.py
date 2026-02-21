@@ -1,5 +1,6 @@
 import json
 import os
+import socket
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +34,11 @@ app.add_middleware(
 @app.get('/health')
 def health() -> dict:
     return {'status': 'ok'}
+
+
+@app.get('/host_info')
+def host_info() -> dict:
+    return {'hostname': socket.gethostname()}
 
 
 @app.post('/processed', response_model=ProcessedResponse)
