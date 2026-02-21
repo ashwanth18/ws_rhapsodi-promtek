@@ -115,7 +115,7 @@ services:
 
   # Rosbridge websocket (exposed to host)
   rosbridge:
-    image: rhapsodi-promtek:jazzy
+    image: iserenity/rhapsodi-promtek:jazzy
     network_mode: host
     ipc: host
     environment:
