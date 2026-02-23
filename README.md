@@ -36,6 +36,63 @@ cd ws_rhapsodi-promtek
 docker build --build-arg COLCON_PARALLEL_WORKERS=1 -t rhapsodi-promtek:jazzy .
 ```
 
+### Faster builds on a strong laptop
+
+If you have a high‑end laptop, you can speed up builds with more colcon workers
+and BuildKit caching:
+
+```bash
+cd ws_rhapsodi-promtek
+DOCKER_BUILDKIT=1 docker build --build-arg COLCON_PARALLEL_WORKERS=24 -t rhapsodi-promtek:jazzy .
+```
+
+If you build multi‑arch often, enable a local buildx cache:
+
+```bash
+docker buildx create --use
+docker buildx build \
+  --cache-from=type=local,src=./.buildx-cache \
+  --cache-to=type=local,dest=./.buildx-cache-new \
+  --platform linux/amd64,linux/arm64 \
+  --build-arg COLCON_PARALLEL_WORKERS=24 \
+  -t iserenity/rhapsodi-promtek:jazzy --push .
+mv ./.buildx-cache-new ./.buildx-cache
+```
+
+Cached multi‑arch builds for all images:
+
+```bash
+docker buildx create --use
+
+docker buildx build \
+  --cache-from=type=local,src=./.buildx-cache \
+  --cache-to=type=local,dest=./.buildx-cache-new \
+  --platform linux/amd64,linux/arm64 \
+  --build-arg COLCON_PARALLEL_WORKERS=24 \
+  -t iserenity/rhapsodi-promtek:backend --push ./src/backend
+mv ./.buildx-cache-new ./.buildx-cache
+
+docker buildx build \
+  --cache-from=type=local,src=./.buildx-cache \
+  --cache-to=type=local,dest=./.buildx-cache-new \
+  --platform linux/amd64,linux/arm64 \
+  --build-arg COLCON_PARALLEL_WORKERS=24 \
+  -t iserenity/rhapsodi-promtek:processing --push ./src/backend/processing
+mv ./.buildx-cache-new ./.buildx-cache
+
+docker buildx build \
+  --cache-from=type=local,src=./.buildx-cache \
+  --cache-to=type=local,dest=./.buildx-cache-new \
+  --platform linux/amd64,linux/arm64 \
+  --build-arg COLCON_PARALLEL_WORKERS=24 \
+  -t iserenity/rhapsodi-promtek:dashboard --push -f docker/dashboard.Dockerfile .
+mv ./.buildx-cache-new ./.buildx-cache
+```
+
+Notes:
+- Avoid `--no-cache` unless needed.
+- Keep the build context small (use `.dockerignore` to exclude `data/`, `log/`).
+
 ### Raspberry Pi 5 build (ARM64)
 
 ```bash
@@ -181,6 +238,15 @@ Dashboard:
 docker buildx build --platform linux/arm64 -t iserenity/rhapsodi-promtek:dashboard --push -f docker/dashboard.Dockerfile .
 ```
 
+Multi‑arch (amd64 + arm64) from the laptop:
+
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 -t iserenity/rhapsodi-promtek:jazzy --push .
+docker buildx build --platform linux/amd64,linux/arm64 -t iserenity/rhapsodi-promtek:backend --push ./src/backend
+docker buildx build --platform linux/amd64,linux/arm64 -t iserenity/rhapsodi-promtek:processing --push ./src/backend/processing
+docker buildx build --platform linux/amd64,linux/arm64 -t iserenity/rhapsodi-promtek:dashboard --push -f docker/dashboard.Dockerfile .
+```
+
 On each Pi:
 
 ```bash
@@ -234,6 +300,67 @@ Typical interface names:
 
 - `<UPLINK_IFACE>`: `wlan0` or `wlp*` (Wi‑Fi) or `enx*` (USB‑Ethernet)
 - `<PI_ETH_IFACE>`: the Ethernet interface to the Pi (e.g., `enp*`)
+
+---
+
+## Dual‑NIC network setup (Pi ↔ Niryo + Pi ↔ Laptop)
+
+Use this if the **Pi connects directly to the Niryo** *and* to your **laptop**.
+
+### Topology
+
+- `eth0` (Pi built‑in) → **Niryo** (link‑local)
+- `enx…` (USB‑Ethernet) → **Laptop** (shared network)
+
+### IP plan
+
+- **Niryo**: `169.254.200.200/16`
+- **Pi (eth0)**: `169.254.200.201/16`
+- **Pi (USB‑Ethernet)**: `10.42.0.72/24`
+- **Laptop (shared)**: `10.42.0.1/24`
+
+### Laptop settings
+
+Set the laptop Ethernet (to Pi) as **“Shared to other computers”**.  
+This assigns `10.42.0.1` and provides internet to the Pi.
+
+### Pi (Ubuntu Netplan) config
+
+Edit `/etc/netplan/50-cloud-init.yaml`:
+
+```yaml
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth0:
+      dhcp4: no
+      addresses: [169.254.200.201/16]
+    enx9cebe8b7ccea:
+      dhcp4: no
+      addresses: [10.42.0.72/24]
+      routes:
+        - to: default
+          via: 10.42.0.1
+      nameservers:
+        addresses: [8.8.8.8, 1.1.1.1]
+  wifis:
+    wlan0:
+      # keep your existing Wi‑Fi config (if any)
+```
+
+Apply:
+
+```bash
+sudo netplan apply
+```
+
+Verify:
+
+```bash
+ping -c 3 169.254.200.200
+ping -c 3 10.42.0.1
+```
 
 ---
 

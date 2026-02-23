@@ -58,6 +58,15 @@ def launch_setup(context):
     robot_namespaces = drivers_list_config.get("robot_namespaces", {})
     rosbridge_port = drivers_list_config.get("rosbridge_port", {})
 
+    robot_ip_override = os.environ.get("ROBOT_PI") or os.environ.get("ROBOT_IP")
+    namespace_override = os.environ.get("ROBOT_NAMESPACE")
+    if robot_ip_override:
+        robot_ips = [robot_ip_override]
+    if namespace_override is not None:
+        robot_namespaces = [namespace_override]
+    if (robot_ip_override or namespace_override) and not robot_namespaces:
+        robot_namespaces = [""]
+
     if len(robot_ips) != len(robot_namespaces):
         raise RuntimeError("Robot ips and robot namespaces must have the same length")
 

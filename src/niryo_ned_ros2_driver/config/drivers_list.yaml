@@ -2,5 +2,6 @@ rosbridge_port: 9090
 robot_namespaces:
   - ""
 robot_ips:
-  - "ned3pro-20-869-cef.local"
+  - "169.254.200.200"
  
+  # - "ned3pro-20-869-cef.local" this was used for laptop to robot connection as laptop can resolve the name but not in docker so need to add ip address 

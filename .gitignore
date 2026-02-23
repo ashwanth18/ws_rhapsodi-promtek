@@ -24,6 +24,10 @@ src/dashboard/.vite/
 .DS_Store
 Thumbs.db
 
+# Buildx local cache
+.buildx-cache/
+.buildx-cache-new/
+
 # Data/artifacts that usually shouldn't be committed
 src/robot_data.db
 **/*.bag

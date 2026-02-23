@@ -1,0 +1,30 @@
+Niryo ROS2 Driver Overrides
+===========================
+
+This driver reads its default robot connection settings from:
+
+- src/niryo_ned_ros2_driver/config/drivers_list.yaml
+
+At runtime, you can override the defaults with environment variables so you do
+not need to edit the YAML each time.
+
+Runtime Overrides
+-----------------
+
+- ROBOT_PI or ROBOT_IP: overrides the robot IP address
+- ROBOT_NAMESPACE: overrides the namespace prefix (empty string = no namespace)
+
+If either override is set, it takes precedence over the YAML file.
+
+Example
+-------
+
+ROBOT_PI=169.254.200.200 ROBOT_NAMESPACE=robot1 \
+ros2 launch niryo_ned_ros2_driver driver.launch.py
+
+Docker Compose example
+----------------------
+
+ROBOT_PI=169.254.200.200 ROBOT_NAMESPACE=robot1 \
+docker compose -f docker-compose.lightsout.yml up -d
+
