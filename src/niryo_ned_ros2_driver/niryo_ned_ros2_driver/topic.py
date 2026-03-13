@@ -324,6 +324,7 @@ class Topic:
             # in the loopback filter
             normalize_ROS2_type_to_ROS1(
                 msg_dict,
+                self._ros1_type_str,
             )
             self._ros1_publisher.publish(msg_dict)
         except Exception as e:

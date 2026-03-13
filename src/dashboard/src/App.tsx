@@ -1,4 +1,4 @@
-// Professional ROS-enabled dashboard for batch processing
+// Main lights-out training dashboard
 // Heavily commented to explain each concept and decision
 
 import { useEffect, useMemo, useState } from 'react'
@@ -78,7 +78,7 @@ function App() {
     const t = setInterval(() => setElapsed(((Date.now() - startTsRef) / 1000)), 500)
     return () => clearInterval(t)
   }, [startTsRef])
-  // Last finished cycle snapshot (for dashboard preview)
+  // Last finished episode snapshot (for dashboard preview)
   type LastCycle = {
     batch_id?: string
     episode_index?: number
@@ -359,11 +359,11 @@ function App() {
       {/* Header */}
       <div className="flex items-end justify-between gap-2 mb-4">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'Space Grotesk' }}>Robot Batch Processing Dashboard</h1>
-          <p className="text-white/70">Real-time operations and historical analytics</p>
+          <h1 className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'Space Grotesk' }}>Lights-Out Training Dashboard</h1>
+          <p className="text-white/70">Monitor live episode progress, weighing, and recent training results.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={() => navigate('/training')}>Start Lights-Out</Button>
+          <Button onClick={() => navigate('/training')}>Configure Training Run</Button>
         </div>
       </div>
 
@@ -375,7 +375,7 @@ function App() {
       <div className="grid grid-cols-12 gap-4">
         {/* KPI row */}
         <div className="col-span-12 md:col-span-3">
-          <KpiCard label="Avg Cycle Time" value={metrics?.avg_cycle_time != null ? `${(metrics.avg_cycle_time as number).toFixed(2)} s` : '—'} />
+          <KpiCard label="Avg Episode Time" value={metrics?.avg_cycle_time != null ? `${(metrics.avg_cycle_time as number).toFixed(2)} s` : '—'} />
         </div>
         <div className="col-span-12 md:col-span-3">
           <KpiCard label="Success Rate" value={metrics?.success_rate != null ? `${(metrics.success_rate as number).toFixed(1)} %` : '—'} />
@@ -384,7 +384,7 @@ function App() {
           <KpiCard label="Avg Weight Deviation" value={metrics?.avg_weight_deviation != null ? `${(metrics.avg_weight_deviation as number).toFixed(3)} kg` : '—'} />
         </div>
         <div className="col-span-12 md:col-span-3">
-          <KpiCard label="Status" value={batchStale ? 'Stale' : 'Live'} help={realTimeStatus} />
+          <KpiCard label="Training Status" value={batchStale ? 'Stale' : 'Live'} help={realTimeStatus} />
         </div>
 
         {/* Trends chart */}
@@ -529,11 +529,11 @@ function App() {
           </GlassCard>
         </div>
 
-        {/* Last finished cycle snapshot */}
+        {/* Last finished episode snapshot */}
         <div className="col-span-12 md:col-span-8">
           <GlassCard>
             <div className="flex flex-col gap-2">
-              <h3 className="text-lg font-semibold">Last Finished Cycle</h3>
+              <h3 className="text-lg font-semibold">Last Finished Episode</h3>
               <div className="border-t border-white/10" />
               {lastCycle ? (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-y-2 text-sm">
@@ -549,7 +549,7 @@ function App() {
                   <div className="text-right"><span className="text-white/60">Overshoot</span><div>{lastCycle.overshoot_g != null ? lastCycle.overshoot_g.toFixed(2) : '—'} g</div></div>
                 </div>
               ) : (
-                <span className="text-sm text-white/70">No finished cycle yet</span>
+                <span className="text-sm text-white/70">No finished episode yet</span>
               )}
             </div>
           </GlassCard>

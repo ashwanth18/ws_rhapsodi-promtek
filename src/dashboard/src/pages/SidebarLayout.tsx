@@ -18,7 +18,7 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
     <div className="min-h-screen flex" style={{ background: 'linear-gradient(180deg, #0a0b0d 0%, #050607 65%)' }}>
       <aside className={`transition-all duration-200 border-r border-slate-800 ${open ? 'w-56' : 'w-14'} bg-[rgba(10,11,13,0.65)] backdrop-blur-md flex flex-col`}> 
         <div className={`h-14 w-full flex items-center ${open ? 'justify-between px-3' : 'justify-center px-0'}`}>
-          <span className={`font-bold tracking-tight ${open ? 'opacity-100' : 'opacity-0'} transition-opacity`} style={{ fontFamily: 'Space Grotesk' }}>Robot UI</span>
+          <span className={`font-bold tracking-tight ${open ? 'opacity-100' : 'opacity-0'} transition-opacity`} style={{ fontFamily: 'Space Grotesk' }}>Lights-Out UI</span>
           <Button
             variant="ghost"
             size="sm"
@@ -31,10 +31,10 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
         </div>
         {open && (
           <nav className="px-2 py-2 space-y-1">
-            <NavLink to="/" label="Dashboard" />
-            <NavLink to="/logs" label="Historical Logs" />
+            <NavLink to="/" label="Training Dashboard" />
+            <NavLink to="/logs" label="Episode History" />
             <NavLink to="/controls" label="Controls & Sensors" />
-            <NavLink to="/training" label="Training" />
+            <NavLink to="/training" label="Run Setup" />
           </nav>
         )}
       </aside>

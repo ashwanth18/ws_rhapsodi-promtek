@@ -306,6 +306,10 @@ def generate_launch_description():
                 TimerAction(
                     period=2.0,  # Wait 2 seconds for controllers to fully initialize
                     actions=[run_move_group_node]
+                ),
+                TimerAction(
+                    period=4.0,  # Start move_to after move_group has had time to initialize
+                    actions=[moveTo]
                 )
             ],
         ),
@@ -320,12 +324,14 @@ def generate_launch_description():
         actions=[run_move_group_node],
         condition=IfCondition(PythonExpression(["'", mode, "' == 'real'"]))
     )
-    # Start move_to_server after move_group is ready in sim or real
+    # Start move_to_server after move_group is ready in real mode
     run_move_to_server = RegisterEventHandler(
         event_handler=OnProcessStart(
             target_action=run_move_group_node,
             on_start=[TimerAction(period=1.0, actions=[moveTo])],
         )
+        ,
+        condition=IfCondition(PythonExpression(["'", mode, "' == 'real'"]))
     )
     # Start incline executor normally; it uses MoveIt configs directly
     # ============================================================================

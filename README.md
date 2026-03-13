@@ -296,6 +296,16 @@ sudo iptables -A FORWARD -i <UPLINK_IFACE> -o <PI_ETH_IFACE> -m state --state RE
 sudo iptables -A FORWARD -i <PI_ETH_IFACE> -o <UPLINK_IFACE> -j ACCEPT
 ```
 
+## EXAMPLE
+
+```bash
+sudo sysctl -w net.ipv4.ip_forward=1
+
+sudo iptables -t nat -A POSTROUTING -o wlp130s0f0 -j MASQUERADE
+sudo iptables -A FORWARD -i wlp130s0f0 -o enp129s0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+sudo iptables -A FORWARD -i enp129s0 -o wlp130s0f0 -j ACCEPT
+```
+
 Typical interface names:
 
 - `<UPLINK_IFACE>`: `wlan0` or `wlp*` (Wi‑Fi) or `enx*` (USB‑Ethernet)

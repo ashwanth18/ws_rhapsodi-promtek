@@ -26,5 +26,6 @@ Docker Compose example
 ----------------------
 
 ROBOT_PI=169.254.200.200 ROBOT_NAMESPACE=robot1 \
-docker compose -f docker-compose.lightsout.yml up -d
+docker compose -f docker-compose.lightsout.yml run --rm runtime \
+  bash -lc "ros2 launch niryo_robot_simulation_client niryo_ned3pro_complete.launch.py mode:=real headless:=true"
 
