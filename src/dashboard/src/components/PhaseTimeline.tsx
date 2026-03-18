@@ -4,12 +4,19 @@ type Props = {
 }
 
 export default function PhaseTimeline({ phases, index }: Props) {
+  const currentLabel =
+    index < 0
+      ? 'Idle'
+      : index >= phases.length
+        ? 'Done'
+        : phases[index]
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 text-sm">
         <span>Current:</span>
         <span className={`px-2 py-0.5 rounded-md text-xs ${index < 0 ? 'bg-white/10 text-white/70' : 'bg-amber-400/15 text-amber-400'}`}>
-          {index < 0 ? 'Idle' : phases[Math.min(index, phases.length - 1)]}
+          {currentLabel}
         </span>
       </div>
       <div className="rounded-md border border-slate-800 overflow-hidden">

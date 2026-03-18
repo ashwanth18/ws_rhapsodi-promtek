@@ -1,6 +1,7 @@
 #include <behaviortree_cpp/bt_factory.h>
 #include "robot_orchestrator/pour_to_target_node.hpp"
 #include "robot_orchestrator/move_to_node.hpp"
+#include "robot_orchestrator/execute_scoop_node.hpp"
 #include "robot_orchestrator/scan_qr_node.hpp"
 #include "robot_orchestrator/has_active_container_node.hpp"
 #include "robot_orchestrator/load_next_container_node.hpp"
@@ -29,6 +30,7 @@ void RegisterNodes(BT::BehaviorTreeFactory & factory)
 {
   factory.registerNodeType<PourToTargetNode>("PourToTarget");
   factory.registerNodeType<MoveToNode>("MoveTo");
+  factory.registerNodeType<ExecuteScoopNode>("ExecuteScoop");
   factory.registerNodeType<ScanQrNode>("ScanQr");
   // Legacy nodes no longer used in Loop-based tree, keep registered for compatibility
   factory.registerNodeType<HasActiveContainerNode>("HasActiveContainer");

@@ -1,6 +1,7 @@
 import subprocess
 import time
 import urllib.request
+import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +17,7 @@ class EpisodeContext:
     episode_index: int
     folder: Path
     bag_path: Path
+    source: str
 
 
 class DataCollectionManager(Node):
@@ -36,6 +38,9 @@ class DataCollectionManager(Node):
                 '/lightsout_training/episodes_total',
                 '/lightsout_training/mode',
                 '/lightsout_training/robot_id',
+                '/webhook_run/active',
+                '/webhook_run/metadata',
+                '/webhook_run/phase',
                 '/tf_static',
                 '/joint_states',
             ],
@@ -65,8 +70,13 @@ class DataCollectionManager(Node):
             'target_weight_topic', '/lightsout_training/target_weight_g'
         )
         self.declare_parameter('mode_topic', '/lightsout_training/mode')
+        self.declare_parameter('webhook_active_topic', '/webhook_run/active')
+        self.declare_parameter(
+            'webhook_metadata_topic', '/webhook_run/metadata'
+        )
         self.declare_parameter('robot_id', 'robot-1')
         self.declare_parameter('mode', 'lightsout')
+        self.declare_parameter('webhook_metadata_wait_seconds', 1.0)
         self.declare_parameter(
             'processing_url', 'http://localhost:8002/process'
         )
@@ -91,8 +101,20 @@ class DataCollectionManager(Node):
             'target_weight_topic'
         ).value
         self._mode_topic = self.get_parameter('mode_topic').value
+        self._webhook_active_topic = self.get_parameter(
+            'webhook_active_topic'
+        ).value
+        self._webhook_metadata_topic = self.get_parameter(
+            'webhook_metadata_topic'
+        ).value
         self._robot_id = str(self.get_parameter('robot_id').value)
         self._mode = str(self.get_parameter('mode').value)
+        self._webhook_metadata_wait_seconds = max(
+            0.0,
+            float(
+                self.get_parameter('webhook_metadata_wait_seconds').value
+            ),
+        )
         self._processing_url = str(
             self.get_parameter('processing_url').value or ''
         ).strip()
@@ -105,6 +127,14 @@ class DataCollectionManager(Node):
         self._ingredient_id: Optional[str] = None
         self._target_weight_g: Optional[float] = None
         self._run_mode: Optional[str] = None
+        self._weightment_id: Optional[str] = None
+        self._location_id: Optional[str] = None
+        self._location_code: Optional[str] = None
+        self._recording_source: Optional[str] = None
+        self._webhook_metadata: Dict[str, str] = {}
+        self._webhook_active = False
+        self._webhook_start_pending = False
+        self._webhook_active_started_at: Optional[float] = None
 
         self.create_subscription(
             Bool, self._active_topic, self._on_active, 10
@@ -130,6 +160,16 @@ class DataCollectionManager(Node):
         self.create_subscription(
             String, self._mode_topic, self._on_mode, 10
         )
+        self.create_subscription(
+            Bool, self._webhook_active_topic, self._on_webhook_active, 10
+        )
+        self.create_subscription(
+            String,
+            self._webhook_metadata_topic,
+            self._on_webhook_metadata,
+            10,
+        )
+        self.create_timer(0.1, self._check_pending_webhook_start)
 
         self.get_logger().info(
             f'Data collection manager started. Output: {self._output_root}'
@@ -140,6 +180,9 @@ class DataCollectionManager(Node):
         wall_ns = int(time.time() * 1_000_000_000)
         return {'ros_ns': ros_ns, 'wall_ns': wall_ns}
 
+    def _now(self) -> float:
+        return float(self.get_clock().now().nanoseconds) / 1e9
+
     def _format_timestamp(self) -> str:
         return datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
 
@@ -148,7 +191,40 @@ class DataCollectionManager(Node):
         run_id = self._run_id or ts
         batch_id = self._batch_id or 'batch'
         mode = self._run_mode or self._mode
-        return f'{self._robot_id}_{run_id}_{batch_id}_{ts}_{mode}'
+        suffix = ''
+        if self._recording_source == 'webhook' and self._weightment_id:
+            suffix = f'_weightment_{self._weightment_id}'
+        return f'{self._robot_id}_{run_id}_{batch_id}_{ts}_{mode}{suffix}'
+
+    def _metadata_payload(self, ctx: EpisodeContext) -> Dict[str, object]:
+        payload: Dict[str, object] = {
+            'source': ctx.source,
+            'robot_id': self._robot_id,
+            'run_id': self._run_id,
+            'batch_id': self._batch_id,
+            'ingredient_id': self._ingredient_id,
+            'target_weight_g': self._target_weight_g,
+            'mode': self._run_mode or self._mode,
+            'bag_path': str(ctx.bag_path),
+            'run_folder': str(ctx.folder),
+            'episode_index': ctx.episode_index,
+        }
+        if ctx.source == 'webhook':
+            payload.update(
+                {
+                    'weightment_id': self._weightment_id,
+                    'location_id': self._location_id,
+                    'location_code': self._location_code,
+                    'webhook_metadata': self._webhook_metadata,
+                }
+            )
+        return payload
+
+    def _write_metadata(self, ctx: EpisodeContext) -> None:
+        metadata_path = ctx.folder / 'metadata.json'
+        metadata_path.write_text(
+            json.dumps(self._metadata_payload(ctx), indent=2, sort_keys=True)
+        )
 
     def _start_bag(self, ctx: EpisodeContext) -> None:
         cmd = [
@@ -178,8 +254,8 @@ class DataCollectionManager(Node):
         if not self._processing_url:
             self.get_logger().warn('processing_url is empty')
             return
-        payload = (
-            f'{{"run_folder":"{ctx.folder}","bag_path":"{ctx.bag_path}"}}'
+        payload = json.dumps(
+            {'run_folder': str(ctx.folder), 'bag_path': str(ctx.bag_path)}
         ).encode('utf-8')
         req = urllib.request.Request(
             self._processing_url,
@@ -196,6 +272,7 @@ class DataCollectionManager(Node):
     def _start_episode(self, episode_index: int) -> None:
         if self._current_episode is not None:
             self._finalize_episode('episode_rollover')
+        self._recording_source = 'lightsout'
         if self._run_folder is None:
             self._run_folder = self._output_root / self._safe_run_folder()
             self._run_folder.mkdir(parents=True, exist_ok=True)
@@ -205,9 +282,59 @@ class DataCollectionManager(Node):
             episode_index=episode_index,
             folder=folder,
             bag_path=bag_path,
+            source='lightsout',
         )
         self._current_episode = ctx
+        self._write_metadata(ctx)
         self._start_bag(ctx)
+
+    def _start_webhook_run(self) -> None:
+        if self._current_episode is not None:
+            return
+        self._recording_source = 'webhook'
+        if self._run_folder is None:
+            self._run_folder = self._output_root / self._safe_run_folder()
+            self._run_folder.mkdir(parents=True, exist_ok=True)
+        folder = self._run_folder
+        bag_path = folder / 'webhook_run'
+        ctx = EpisodeContext(
+            episode_index=1,
+            folder=folder,
+            bag_path=bag_path,
+            source='webhook',
+        )
+        self._current_episode = ctx
+        self._write_metadata(ctx)
+        self._start_bag(ctx)
+
+    def _has_webhook_metadata(self) -> bool:
+        return bool(self._webhook_metadata.get('run_id'))
+
+    def _begin_pending_webhook_start(self) -> None:
+        self._webhook_start_pending = True
+        self._webhook_active_started_at = self._now()
+
+    def _check_pending_webhook_start(self) -> None:
+        if not self._webhook_start_pending or not self._webhook_active:
+            return
+        if self._current_episode is not None:
+            self._webhook_start_pending = False
+            return
+        if self._has_webhook_metadata():
+            self._webhook_start_pending = False
+            self._start_webhook_run()
+            return
+        started_at = self._webhook_active_started_at
+        if started_at is None:
+            self._webhook_active_started_at = self._now()
+            return
+        if (self._now() - started_at) < self._webhook_metadata_wait_seconds:
+            return
+        self.get_logger().warn(
+            'Starting webhook recording without metadata after timeout'
+        )
+        self._webhook_start_pending = False
+        self._start_webhook_run()
 
     def _finalize_episode(self, reason: str) -> None:
         if self._current_episode is None:
@@ -225,6 +352,8 @@ class DataCollectionManager(Node):
         if not self._lightsout_active:
             self._finish_active()
             self._run_folder = None
+            if self._recording_source == 'lightsout':
+                self._recording_source = None
 
     def _on_run_id(self, msg: String) -> None:
         self._run_id = msg.data or None
@@ -240,6 +369,65 @@ class DataCollectionManager(Node):
 
     def _on_mode(self, msg: String) -> None:
         self._run_mode = msg.data or None
+
+    def _on_webhook_metadata(self, msg: String) -> None:
+        try:
+            payload = json.loads(msg.data or '{}')
+        except json.JSONDecodeError:
+            self.get_logger().warn('Failed to decode webhook metadata JSON')
+            return
+        if not isinstance(payload, dict):
+            return
+        self._webhook_metadata = {str(k): str(v) for k, v in payload.items()}
+        self._run_id = self._webhook_metadata.get('run_id') or self._run_id
+        self._batch_id = (
+            self._webhook_metadata.get('batch_id') or self._batch_id
+        )
+        self._ingredient_id = (
+            self._webhook_metadata.get('ingredient_id') or self._ingredient_id
+        )
+        self._run_mode = self._webhook_metadata.get('mode') or self._run_mode
+        self._weightment_id = (
+            self._webhook_metadata.get('weightment_id') or self._weightment_id
+        )
+        self._location_id = (
+            self._webhook_metadata.get('location_id') or self._location_id
+        )
+        self._location_code = (
+            self._webhook_metadata.get('location_code') or self._location_code
+        )
+        target_weight = self._webhook_metadata.get('target_weight_g')
+        if target_weight is not None:
+            try:
+                self._target_weight_g = float(target_weight)
+            except ValueError:
+                pass
+        if (
+            self._webhook_active
+            and self._webhook_start_pending
+            and self._current_episode is None
+        ):
+            self._webhook_start_pending = False
+            self._start_webhook_run()
+        if self._current_episode and self._current_episode.source == 'webhook':
+            self._write_metadata(self._current_episode)
+
+    def _on_webhook_active(self, msg: Bool) -> None:
+        self._webhook_active = bool(msg.data)
+        if self._webhook_active:
+            if self._current_episode is None:
+                if self._has_webhook_metadata():
+                    self._start_webhook_run()
+                else:
+                    self._begin_pending_webhook_start()
+            return
+        if self._current_episode and self._current_episode.source == 'webhook':
+            self._finalize_episode('webhook_run_end')
+            self._run_folder = None
+            self._recording_source = None
+        self._webhook_start_pending = False
+        self._webhook_active_started_at = None
+        self._webhook_metadata = {}
 
     def _on_episode(self, msg: Int32) -> None:
         if not self._lightsout_active:

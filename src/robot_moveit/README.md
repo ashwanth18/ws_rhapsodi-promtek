@@ -40,7 +40,7 @@ scale:
     position: {x: 0.40, y: 0.00, z: 0.20}
     orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
 ```
-Note: restart `move_to_server_node` after editing `targets.yaml` so it reloads.
+Note: `move_to_server_node` reloads `targets.yaml` automatically when a goal uses `target_name` or `waypoint_names`.
 
 ## MoveTo action server
 

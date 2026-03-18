@@ -97,6 +97,189 @@ ros2 run robot_orchestrator orchestrator_node --ros-args -p tree_file:=/home/ash
 ```
 4) Open Groot2 (connect to port 1666) to visualize.
 
+## Scooping -> weighing -> pouring demo tree
+
+A dedicated test tree is available at:
+
+* `bt_trees/scoop_weigh_pour.xml`
+
+This tree executes:
+
+1. Move to a named scooping approach pose from `robot_moveit/config/targets.yaml`
+2. Trigger the scooping MTC primitive via `ExecuteScoop`
+3. Move to a named weighing-container pose from `robot_moveit/config/targets.yaml`
+4. Run the existing weight-driven `PourToTarget` action
+5. Return home using a named home pose from `robot_moveit/config/targets.yaml`
+
+Required named targets in `robot_moveit/config/targets.yaml`:
+
+* `MoveToScoopingContainer`
+* `MoveToWeighingContainer`
+* `ReturnHome`
+
+## Webhook weightment tree
+
+For backend-driven webhook execution there is a dedicated tree at:
+
+* `bt_trees/webhook_weightment.xml`
+
+It starts from the explicit service:
+
+* `/bt_start_webhook_weightment` (`robot_common_msgs/srv/StartWebhookWeightment`)
+
+This tree expects the backend adapter to resolve the pickup/weigh/home target names and convert kilograms to grams before the run starts. The backend calls this service through the central rosbridge server instead of a custom ROS-side bridge node.
+
+### End-to-end test commands
+
+Build everything once:
+
+```bash
+cd /home/ashwanth/ws_rhapsodi-promtek-dev
+source /opt/ros/jazzy/setup.bash
+colcon build --packages-select scooping_controller robot_moveit robot_orchestrator pouring_controller data_collection_manager --symlink-install
+source install/setup.bash
+```
+
+Terminal 1: start the scooping simulation stack.
+This now also starts:
+`move_group`, `scooping_mtc_node`, RViz, interactive markers,
+collision-aware planning scene, `move_to_server_node`, and `target_recorder_node`.
+
+```bash
+cd /home/ashwanth/ws_rhapsodi-promtek-dev
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 launch scooping_controller scooping_simulation.launch.py \
+  targets_yaml:=/home/ashwanth/ws_rhapsodi-promtek-dev/src/robot_moveit/config/targets.yaml
+```
+
+Terminal 2: start the weight simulator.
+This configuration keeps the simulated weight at the baseline until the BT publishes
+`pour_start`, then ramps only during the pouring phase.
+
+```bash
+cd /home/ashwanth/ws_rhapsodi-promtek-dev
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run data_collection_manager weight_sim --ros-args \
+  -p topic:=/weight \
+  -p rate_hz:=20.0 \
+  -p baseline:=0.0 \
+  -p target:=30.0 \
+  -p gate_on_phase:=true \
+  -p phase_topic:=/lightsout_training/phase \
+  -p phase_start:=pour_start \
+  -p phase_end:=pour_end \
+  -p use_metadata_target:=false
+```
+
+Terminal 3: start the pouring action server.
+
+```bash
+cd /home/ashwanth/ws_rhapsodi-promtek-dev
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run pouring_controller pour_server_node --ros-args \
+  -p weight_topic:=/weight \
+  -p vibration_topic:=/motor_speed \
+  -p joint_state_topic:=/joint_states
+```
+
+Terminal 4: start the orchestrator with the scooping demo tree.
+
+```bash
+cd /home/ashwanth/ws_rhapsodi-promtek-dev
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run robot_orchestrator orchestrator_node --ros-args \
+  -p tree_file:=/home/ashwanth/ws_rhapsodi-promtek-dev/src/robot_orchestrator/bt_trees/scoop_weigh_pour.xml
+```
+
+Terminal 5: trigger one test episode.
+
+```bash
+cd /home/ashwanth/ws_rhapsodi-promtek-dev
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 service call /bt_start_lightsout robot_common_msgs/srv/StartLightsOut \
+"{powder_name: 'scooping_demo', cycle_end_limit: '1 episode', target_weight_g: 30.0, episodes: 1, batch_id: 'demo-run'}"
+```
+
+Notes:
+
+* `ExecuteScoop` calls `/execute_scoop_continuous` by default
+* the scoop pattern offset is still controlled through the `scooping_mtc_node` parameter `pattern_offset_y`
+* `move_to_server_node` reloads `targets.yaml` automatically when a goal uses `target_name` or `waypoint_names`
+* `weight_sim` publishes an absolute scale reading. If you want to simulate pouring `30 g` into an already loaded container at `230 g`, use `baseline:=230.0` and `target:=260.0`
+
+### Real-hardware bring-up
+
+The hardware path is intentionally separate from `scooping_simulation.launch.py`.
+Use the dedicated launch below so the stack starts without Gazebo, `/clock`, or the sim-only static `world` frame.
+
+Before starting:
+
+* set `ROBOT_IP` if the default value in `niryo_ned_ros2_driver/config/drivers_list.yaml` is not your robot
+* calibrate `scooping_controller/config/container_scene_real.yaml` for the physical scooping and weighing containers
+* choose a real target file, for example `src/robot_moveit/config/targets.yaml`
+
+Terminal 1: start the real Niryo + MoveIt + scooping authoring stack.
+
+```bash
+cd /home/ashwanth/ws_rhapsodi-promtek-dev
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+export ROBOT_IP=169.254.200.200
+ros2 launch scooping_controller scooping_real.launch.py \
+  targets_yaml:=/home/ashwanth/ws_rhapsodi-promtek-dev/src/robot_moveit/config/targets.yaml \
+  container_scene_yaml:=/home/ashwanth/ws_rhapsodi-promtek-dev/src/scooping_controller/config/container_scene_real.yaml
+```
+
+Terminal 2: start the physical scale on `/weight`.
+
+```bash
+cd /home/ashwanth/ws_rhapsodi-promtek-dev
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 launch weighing_scale_driver weighing_scale.launch.py \
+  port:=/dev/ttyUSB0 \
+  baud:=115200 \
+  topic:=/weight
+```
+
+Terminal 3: start the pouring action server in grams.
+
+```bash
+cd /home/ashwanth/ws_rhapsodi-promtek-dev
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run pouring_controller pour_server_node --ros-args \
+  -p weight_topic:=/weight \
+  -p vibration_topic:=/motor_speed \
+  -p joint_state_topic:=/joint_states
+```
+
+Terminal 4: start the orchestrator with the scooping demo tree.
+
+```bash
+cd /home/ashwanth/ws_rhapsodi-promtek-dev
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 run robot_orchestrator orchestrator_node --ros-args \
+  -p tree_file:=/home/ashwanth/ws_rhapsodi-promtek-dev/src/robot_orchestrator/bt_trees/scoop_weigh_pour.xml
+```
+
+### Real validation order
+
+Use this order on hardware before you run the full BT:
+
+1. Verify joint states and MoveIt are live, then send a slow `ReturnHome` with `/move_to`.
+2. Re-record `ReturnHome`, `MoveToScoopingContainer`, and `MoveToWeighingContainer` with `/record_target`.
+3. Adjust `container_scene_real.yaml` until the RViz meshes and MoveIt collision scene match the physical containers.
+4. Save the five scoop markers into `poses_real.yaml`, then run `/plan_scoop` before any execution.
+5. Execute the scoop in free space first, then near the real container, then enable the scale and `PourToTarget`.
+6. Run the BT for a single cycle only after `MoveTo`, `ExecuteScoop`, and `PourToTarget` have each passed on their own.
+
 ## Lights-out training (repeat episodes)
 
 Use the dedicated lights-out tree to repeat scoop → weigh → pour for a fixed
@@ -127,6 +310,7 @@ Lights-out topics:
 ### Monitoring topics
 
 - `/system_status` (`robot_common_msgs/msg/SystemStatus`): phase, queue remaining, current container, targets, tolerance, and scale weight
+- `/orchestrator/run_state` (`std_msgs/String`): `idle`, `running`, `succeeded`, `failed`, or `stopped`
 
 Cleanup/tap-off targets:
 - Define `tap_off` (and any approach) in `robot_moveit/config/targets.yaml`.
@@ -153,7 +337,7 @@ ros2 service call /bt_start_batch robot_common_msgs/srv/StartBatch "{containers:
 
 Notes:
 - Ensure the `MoveTo` action server is running and `targets.yaml` contains required named targets (e.g., `scale`, container names if you use `target_name`).
-- If you record new targets with the `RecordTarget` service, restart the `move_to_server_node` to reload the YAML.
+- `move_to_server_node` reloads `targets.yaml` automatically when a goal uses `target_name` or `waypoint_names`.
 
 ## Notes
 - `targets.yaml` changes require restarting the `move_to_server_node`.

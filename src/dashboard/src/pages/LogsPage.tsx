@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import SidebarLayout from './SidebarLayout'
+import DateTimeText from '../components/DateTimeText'
 import GlassCard from '../components/GlassCard'
 import Button from '../components/ui/button'
 import {
@@ -20,7 +22,12 @@ import { useRuntimeConfig } from '../config/RuntimeConfig'
 
 type Row = {
   id: number
+  event_id: string | null
+  weightment_id: number | null
+  mode: string | null
+  run_id: string | null
   batch_id: string | null
+  ingredient_id: string | null
   episode_index: number | null
   start_time_ns: number | null
   end_time_ns: number | null
@@ -32,34 +39,90 @@ type Row = {
   overshoot_g: number | null
 }
 
+type LogsResponse = {
+  rows?: Row[]
+  total?: number
+  available_batches?: string[]
+  available_modes?: string[]
+}
+
 export default function LogsPage() {
   const { apiBase } = useRuntimeConfig()
-  const [rows, setRows] = useState<Row[]>([])
+  const navigate = useNavigate()
+  const [tableRows, setTableRows] = useState<Row[]>([])
+  const [plotRows, setPlotRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(false)
+  const [tableTotal, setTableTotal] = useState<number>(0)
+  const [availableBatches, setAvailableBatches] = useState<string[]>([])
+  const [availableModes, setAvailableModes] = useState<string[]>([])
   const [plotBatchFilter, setPlotBatchFilter] = useState<string>('all')
+  const [plotModeFilter, setPlotModeFilter] = useState<string>('all')
   const [tableBatchFilter, setTableBatchFilter] = useState<string>('all')
+  const [tableModeFilter, setTableModeFilter] = useState<string>('all')
   const [tableEpisodeFilter, setTableEpisodeFilter] = useState<string>('')
   const [tablePage, setTablePage] = useState<number>(1)
+  const tablePageSize = 20
 
   // helpers
-  const formatTimestamp = (ms: number | null) => {
-    if (!ms || !Number.isFinite(ms)) return '—'
-    const dt = new Date(ms)
-    return dt.toLocaleString(undefined, {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    })
+  const buildLogsUrl = (params: {
+    limit: number
+    offset?: number
+    batchFilter?: string
+    modeFilter?: string
+    episodeIndex?: number | null
+  }) => {
+    const search = new URLSearchParams()
+    search.set('limit', String(params.limit))
+    if ((params.offset ?? 0) > 0) {
+      search.set('offset', String(params.offset))
+    }
+    if (params.batchFilter && params.batchFilter !== 'all') {
+      search.set('batch_id', params.batchFilter)
+    }
+    if (params.modeFilter && params.modeFilter !== 'all') {
+      search.set('mode', params.modeFilter)
+    }
+    if (params.episodeIndex != null) {
+      search.set('episode_index', String(params.episodeIndex))
+    }
+    return `${apiBase}/lightsout_processed?${search.toString()}`
   }
+
   const loadRows = async () => {
     try {
       setLoading(true)
-      const res = await fetch(`${apiBase}/lightsout_processed?limit=100`)
-      const json = await res.json()
-      setRows(json.rows || [])
+      const rawEpisode = tableEpisodeFilter.trim()
+      const parsedEpisode = rawEpisode ? Number.parseInt(rawEpisode, 10) : null
+      const hasValidEpisode = parsedEpisode != null && Number.isFinite(parsedEpisode)
+      const hasInvalidEpisode = rawEpisode.length > 0 && !hasValidEpisode
+
+      const tableUrl = hasInvalidEpisode
+        ? null
+        : buildLogsUrl({
+            limit: tablePageSize,
+            offset: (tablePage - 1) * tablePageSize,
+            batchFilter: tableBatchFilter,
+            modeFilter: tableModeFilter,
+            episodeIndex: hasValidEpisode ? parsedEpisode : null,
+          })
+      const plotUrl = buildLogsUrl({
+        limit: 0,
+        batchFilter: plotBatchFilter,
+        modeFilter: plotModeFilter,
+      })
+
+      const [tableJson, plotJson] = await Promise.all([
+        tableUrl
+          ? fetch(tableUrl).then((res) => res.json() as Promise<LogsResponse>)
+          : Promise.resolve<LogsResponse>({ rows: [], total: 0 }),
+        fetch(plotUrl).then((res) => res.json() as Promise<LogsResponse>),
+      ])
+
+      setTableRows(tableJson.rows || [])
+      setTableTotal(tableJson.total ?? 0)
+      setPlotRows(plotJson.rows || [])
+      setAvailableBatches(tableJson.available_batches || plotJson.available_batches || [])
+      setAvailableModes(tableJson.available_modes || plotJson.available_modes || [])
     } finally {
       setLoading(false)
     }
@@ -68,56 +131,36 @@ export default function LogsPage() {
   // init
   useEffect(() => {
     loadRows()
-  }, [apiBase])
+  }, [
+    apiBase,
+    plotBatchFilter,
+    plotModeFilter,
+    tableBatchFilter,
+    tableModeFilter,
+    tableEpisodeFilter,
+    tablePage,
+  ])
 
-  const distinctBatches = Array.from(
-    new Set(rows.map((row) => row.batch_id).filter((value): value is string => Boolean(value)))
-  ).sort()
+  const distinctBatches = availableBatches
+  const distinctModes = availableModes
 
-  const tableFilteredRows = useMemo(() => {
-    const episode = tableEpisodeFilter.trim()
-    return rows.filter((row) => {
-      if (tableBatchFilter !== 'all' && row.batch_id !== tableBatchFilter) {
-        return false
-      }
-      if (episode) {
-        const episodeNumber = Number.parseInt(episode, 10)
-        if (!Number.isFinite(episodeNumber)) {
-          return false
-        }
-        if (row.episode_index !== episodeNumber) {
-          return false
-        }
-      }
-      return true
-    })
-  }, [rows, tableBatchFilter, tableEpisodeFilter])
-
-  const tablePageSize = 20
-  const tablePageCount = Math.max(1, Math.ceil(tableFilteredRows.length / tablePageSize))
+  const tablePageCount = Math.max(1, Math.ceil(tableTotal / tablePageSize))
   const tablePageSafe = Math.min(tablePage, tablePageCount)
-  const tablePageRows = tableFilteredRows.slice(
-    (tablePageSafe - 1) * tablePageSize,
-    tablePageSafe * tablePageSize
-  )
 
-  const plotRows = useMemo(() => {
-    if (plotBatchFilter === 'all') {
-      return rows
-    }
-    return rows.filter((row) => row.batch_id === plotBatchFilter)
-  }, [rows, plotBatchFilter])
+  const plotDistinctBatches = Array.from(
+    new Set(plotRows.map((row) => row.batch_id).filter((value): value is string => Boolean(value)))
+  ).sort()
 
   useEffect(() => {
     setTablePage(1)
-  }, [tableBatchFilter, tableEpisodeFilter])
+  }, [tableBatchFilter, tableModeFilter, tableEpisodeFilter])
 
   const plotPointsFinalVsTarget = plotRows
     .filter((row) => row.target_weight_g != null && row.final_weight_g != null)
     .map((row) => ({
       x: row.target_weight_g as number,
       y: row.final_weight_g as number,
-      label: `Episode ${row.episode_index ?? '—'}`,
+      label: `Run ${row.episode_index ?? '—'}`,
     }))
 
   const plotPointsDurationVsFinal = plotRows
@@ -125,7 +168,7 @@ export default function LogsPage() {
     .map((row) => ({
       x: row.total_episode_time_s as number,
       y: row.final_weight_g as number,
-      label: `Episode ${row.episode_index ?? '—'}`,
+      label: `Run ${row.episode_index ?? '—'}`,
     }))
 
   const overshootValues = plotRows
@@ -179,15 +222,24 @@ export default function LogsPage() {
     return values.reduce((sum, value) => sum + value, 0) / values.length
   }
 
-  const totalEpisodes = rows.length
-  const avgFinal = averageOf(rows, (row) => row.final_weight_g)
-  const avgNet = averageOf(rows, (row) => row.net_weight_g)
-  const avgFlow = averageOf(rows, (row) => row.avg_flow_rate_g_s)
-  const avgDuration = averageOf(rows, (row) => row.total_episode_time_s)
-  const avgOvershoot = averageOf(rows, (row) => row.overshoot_g)
+  const openWebhookWeightment = (row: Row) => {
+    if (!row.event_id || row.weightment_id == null) {
+      return
+    }
+    navigate(
+      `/webhook-weightments/${encodeURIComponent(row.event_id)}?weightmentId=${row.weightment_id}`
+    )
+  }
 
-  const overshootByBatch = distinctBatches.map((batch) => {
-    const batchRows = tableFilteredRows.filter((row) => row.batch_id === batch)
+  const totalEpisodes = plotRows.length
+  const avgFinal = averageOf(plotRows, (row) => row.final_weight_g)
+  const avgNet = averageOf(plotRows, (row) => row.net_weight_g)
+  const avgFlow = averageOf(plotRows, (row) => row.avg_flow_rate_g_s)
+  const avgDuration = averageOf(plotRows, (row) => row.total_episode_time_s)
+  const avgOvershoot = averageOf(plotRows, (row) => row.overshoot_g)
+
+  const overshootByBatch = plotDistinctBatches.map((batch) => {
+    const batchRows = plotRows.filter((row) => row.batch_id === batch)
     return {
       batch,
       avgOvershoot: averageOf(batchRows, (row) => row.overshoot_g) ?? 0,
@@ -215,8 +267,8 @@ export default function LogsPage() {
       <div className="px-6 py-6">
         <div className="flex items-end justify-between mb-4">
           <div>
-            <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk' }}>Historical Logs</h1>
-            <p className="text-white/70">Processed lights-out episodes with weights and flow metrics</p>
+            <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk' }}>Run History</h1>
+            <p className="text-white/70">Processed robot traces and derived metrics</p>
           </div>
           <div className="flex items-center gap-2">
             <Button onClick={() => loadRows()} disabled={loading}>
@@ -265,7 +317,18 @@ export default function LogsPage() {
                   <option key={batch} value={batch}>{batch}</option>
                 ))}
               </select>
-              <span className="text-white/60">Episode</span>
+              <span className="text-white/60">Mode</span>
+              <select
+                className="rounded-md bg-slate-900/60 border border-slate-700 px-2 py-1 text-sm"
+                value={tableModeFilter}
+                onChange={(event) => setTableModeFilter(event.target.value)}
+              >
+                <option value="all">All</option>
+                {distinctModes.map((mode) => (
+                  <option key={mode} value={mode}>{mode}</option>
+                ))}
+              </select>
+              <span className="text-white/60">Run</span>
               <input
                 className="w-24 rounded-md bg-slate-900/60 border border-slate-700 px-2 py-1 text-sm"
                 placeholder="e.g. 3"
@@ -274,7 +337,7 @@ export default function LogsPage() {
               />
             </div>
             <div className="text-xs text-white/60">
-              Showing {tableFilteredRows.length} entries
+              Showing {tableRows.length} of {tableTotal} entries
             </div>
           </div>
           <div className="overflow-auto">
@@ -282,7 +345,10 @@ export default function LogsPage() {
               <thead className="text-left text-white/70">
                 <tr>
                   <th>Batch</th>
-                  <th>Episode</th>
+                  <th>Mode</th>
+                  <th>Run ID</th>
+                  <th>Ingredient</th>
+                  <th>Run</th>
                   <th>Start</th>
                   <th>End</th>
                   <th className="text-right">Target (g)</th>
@@ -296,7 +362,7 @@ export default function LogsPage() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td className="py-6 text-center" colSpan={10}>
+                    <td className="py-6 text-center" colSpan={13}>
                       <span className="inline-flex items-center gap-2 text-white/70">
                         <svg
                           className="h-4 w-4 animate-spin"
@@ -323,20 +389,28 @@ export default function LogsPage() {
                       </span>
                     </td>
                   </tr>
-                ) : tableFilteredRows.length === 0 ? (
-                  <tr><td className="py-4" colSpan={10}>No data</td></tr>
+                ) : tableRows.length === 0 ? (
+                  <tr><td className="py-4" colSpan={13}>No data</td></tr>
                 ) : (
-                  tablePageRows.map((r) => {
+                  tableRows.map((r) => {
                     const startMs = r.start_time_ns ? r.start_time_ns / 1_000_000 : null
                     const endMs = r.end_time_ns ? r.end_time_ns / 1_000_000 : null
-                    const start = formatTimestamp(startMs)
-                    const end = formatTimestamp(endMs)
+                    const isWebhookRow = Boolean(r.event_id && r.weightment_id != null)
                     return (
-                      <tr key={r.id} className="border-t border-slate-800">
+                      <tr
+                        key={r.id}
+                        className={`border-t border-slate-800 ${
+                          isWebhookRow ? 'cursor-pointer hover:bg-white/5' : ''
+                        }`}
+                        onClick={isWebhookRow ? () => openWebhookWeightment(r) : undefined}
+                      >
                         <td>{r.batch_id ?? '—'}</td>
+                        <td>{r.mode ?? '—'}</td>
+                        <td>{r.run_id ?? '—'}</td>
+                        <td>{r.ingredient_id ?? '—'}</td>
                         <td>{r.episode_index ?? '—'}</td>
-                        <td>{start}</td>
-                        <td>{end}</td>
+                        <td><DateTimeText value={startMs} /></td>
+                        <td><DateTimeText value={endMs} /></td>
                         <td className="text-right">{r.target_weight_g != null ? r.target_weight_g.toFixed(2) : '—'}</td>
                         <td className="text-right">{r.final_weight_g != null ? r.final_weight_g.toFixed(2) : '—'}</td>
                         <td className="text-right">{r.net_weight_g != null ? r.net_weight_g.toFixed(2) : '—'}</td>
@@ -375,9 +449,9 @@ export default function LogsPage() {
 
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
           <GlassCard>
-            <div className="text-xs text-white/60 mb-2">Episode Summary</div>
+            <div className="text-xs text-white/60 mb-2">Run Summary</div>
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>Total Episodes</div>
+              <div>Total Runs</div>
               <div className="text-right">{totalEpisodes}</div>
               <div>Avg Final (g)</div>
               <div className="text-right">{avgFinal != null ? avgFinal.toFixed(2) : '—'}</div>
@@ -433,6 +507,17 @@ export default function LogsPage() {
                 <option value="all">All</option>
                 {distinctBatches.map((batch) => (
                   <option key={batch} value={batch}>{batch}</option>
+                ))}
+              </select>
+              <span className="text-white/60">Mode</span>
+              <select
+                className="rounded-md bg-slate-900/60 border border-slate-700 px-2 py-1 text-sm"
+                value={plotModeFilter}
+                onChange={(event) => setPlotModeFilter(event.target.value)}
+              >
+                <option value="all">All</option>
+                {distinctModes.map((mode) => (
+                  <option key={mode} value={mode}>{mode}</option>
                 ))}
               </select>
             </div>
@@ -512,7 +597,7 @@ export default function LogsPage() {
           <div className="mt-4">
             <Card>
               <CardHeader>
-                <CardTitle>Overshoot Distribution (% of Episodes)</CardTitle>
+                <CardTitle>Overshoot Distribution (% of Runs)</CardTitle>
               </CardHeader>
               <CardContent>
                 <div style={{ width: '100%', height: 240 }}>

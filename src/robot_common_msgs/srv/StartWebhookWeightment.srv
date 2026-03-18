@@ -1,0 +1,15 @@
+string run_id
+string weightment_id
+string batch_id
+string ingredient_id
+string location_id
+string location_code
+string pickup_target_name
+string weigh_target_name
+string return_target_name
+float32 target_weight_g
+float32 tolerance_g
+string expected_lot
+---
+bool accepted
+string message

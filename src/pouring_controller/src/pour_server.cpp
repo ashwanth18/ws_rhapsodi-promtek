@@ -164,14 +164,11 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
     m.data = incline; incline_pub_->publish(m);
   };
   auto stop_cmd = [&]{ send_cmd(0.0, 0.0, 0.0); };
-  auto publish_status = [&](bool active, const std::string& phase_str_name, double target_kg, double band_kg, double abs_err_val){
+  auto publish_status = [&](bool active, const std::string& phase_str_name, double target_g, double band_g, double abs_err_val){
     robot_common_msgs::msg::PourStatus ps;
     ps.active = active;
     ps.phase = phase_str_name;
-    // convert to grams if values look like kg
-    const double target_g = (target_kg >= 10.0 ? target_kg : target_kg * 1000.0);
-    const double band_g = (band_kg >= 10.0 ? band_kg : band_kg * 1000.0);
-    const double rem_g = (band_kg > 0.0) ? std::max(0.0, abs_err_val - band_kg) * (band_kg >= 10.0 ? 1.0 : 1000.0) : -1.0;
+    const double rem_g = (band_g > 0.0) ? std::max(0.0, abs_err_val - band_g) : -1.0;
     ps.target_g = static_cast<float>(target_g);
     ps.band_threshold_g = static_cast<float>(band_g);
     ps.remaining_to_band_g = static_cast<float>(rem_g);
@@ -273,7 +270,7 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
     // feedback
     feedback->current_weight = static_cast<float>(raw_weight_);
     feedback->phase = phase_name;
-    // error to next phase band (kg) and band threshold (kg)
+    // Error to next phase band and band threshold are reported in grams.
     float err_to_band = -1.0f;
     float band_thresh = 0.0f;
     if (phase == COARSE) {

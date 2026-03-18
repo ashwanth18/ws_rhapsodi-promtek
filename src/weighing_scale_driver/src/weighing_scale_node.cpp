@@ -56,7 +56,7 @@ public:
   {
     this->declare_parameter<std::string>("port", "/dev/ttyUSB0");
     this->declare_parameter<int>("baud", 9600);
-    this->declare_parameter<std::string>("topic", "weight");
+    this->declare_parameter<std::string>("topic", "/weight");
     topic_ = this->get_parameter("topic").as_string();
     publisher_ = this->create_publisher<std_msgs::msg::Float64>(topic_, 10);
     int baud = this->get_parameter("baud").as_int();
@@ -69,6 +69,7 @@ public:
     }
     RCLCPP_INFO(this->get_logger(), "Connected to weighing scale on %s at %d baud",
                 port.c_str(), baud);
+    RCLCPP_INFO(this->get_logger(), "Publishing scale readings on %s", topic_.c_str());
     timer_ = this->create_wall_timer(std::chrono::milliseconds(50), std::bind(&WeighingScaleNode::tick, this));
   }
 

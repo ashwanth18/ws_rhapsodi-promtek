@@ -20,6 +20,7 @@ class WeightSimNode(Node):
         self.declare_parameter('publish_when_active', True)
         self.declare_parameter('reset_on_episode_end', True)
         self.declare_parameter('use_metadata_target', True)
+        self.declare_parameter('clamp_to_target', True)
         self.declare_parameter('gate_on_phase', False)
         self.declare_parameter('phase_topic', '/lightsout_training/phase')
         self.declare_parameter('phase_start', 'pour_start')
@@ -63,6 +64,9 @@ class WeightSimNode(Node):
         )
         self._use_metadata_target = bool(
             self.get_parameter('use_metadata_target').value
+        )
+        self._clamp_to_target = bool(
+            self.get_parameter('clamp_to_target').value
         )
         self._gate_on_phase = bool(
             self.get_parameter('gate_on_phase').value
@@ -127,7 +131,20 @@ class WeightSimNode(Node):
                 target = self._metadata.get('target_weight_g')
             if isinstance(target, (int, float)):
                 return float(target)
+            if isinstance(target, str):
+                try:
+                    return float(target)
+                except ValueError:
+                    pass
         return self._default_target
+
+    def _clamp_weight(self, weight: float) -> float:
+        if not self._clamp_to_target:
+            return weight
+        target = self._current_target
+        if target >= self._baseline:
+            return min(weight, target)
+        return max(weight, target)
 
     def _on_active(self, msg: Bool) -> None:
         self._active = bool(msg.data)
@@ -188,6 +205,7 @@ class WeightSimNode(Node):
                 weight = self._current_target
         if self._noise_std > 0.0:
             weight += random.gauss(0.0, self._noise_std)
+        weight = self._clamp_weight(weight)
 
         msg = Float64()
         msg.data = float(weight)

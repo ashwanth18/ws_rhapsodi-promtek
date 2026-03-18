@@ -17,15 +17,15 @@ Action server that controls powder pouring using a weight feedback loop, per-pha
 ## Action interface
 
 Goal
-- `target_weight` (kg), `tolerance` (kg), `max_time_s` (s)
+- `target_weight` (g), `tolerance` (g), `max_time_s` (s)
 
 Result
 - `achieved`, `overshoot`, `timeout`, `final_weight`, `message`
 
 Feedback
-- `current_weight` (kg)
+- `current_weight` (g)
 - `phase`: COARSE | SETTLE | FINE | TRICKLE
-- `error_to_next_band` (kg), `band_threshold` (kg)
+- `error_to_next_band` (g), `band_threshold` (g)
 - `hold_time_remaining` (s)
 
 ## Phase logic (percentage bands)
@@ -51,6 +51,8 @@ Feedback
 - Optional tilt (FollowJointTrajectory):
   - `tilt_joint_name`, `traj_action_server`, `coarse_tilt_deg`, `fine_tilt_deg`, `trickle_tilt_deg`, `joint_move_time_s`
 
+The runtime server and `/pour_status` UI topic both operate in grams.
+
 ## Run
 
 Build and source:
@@ -71,7 +73,7 @@ ros2 run pouring_controller pour_server_node --ros-args \
 Send a goal:
 ```bash
 ros2 action send_goal /pour_to_target robot_common_msgs/action/PourToTarget \
-"{target_weight: 1200.0, tolerance: 0.5, max_time_s: 30.0}" --feedback
+"{target_weight: 120.0, tolerance: 0.5, max_time_s: 30.0}" --feedback
 ```
 
 ## Testing tips

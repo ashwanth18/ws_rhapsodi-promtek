@@ -208,16 +208,16 @@
                 izz="0.00000040812" />
         </inertial>
         <visual>
-            <origin xyz="0 -0.038 -0.03" rpy="0 0 0" />
+            <origin xyz="0 -0.0 -0.0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="file://$(find niryo_robot_description)/meshes/ned3pro/stl/scoop_link.STL" scale="0.001 0.001 0.001" />
+                <mesh filename="file://$(find niryo_robot_description)/meshes/ned3pro/stl/niryo_scoop-ros.STL" scale="0.001 0.001 0.001" />
             </geometry>
             <material name="tool_color" />
         </visual>
         <collision>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="file://$(find niryo_robot_description)/meshes/ned3pro/stl/scoop_link.STL" scale="0.001 0.001 0.001" />
+                <mesh filename="file://$(find niryo_robot_description)/meshes/ned3pro/stl/niryo_scoop-ros.STL" scale="0.001 0.001 0.001" />
             </geometry>
         </collision>
     </link>
@@ -297,7 +297,7 @@
     <joint name="hand_tool_joint" type="fixed">
         <parent link="hand_link" />
         <child link="tool_link" />
-        <origin xyz="0 0 0" rpy="${PI} -${PI/2} 0" />
+        <origin xyz="0 0 0" rpy="${PI} 0 0" />
     </joint>
 
     <joint name="joint_led_ring" type="fixed">

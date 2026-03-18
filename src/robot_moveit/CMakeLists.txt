@@ -28,7 +28,17 @@ target_include_directories(robot_moveit_lib PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 ament_target_dependencies(robot_moveit_lib
-  rclcpp rclcpp_action geometry_msgs tf2_geometry_msgs moveit_ros_planning_interface moveit_msgs moveit_core moveit_ros_planning robot_common_msgs
+  rclcpp
+  rclcpp_action
+  geometry_msgs
+  control_msgs
+  trajectory_msgs
+  tf2_geometry_msgs
+  moveit_ros_planning_interface
+  moveit_msgs
+  moveit_core
+  moveit_ros_planning
+  robot_common_msgs
 )
 
 # yaml-cpp is a non-ament package; link its CMake target explicitly

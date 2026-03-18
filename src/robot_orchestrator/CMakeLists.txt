@@ -14,6 +14,7 @@ find_package(std_msgs REQUIRED)
 add_library(${PROJECT_NAME} SHARED
   src/pour_to_target_node.cpp
   src/move_to_node.cpp
+  src/execute_scoop_node.cpp
   src/scan_qr_node.cpp
   src/register_nodes.cpp
   src/has_active_container_node.cpp

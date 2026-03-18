@@ -1,17 +1,90 @@
 #include "robot_moveit/move_to_server.hpp"
 
+#include <algorithm>
+#include <chrono>
+#include <thread>
+
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <moveit_msgs/msg/robot_trajectory.hpp>
+#include <moveit_msgs/msg/constraints.hpp>
+#include <moveit_msgs/msg/orientation_constraint.hpp>
 #include <moveit/robot_trajectory/robot_trajectory.hpp>
 #include <moveit/trajectory_processing/time_optimal_trajectory_generation.hpp>
 #include <moveit/trajectory_processing/trajectory_tools.hpp>
-#include <algorithm>
-#include <thread>
-#include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
 
+using namespace std::chrono_literals;
 
 namespace robot_moveit {
+namespace
+{
+geometry_msgs::msg::Quaternion make_yaw_only_quaternion(
+  const geometry_msgs::msg::Quaternion& input)
+{
+  tf2::Quaternion q;
+  tf2::fromMsg(input, q);
+  double roll = 0.0;
+  double pitch = 0.0;
+  double yaw = 0.0;
+  tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
+
+  tf2::Quaternion yaw_only;
+  yaw_only.setRPY(0.0, 0.0, yaw);
+  yaw_only.normalize();
+  return tf2::toMsg(yaw_only);
+}
+
+void enforce_upright_pose(geometry_msgs::msg::PoseStamped& pose)
+{
+  pose.pose.orientation = make_yaw_only_quaternion(pose.pose.orientation);
+}
+
+void enforce_upright_pose(geometry_msgs::msg::Pose& pose)
+{
+  pose.orientation = make_yaw_only_quaternion(pose.orientation);
+}
+
+moveit_msgs::msg::Constraints make_upright_constraints(
+  const std::string& frame_id,
+  const std::string& link_name,
+  const geometry_msgs::msg::Quaternion& desired_orientation,
+  double roll_tolerance,
+  double pitch_tolerance,
+  double yaw_tolerance)
+{
+  moveit_msgs::msg::OrientationConstraint oc;
+  oc.header.frame_id = frame_id;
+  oc.link_name = link_name;
+  oc.orientation = desired_orientation;
+  oc.absolute_x_axis_tolerance = roll_tolerance;
+  oc.absolute_y_axis_tolerance = pitch_tolerance;
+  oc.absolute_z_axis_tolerance = yaw_tolerance;
+  oc.weight = 1.0;
+
+  moveit_msgs::msg::Constraints constraints;
+  constraints.orientation_constraints.push_back(oc);
+  return constraints;
+}
+
+struct MoveGroupCleanupGuard
+{
+  explicit MoveGroupCleanupGuard(moveit::planning_interface::MoveGroupInterface* move_group)
+  : move_group(move_group)
+  {
+  }
+
+  ~MoveGroupCleanupGuard()
+  {
+    if (move_group != nullptr) {
+      move_group->clearPathConstraints();
+      move_group->clearPoseTargets();
+    }
+  }
+
+  moveit::planning_interface::MoveGroupInterface* move_group;
+};
+}  // namespace
 
 MoveToServer::MoveToServer(const rclcpp::NodeOptions & options)
 : rclcpp::Node("move_to_server", options)
@@ -22,8 +95,15 @@ MoveToServer::MoveToServer(const rclcpp::NodeOptions & options)
   this->declare_parameter<double>("acceleration_scaling", 1.0);
   this->declare_parameter<double>("planning_time", 5.0);
   this->declare_parameter<bool>("cartesian_avoid_collisions", false);
+  this->declare_parameter<bool>("constrain_upright", false);
+  this->declare_parameter<double>("upright_roll_tolerance_rad", 0.0872665);
+  this->declare_parameter<double>("upright_pitch_tolerance_rad", 0.0872665);
+  this->declare_parameter<double>("upright_yaw_tolerance_rad", 3.14159265);
   this->declare_parameter<double>("pose_success_pos_tol_m", 0.01);
   this->declare_parameter<double>("pose_success_ang_tol_rad", 0.05);
+  this->declare_parameter<std::string>(
+    "trajectory_action_server",
+    "/niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory");
   // Defer heavy init to avoid shared_from_this in constructor
   init_timer_ = this->create_wall_timer(std::chrono::milliseconds(0), std::bind(&MoveToServer::deferred_init, this));
 }
@@ -33,6 +113,9 @@ void MoveToServer::deferred_init()
   init_timer_->cancel();
   auto group = this->get_parameter("planning_group").as_string();
   mgi_ = std::make_shared<moveit::planning_interface::MoveGroupInterface>(shared_from_this(), group);
+  trajectory_client_ = rclcpp_action::create_client<FollowJointTrajectory>(
+    this,
+    this->get_parameter("trajectory_action_server").as_string());
   // Initial load of named targets from YAML configuration
   load_named_targets();
 
@@ -55,6 +138,7 @@ bool MoveToServer::load_named_targets()
     return true;
   }
   try {
+    named_targets_.clear();
     YAML::Node root = YAML::LoadFile(yaml_path);
     if (!root["targets"]) {
       RCLCPP_WARN(this->get_logger(), "YAML has no 'targets' key: %s", yaml_path.c_str());
@@ -74,6 +158,11 @@ bool MoveToServer::load_named_targets()
       }
       named_targets_[name] = pose;
     }
+    RCLCPP_INFO(
+      this->get_logger(),
+      "Loaded %zu named targets from %s",
+      named_targets_.size(),
+      yaml_path.c_str());
   } catch (const std::exception & e) {
     RCLCPP_ERROR(this->get_logger(), "Failed to parse targets YAML: %s", e.what());
   }
@@ -90,6 +179,10 @@ rclcpp_action::GoalResponse MoveToServer::handle_goal(const rclcpp_action::GoalU
 rclcpp_action::CancelResponse MoveToServer::handle_cancel(const std::shared_ptr<GoalHandle>)
 {
   mgi_->stop();
+  std::scoped_lock<std::mutex> lock(trajectory_goal_mutex_);
+  if (active_trajectory_goal_) {
+    (void)trajectory_client_->async_cancel_goal(active_trajectory_goal_);
+  }
   return rclcpp_action::CancelResponse::ACCEPT;
 }
 
@@ -103,6 +196,11 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
   const auto goal = goal_handle->get_goal();
   auto feedback = std::make_shared<MoveTo::Feedback>();
   auto result = std::make_shared<MoveTo::Result>();
+  MoveGroupCleanupGuard cleanup_guard(mgi_.get());
+
+  if (!goal->target_name.empty() || !goal->waypoint_names.empty()) {
+    load_named_targets();
+  }
 
   geometry_msgs::msg::PoseStamped target = goal->target_pose;
   if (!goal->target_name.empty()) {
@@ -149,6 +247,36 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
   mgi_->setMaxAccelerationScalingFactor(acc);
   mgi_->setPlanningTime(plan_time);
 
+  const bool constrain_upright =
+    goal->constrain_upright || this->get_parameter("constrain_upright").as_bool();
+  if (constrain_upright) {
+    enforce_upright_pose(target);
+    const double roll_tolerance =
+      goal->upright_roll_tolerance > 0.0f ?
+      static_cast<double>(goal->upright_roll_tolerance) :
+      this->get_parameter("upright_roll_tolerance_rad").as_double();
+    const double pitch_tolerance =
+      goal->upright_pitch_tolerance > 0.0f ?
+      static_cast<double>(goal->upright_pitch_tolerance) :
+      this->get_parameter("upright_pitch_tolerance_rad").as_double();
+    const double yaw_tolerance =
+      goal->upright_yaw_tolerance > 0.0f ?
+      static_cast<double>(goal->upright_yaw_tolerance) :
+      this->get_parameter("upright_yaw_tolerance_rad").as_double();
+    const auto constraints = make_upright_constraints(
+      planning_frame,
+      eef_link,
+      target.pose.orientation,
+      roll_tolerance,
+      pitch_tolerance,
+      yaw_tolerance);
+    mgi_->setPathConstraints(constraints);
+    RCLCPP_INFO(
+      this->get_logger(),
+      "Applying upright MoveTo constraint on %s (roll/pitch locked near zero)",
+      eef_link.c_str());
+  }
+
   // Decide execution mode based on waypoints + flag
   // Resolve waypoint_names (if any) into poses from the named_targets_ map.
   std::vector<geometry_msgs::msg::Pose> poses_from_names;
@@ -165,7 +293,11 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
       if (itn->second.header.frame_id != "base_link") {
         RCLCPP_WARN(this->get_logger(), "Waypoint '%s' frame_id '%s' != 'base_link'", n.c_str(), itn->second.header.frame_id.c_str());
       }
-      poses_from_names.push_back(itn->second.pose);
+      auto pose = itn->second.pose;
+      if (constrain_upright) {
+        enforce_upright_pose(pose);
+      }
+      poses_from_names.push_back(pose);
     }
   }
   const bool have_waypoints = !goal->waypoints.empty() || !poses_from_names.empty();
@@ -197,6 +329,15 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
   };
 
+  auto execute_plan_direct = [&](const moveit::planning_interface::MoveGroupInterface::Plan& plan) -> bool {
+    std::string execution_message;
+    if (!execute_joint_trajectory(plan.trajectory.joint_trajectory, execution_message)) {
+      RCLCPP_WARN(get_logger(), "Direct trajectory execution failed: %s", execution_message.c_str());
+      return false;
+    }
+    return true;
+  };
+
   if (have_waypoints) {
     // Build combined pose list: names first, then literal waypoints
     std::vector<geometry_msgs::msg::Pose> poses;
@@ -206,7 +347,11 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
       if (ps.header.frame_id != "base_link") {
         RCLCPP_WARN(this->get_logger(), "Waypoint frame_id '%s' != 'base_link'; ensure transforms are handled upstream", ps.header.frame_id.c_str());
       }
-      poses.push_back(ps.pose);
+      auto pose = ps.pose;
+      if (constrain_upright) {
+        enforce_upright_pose(pose);
+      }
+      poses.push_back(pose);
     }
 
     if (use_cartesian) {
@@ -241,8 +386,7 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
         RCLCPP_WARN(this->get_logger(), "Time parameterization failed (%s); executing raw trajectory", e.what());
       }
       plan.trajectory = traj;
-      auto exec_res = mgi_->execute(plan);
-      if (exec_res != moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
+      if (!execute_plan_direct(plan)) {
         // Check actual pose; treat near-target as success to avoid false aborts
         auto cur_pose = mgi_->getCurrentPose(eef_link);
         if (!within_pose_tolerance(cur_pose.pose, poses.back())) {
@@ -281,8 +425,7 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
           goal_handle->succeed(result);
           return;
         }
-        auto exec_res = mgi_->execute(plan);
-        if (exec_res != moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
+        if (!execute_plan_direct(plan)) {
           // Retry with sync once
           RCLCPP_WARN(get_logger(), "Execute aborted at segment %zu; retrying after start-state sync", i);
           wait_and_sync_start_state();
@@ -293,8 +436,7 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
             goal_handle->succeed(result);
             return;
           }
-          exec_res = mgi_->execute(plan);
-          if (exec_res != moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
+          if (!execute_plan_direct(plan)) {
             auto cur_pose = mgi_->getCurrentPose(eef_link);
             if (!within_pose_tolerance(cur_pose.pose, poses[i])) {
               result->success = false;
@@ -330,8 +472,7 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
     }
     moveit::planning_interface::MoveGroupInterface::Plan plan;
     plan.trajectory = traj;
-    auto exec_res = mgi_->execute(plan);
-    if (exec_res != moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
+    if (!execute_plan_direct(plan)) {
       auto cur_pose = mgi_->getCurrentPose(eef_link);
       if (!within_pose_tolerance(cur_pose.pose, poses.back())) {
         result->success = false;
@@ -360,8 +501,7 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
         }
         continue;
       }
-      auto exec_res = mgi_->execute(plan);
-      if (exec_res == moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
+      if (execute_plan_direct(plan)) {
         break;
       }
       RCLCPP_WARN(get_logger(), "Execute aborted; checking pose tolerance and retrying. Retries left: %d", retries);
@@ -384,6 +524,81 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
   result->success = true;
   result->message = "Done";
   goal_handle->succeed(result);
+}
+
+bool MoveToServer::execute_joint_trajectory(
+  const trajectory_msgs::msg::JointTrajectory& joint_trajectory,
+  std::string& message)
+{
+  if (joint_trajectory.points.empty()) {
+    message = "Planned trajectory had no points";
+    return false;
+  }
+
+  if (!trajectory_client_ || !trajectory_client_->wait_for_action_server(5s)) {
+    message = "Trajectory action server unavailable: " +
+      this->get_parameter("trajectory_action_server").as_string();
+    return false;
+  }
+
+  auto stamped_trajectory = joint_trajectory;
+  stamped_trajectory.header.stamp = this->now() + rclcpp::Duration::from_seconds(0.1);
+  const auto& final_point = stamped_trajectory.points.back();
+  const double duration =
+    static_cast<double>(final_point.time_from_start.sec) +
+    1e-9 * static_cast<double>(final_point.time_from_start.nanosec);
+
+  FollowJointTrajectory::Goal goal;
+  goal.trajectory = stamped_trajectory;
+
+  auto send_future = trajectory_client_->async_send_goal(goal);
+  if (send_future.wait_for(10s) != std::future_status::ready) {
+    message = "Timed out sending trajectory goal";
+    return false;
+  }
+
+  auto goal_handle = send_future.get();
+  if (!goal_handle) {
+    message = "Trajectory controller rejected goal";
+    return false;
+  }
+
+  {
+    std::scoped_lock<std::mutex> lock(trajectory_goal_mutex_);
+    active_trajectory_goal_ = goal_handle;
+  }
+
+  auto result_future = trajectory_client_->async_get_result(goal_handle);
+  const auto timeout = std::chrono::duration<double>(std::max(10.0, duration * 3.0 + 5.0));
+  if (result_future.wait_for(std::chrono::duration_cast<std::chrono::steady_clock::duration>(timeout)) !=
+      std::future_status::ready)
+  {
+    (void)trajectory_client_->async_cancel_goal(goal_handle);
+    {
+      std::scoped_lock<std::mutex> lock(trajectory_goal_mutex_);
+      active_trajectory_goal_.reset();
+    }
+    message = "Timed out executing trajectory goal";
+    return false;
+  }
+
+  const auto wrapped_result = result_future.get();
+  {
+    std::scoped_lock<std::mutex> lock(trajectory_goal_mutex_);
+    active_trajectory_goal_.reset();
+  }
+  if (wrapped_result.code != rclcpp_action::ResultCode::SUCCEEDED || !wrapped_result.result) {
+    message = "Trajectory execution aborted";
+    return false;
+  }
+  if (wrapped_result.result->error_code != FollowJointTrajectory::Result::SUCCESSFUL) {
+    message = wrapped_result.result->error_string.empty() ?
+      "Trajectory controller reported failure" :
+      wrapped_result.result->error_string;
+    return false;
+  }
+
+  return true;
 }
 
 bool MoveToServer::yamlPoseToMsg(const YAML::Node& n, geometry_msgs::msg::PoseStamped& out)

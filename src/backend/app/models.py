@@ -1,5 +1,6 @@
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     Float,
@@ -27,6 +28,7 @@ class Run(Base):
     mode = Column(String, index=True, nullable=True)
     start_time_ns = Column(BigInteger, nullable=True)
     end_time_ns = Column(BigInteger, nullable=True)
+    metadata_json = Column(Text, nullable=True)
 
     artifacts = relationship(
         'Artifact', back_populates='run', cascade='all, delete-orphan'
@@ -74,3 +76,84 @@ class LightsOutProcessed(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     run = relationship('Run')
+
+
+class WebhookWeightment(Base):
+    __tablename__ = 'webhook_weightments'
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(String, index=True, nullable=False)
+    sent_utc = Column(String, nullable=True)
+    user_id = Column(String, nullable=True)
+    site_id = Column(String, index=True, nullable=True)
+    batch_id = Column(String, index=True, nullable=True)
+    batch_number = Column(String, index=True, nullable=True)
+    work_order_id = Column(String, index=True, nullable=True)
+    batch_target_quantity = Column(Float, nullable=True)
+    ingredient_id = Column(String, index=True, nullable=True)
+    target_weight_kg = Column(Float, nullable=True)
+    actual_weight_kg = Column(Float, nullable=True)
+    weightment_completed = Column(Boolean, nullable=False, default=False)
+    batch_auto_run_enabled = Column(Boolean, nullable=False, default=False)
+    start_utc = Column(String, nullable=True)
+    end_utc = Column(String, nullable=True)
+    energy_kwh = Column(Integer, nullable=True)
+    lot_code = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class StockLocationAllocation(Base):
+    __tablename__ = 'stock_location_allocations'
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(String, index=True, nullable=False)
+    context_id = Column(String, nullable=True)
+    site_id = Column(String, index=True, nullable=True)
+    created_utc = Column(String, nullable=True)
+    stock_item_location_id = Column(Integer, index=True, nullable=True)
+    stock_item_location_code = Column(String, index=True, nullable=True)
+    stock_item_id = Column(String, index=True, nullable=True)
+    stock_item_code = Column(String, nullable=True)
+    stock_item_name = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class RobotWeightmentRun(Base):
+    __tablename__ = 'robot_weightment_runs'
+
+    id = Column(Integer, primary_key=True, index=True)
+    weightment_id = Column(
+        Integer, ForeignKey('webhook_weightments.id'), index=True, nullable=False
+    )
+    event_id = Column(String, index=True, nullable=True)
+    batch_id = Column(String, index=True, nullable=True)
+    ingredient_id = Column(String, index=True, nullable=True)
+    site_id = Column(String, index=True, nullable=True)
+    stock_location_id = Column(Integer, index=True, nullable=True)
+    stock_location_code = Column(String, index=True, nullable=True)
+    ingredient_name = Column(String, nullable=True)
+    pickup_target_name = Column(String, nullable=True)
+    weigh_target_name = Column(String, nullable=True)
+    return_target_name = Column(String, nullable=True)
+    target_weight_kg = Column(Float, nullable=True)
+    target_weight_g = Column(Float, nullable=True)
+    weight_tolerance_g = Column(Float, nullable=True)
+    expected_lot = Column(String, nullable=True)
+    trace_run_id = Column(String, index=True, nullable=True)
+    status = Column(String, index=True, nullable=False, default='starting')
+    request_payload_json = Column(Text, nullable=True)
+    result_payload_json = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
+    requested_at = Column(DateTime(timezone=True), server_default=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    start_utc = Column(String, nullable=True)
+    end_utc = Column(String, nullable=True)
+    actual_weight_kg = Column(Float, nullable=True)
+    energy_kwh = Column(Integer, nullable=True)
+    processed_run_db_id = Column(Integer, ForeignKey('runs.id'), nullable=True)
+    processed_id = Column(Integer, ForeignKey('lightsout_processed.id'), nullable=True)
+    mcap_path = Column(String, nullable=True)
+    parquet_path = Column(String, nullable=True)
+    mes_weighment_sent = Column(Boolean, nullable=False, default=False)
+    mes_batch_end_sent = Column(Boolean, nullable=False, default=False)

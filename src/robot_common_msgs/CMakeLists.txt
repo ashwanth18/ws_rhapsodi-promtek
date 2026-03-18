@@ -16,6 +16,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/PourToTarget.action"
   "srv/StartBatch.srv"
   "srv/StartLightsOut.srv"
+  "srv/StartWebhookWeightment.srv"
   "srv/RecordTarget.srv"
   DEPENDENCIES std_msgs geometry_msgs
 )

@@ -151,13 +151,13 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="file:///home/ashwanth/ned3pro_simulation/install/niryo_robot_description/share/niryo_robot_description/meshes/ned3pro/stl/scoop_link.STL"/>
+        <mesh filename="file:///home/ashwanth/ned3pro_simulation/install/niryo_robot_description/share/niryo_robot_description/meshes/ned3pro/stl/niryo_scoop-ros.STL"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="file:///home/ashwanth/ned3pro_simulation/install/niryo_robot_description/share/niryo_robot_description/meshes/ned3pro/stl/scoop_link.STL"/>
+        <mesh filename="file:///home/ashwanth/ned3pro_simulation/install/niryo_robot_description/share/niryo_robot_description/meshes/ned3pro/stl/niryo_scoop-ros.STL"/>
       </geometry>
     </collision>
     </link>

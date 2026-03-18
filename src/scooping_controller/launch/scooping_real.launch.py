@@ -1,0 +1,311 @@
+#!/usr/bin/env python3
+
+import os
+
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
+from launch.conditions import IfCondition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
+from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
+from moveit_configs_utils import MoveItConfigsBuilder
+
+
+def generate_launch_description():
+    rviz_config = LaunchConfiguration("rviz_config")
+    use_rviz = LaunchConfiguration("use_rviz")
+    poses_yaml = LaunchConfiguration("poses_yaml")
+    targets_yaml = LaunchConfiguration("targets_yaml")
+    pattern_offset_y = LaunchConfiguration("pattern_offset_y")
+    container_scene_yaml = LaunchConfiguration("container_scene_yaml")
+    drivers_list_file = LaunchConfiguration("drivers_list_file")
+    whitelist_params_file = LaunchConfiguration("whitelist_params_file")
+    driver_log_level = LaunchConfiguration("driver_log_level")
+
+    declare_use_rviz = DeclareLaunchArgument(
+        "use_rviz",
+        default_value="true",
+        description="Launch RViz for real-hardware authoring and monitoring",
+    )
+    declare_rviz_config = DeclareLaunchArgument(
+        "rviz_config",
+        default_value=PathJoinSubstitution(
+            [
+                FindPackageShare("scooping_controller"),
+                "config",
+                "scooping.rviz",
+            ]
+        ),
+        description="RViz config for the scooping workflow",
+    )
+    declare_poses_yaml = DeclareLaunchArgument(
+        "poses_yaml",
+        default_value=os.path.expanduser("~/.ros/scooping_controller/poses_real.yaml"),
+        description="YAML file used by RViz Save/Load scoop pose buttons",
+    )
+    declare_targets_yaml = DeclareLaunchArgument(
+        "targets_yaml",
+        default_value=PathJoinSubstitution(
+            [FindPackageShare("robot_moveit"), "targets.yaml"]
+        ),
+        description="YAML file used by MoveTo and RecordTarget named poses",
+    )
+    declare_pattern_offset_y = DeclareLaunchArgument(
+        "pattern_offset_y",
+        default_value="0.0",
+        description="Translate all scoop poses along base_link Y before planning",
+    )
+    declare_container_scene_yaml = DeclareLaunchArgument(
+        "container_scene_yaml",
+        default_value=PathJoinSubstitution(
+            [
+                FindPackageShare("scooping_controller"),
+                "config",
+                "container_scene_real.yaml",
+            ]
+        ),
+        description="Container scene calibration for RViz and MoveIt",
+    )
+    declare_drivers_list_file = DeclareLaunchArgument(
+        "drivers_list_file",
+        default_value=PathJoinSubstitution(
+            [
+                FindPackageShare("niryo_ned_ros2_driver"),
+                "config",
+                "drivers_list.yaml",
+            ]
+        ),
+        description="Driver list for the Niryo hardware launch",
+    )
+    declare_whitelist_params_file = DeclareLaunchArgument(
+        "whitelist_params_file",
+        default_value="",
+        description="Optional Niryo driver whitelist parameter file",
+    )
+    declare_driver_log_level = DeclareLaunchArgument(
+        "driver_log_level",
+        default_value="INFO",
+        description="Niryo driver log level",
+    )
+
+    warehouse_ros_config = {
+        "warehouse_plugin": "warehouse_ros_sqlite::DatabaseConnection",
+        "warehouse_host": os.path.expanduser(
+            "~/.ros/scooping_controller/warehouse_data.sqlite"
+        ),
+    }
+
+    urdf_file = os.path.join(
+        get_package_share_directory("niryo_robot_description"),
+        "urdf",
+        "ned3pro",
+        "niryo_ned3pro.urdf.xacro",
+    )
+    robot_description_content = Command(
+        [PathJoinSubstitution([FindExecutable(name="xacro")]), " ", urdf_file]
+    )
+    robot_description = {"robot_description": robot_description_content}
+
+    move_group_controller_params = PathJoinSubstitution(
+        [
+            FindPackageShare("scooping_controller"),
+            "config",
+            "move_group_controller_params.yaml",
+        ]
+    )
+
+    moveit_config = (
+        MoveItConfigsBuilder(
+            "niryo_ned3pro", package_name="niryo_ned3pro_moveit_config"
+        )
+        .robot_description(file_path=urdf_file)
+        .joint_limits(file_path="config/joint_limits.yaml")
+        .robot_description_semantic(file_path="config/niryo_ned3pro.srdf")
+        .robot_description_kinematics(file_path="config/kinematics.yaml")
+        .trajectory_execution(file_path="config/moveit_controllers.yaml")
+        .planning_pipelines(
+            pipelines=["ompl", "chomp", "pilz_industrial_motion_planner", "stomp"]
+        )
+        .planning_scene_monitor(
+            publish_robot_description=True,
+            publish_robot_description_semantic=True,
+        )
+        .to_moveit_configs()
+    )
+
+    driver_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [
+                PathJoinSubstitution(
+                    [
+                        FindPackageShare("niryo_ned_ros2_driver"),
+                        "launch",
+                        "driver.launch.py",
+                    ]
+                )
+            ]
+        ),
+        launch_arguments=[
+            ("drivers_list_file", drivers_list_file),
+            ("whitelist_params_file", whitelist_params_file),
+            ("log_level", driver_log_level),
+        ],
+    )
+
+    robot_state_publisher = Node(
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        output="screen",
+        parameters=[robot_description, {"use_sim_time": False}],
+        name="robot_state_publisher",
+    )
+
+    move_group_node = Node(
+        package="moveit_ros_move_group",
+        executable="move_group",
+        output="screen",
+        parameters=[
+            moveit_config.to_dict(),
+            move_group_controller_params,
+            {"trajectory_execution": {"allowed_start_tolerance": 0.05}},
+            {"moveit_manage_controllers": False},
+            {"use_sim_time": False},
+            warehouse_ros_config,
+        ],
+        name="move_group",
+    )
+
+    marker_server = Node(
+        package="scooping_controller",
+        executable="scooping_marker_server",
+        output="screen",
+        parameters=[
+            {
+                "frame_id": "base_link",
+                "poses_yaml": poses_yaml,
+                "use_sim_time": False,
+            }
+        ],
+    )
+
+    container_marker = Node(
+        package="scooping_controller",
+        executable="container_marker_publisher",
+        output="screen",
+        parameters=[
+            container_scene_yaml,
+            {
+                "frame_id": "base_link",
+                "use_sim_time": False,
+            },
+        ],
+    )
+
+    planning_scene_collisions = Node(
+        package="scooping_controller",
+        executable="planning_scene_collision_publisher",
+        output="screen",
+        parameters=[
+            container_scene_yaml,
+            {
+                "frame_id": "base_link",
+                "use_sim_time": False,
+            },
+        ],
+    )
+
+    move_to_server = Node(
+        package="robot_moveit",
+        executable="move_to_server_node",
+        output="screen",
+        parameters=[
+            {
+                "planning_group": "arm",
+                "eef_link": "tool_link",
+                "constrain_upright": False,
+                "upright_roll_tolerance_rad": 0.0872665,
+                "upright_pitch_tolerance_rad": 0.0872665,
+                "upright_yaw_tolerance_rad": 3.14159265,
+                "targets_yaml": targets_yaml,
+                "trajectory_action_server": "/niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory",
+                "use_sim_time": False,
+            }
+        ],
+    )
+
+    target_recorder = Node(
+        package="robot_moveit",
+        executable="target_recorder_node",
+        output="screen",
+        parameters=[
+            {
+                "planning_group": "arm",
+                "eef_link": "tool_link",
+                "targets_yaml": targets_yaml,
+                "pose_source": "auto",
+                "use_sim_time": False,
+            }
+        ],
+    )
+
+    scooping_mtc = Node(
+        package="scooping_controller",
+        executable="scooping_mtc_node",
+        output="screen",
+        parameters=[
+            moveit_config.to_dict(),
+            container_scene_yaml,
+            {
+                "use_sim_time": False,
+                "group": "arm",
+                "ik_frame": "tool_link",
+                "frame_id": "base_link",
+                "trajectory_controller": "niryo_robot_follow_joint_trajectory_controller",
+                "trajectory_action_server": "/niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory",
+                "pattern_offset_y": pattern_offset_y,
+            },
+        ],
+    )
+
+    scooping_rviz = Node(
+        package="rviz2",
+        executable="rviz2",
+        output="log",
+        arguments=["-d", rviz_config],
+        parameters=[
+            moveit_config.robot_description,
+            moveit_config.robot_description_semantic,
+            moveit_config.robot_description_kinematics,
+            moveit_config.planning_pipelines,
+            moveit_config.joint_limits,
+            warehouse_ros_config,
+            {"use_sim_time": False},
+        ],
+        condition=IfCondition(use_rviz),
+    )
+
+    return LaunchDescription(
+        [
+            declare_use_rviz,
+            declare_rviz_config,
+            declare_poses_yaml,
+            declare_targets_yaml,
+            declare_pattern_offset_y,
+            declare_container_scene_yaml,
+            declare_drivers_list_file,
+            declare_whitelist_params_file,
+            declare_driver_log_level,
+            driver_launch,
+            robot_state_publisher,
+            TimerAction(period=2.0, actions=[move_group_node]),
+            TimerAction(period=4.0, actions=[move_to_server]),
+            TimerAction(period=4.2, actions=[target_recorder]),
+            TimerAction(period=5.0, actions=[marker_server]),
+            TimerAction(period=5.5, actions=[container_marker]),
+            TimerAction(period=5.7, actions=[planning_scene_collisions]),
+            TimerAction(period=6.0, actions=[scooping_mtc]),
+            TimerAction(period=7.0, actions=[scooping_rviz]),
+        ]
+    )
