@@ -7,9 +7,11 @@ import { useRuntimeConfig } from '../config/RuntimeConfig'
 type ConnStatus = 'connected' | 'connecting' | 'disconnected'
 
 const statusStyle = (status: ConnStatus) => {
-  if (status === 'connected') return 'bg-emerald-400/15 text-emerald-400'
-  if (status === 'connecting') return 'bg-amber-400/15 text-amber-400'
-  return 'bg-rose-400/15 text-rose-400'
+  if (status === 'connected')
+    return 'bg-[var(--status-good-bg)] text-[var(--status-good-fg)]'
+  if (status === 'connecting')
+    return 'bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]'
+  return 'bg-[var(--status-bad-bg)] text-[var(--status-bad-fg)]'
 }
 
 export default function ConnectionPanel() {
@@ -27,8 +29,8 @@ export default function ConnectionPanel() {
 
   useEffect(() => {
     let cancelled = false
+    setApiStatus('connecting')
     const ping = async () => {
-      setApiStatus('connecting')
       try {
         const res = await fetch(`${apiBase}/host_info`, { cache: 'no-store' })
         if (!res.ok) throw new Error('api-failed')
@@ -72,7 +74,7 @@ export default function ConnectionPanel() {
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold">Connection</h3>
-            <div className="text-xs text-white/60">Connected host: {hostName}</div>
+            <div className="text-xs text-[var(--text-muted)]">Connected host: {hostName}</div>
           </div>
           <Button variant="ghost" size="sm" onClick={() => setOpen((v) => !v)}>
             {open ? 'Hide' : 'Edit'}
@@ -80,11 +82,11 @@ export default function ConnectionPanel() {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-white/70">API</span>
+            <span className="text-xs text-[var(--text-secondary)]">API</span>
             <span className={`text-xs px-2 py-0.5 rounded-md ${statusStyle(apiStatus)}`}>{apiStatus}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-white/70">rosbridge</span>
+            <span className="text-xs text-[var(--text-secondary)]">rosbridge</span>
             <span className={`text-xs px-2 py-0.5 rounded-md ${statusStyle(rosStatus)}`}>{rosStatus}</span>
           </div>
         </div>
@@ -92,21 +94,21 @@ export default function ConnectionPanel() {
         {open && (
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-white/60">API base</label>
+              <label className="text-xs text-[var(--text-muted)]">API base</label>
               <input
                 value={apiInput}
                 onChange={(e) => setApiInput(e.target.value)}
                 placeholder="http://<pi-ip>:8000"
-                className="px-2 py-1 bg-transparent border border-slate-800 rounded text-sm"
+                className="rounded border border-[var(--border)] bg-transparent px-2 py-1 text-sm text-[var(--text-primary)]"
               />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-white/60">rosbridge URL</label>
+              <label className="text-xs text-[var(--text-muted)]">rosbridge URL</label>
               <input
                 value={rosInput}
                 onChange={(e) => setRosInput(e.target.value)}
                 placeholder="ws://<pi-ip>:9090"
-                className="px-2 py-1 bg-transparent border border-slate-800 rounded text-sm"
+                className="rounded border border-[var(--border)] bg-transparent px-2 py-1 text-sm text-[var(--text-primary)]"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -120,7 +122,7 @@ export default function ConnectionPanel() {
               >
                 Save & Reconnect
               </Button>
-              <span className="text-xs text-white/50">Changes persist in this browser.</span>
+              <span className="text-xs text-[var(--text-faint)]">Changes persist in this browser.</span>
             </div>
           </div>
         )}

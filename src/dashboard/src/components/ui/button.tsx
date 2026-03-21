@@ -11,8 +11,8 @@ const Button = forwardRef<HTMLButtonElement, Props>(({ className = '', variant =
   const sizes = size === 'sm' ? 'text-sm px-3 py-1.5' : 'text-sm px-4 py-2'
   const variants =
     variant === 'primary'
-      ? 'bg-[#38bdf8] text-black hover:bg-[#60a5fa] focus:ring-2 focus:ring-[#22d3ee]'
-      : 'bg-transparent text-white/80 hover:bg-white/5'
+      ? 'bg-[var(--button-primary-bg)] text-[var(--button-primary-text)] hover:bg-[var(--button-primary-hover)] focus:ring-2 focus:ring-[#22d3ee]'
+      : 'bg-transparent text-[var(--button-ghost-text)] hover:bg-[var(--hover-surface)]'
 
   return <button ref={ref} className={cn(base, sizes, variants, className)} {...props} />
 })

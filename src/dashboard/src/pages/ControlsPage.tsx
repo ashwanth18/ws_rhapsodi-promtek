@@ -390,10 +390,10 @@ export default function ControlsPage() {
 
   const StatusBadge = ({ status }: { status: SensorStatus | LifecycleStatus }) => {
     const classes = status === 'connected'
-      ? 'bg-emerald-400/15 text-emerald-400'
+      ? 'bg-[var(--status-good-bg)] text-[var(--status-good-fg)]'
       : status === 'connecting' || status === 'stale'
-        ? 'bg-amber-400/15 text-amber-400'
-        : 'bg-rose-400/15 text-rose-400'
+        ? 'bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]'
+        : 'bg-[var(--status-bad-bg)] text-[var(--status-bad-fg)]'
     return (
       <span className={`text-xs px-2 py-0.5 rounded-md ${classes}`}>{status}</span>
     )
@@ -405,7 +405,7 @@ export default function ControlsPage() {
         <div className="flex items-end justify-between mb-4">
           <div>
             <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk' }}>Controls & Sensors</h1>
-            <p className="text-white/70">Monitor sensor connectivity and control actuators</p>
+            <p className="text-[var(--text-secondary)]">Monitor sensor connectivity and control actuators</p>
           </div>
         </div>
 
@@ -416,15 +416,15 @@ export default function ControlsPage() {
               <div className="flex flex-col gap-2">
                 <h3 className="text-lg font-semibold">Weighing Scale</h3>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-white/70">Data</span>
+                  <span className="text-sm text-[var(--text-secondary)]">Data</span>
                   <StatusBadge status={weightStatus} />
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-white/70">Lifecycle</span>
+                  <span className="text-sm text-[var(--text-secondary)]">Lifecycle</span>
                   <StatusBadge status={scaleLifecycleStatus} />
-                  <span className="text-xs text-white/50">{scaleLifecycleLabel}</span>
+                  <span className="text-xs text-[var(--text-faint)]">{scaleLifecycleLabel}</span>
                 </div>
-                <div className="text-xs text-white/60">Topic: {WEIGHT_TOPIC}</div>
+                <div className="text-xs text-[var(--text-muted)]">Topic: {WEIGHT_TOPIC}</div>
                 <div className="flex items-center gap-2 mt-2">
                   <Button
                     onClick={async () => {
@@ -454,11 +454,11 @@ export default function ControlsPage() {
               <div className="flex flex-col gap-2">
                 <h3 className="text-lg font-semibold">micro-ROS</h3>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-white/70">Lifecycle</span>
+                  <span className="text-sm text-[var(--text-secondary)]">Lifecycle</span>
                   <StatusBadge status={microRosDisplayStatus} />
-                  <span className="text-xs text-white/50">{microRosDisplayLabel}</span>
+                  <span className="text-xs text-[var(--text-faint)]">{microRosDisplayLabel}</span>
                 </div>
-                <div className="text-xs text-white/60">Node: /micro_ros_launcher</div>
+                <div className="text-xs text-[var(--text-muted)]">Node: /micro_ros_launcher</div>
                 <div className="flex items-center gap-2 mt-2">
                   <Button
                     onClick={async () => {
@@ -488,13 +488,13 @@ export default function ControlsPage() {
               <div className="flex flex-col gap-3">
                 <h3 className="text-lg font-semibold">Record Target</h3>
                 <div className="flex items-center gap-3">
-                  <input placeholder="name" value={recordName} onChange={e => setRecordName(e.target.value)} className="px-2 py-1 bg-transparent border border-slate-800 rounded" />
-                  <label className="flex items-center gap-2 text-sm text-white/80">
+                  <input placeholder="name" value={recordName} onChange={e => setRecordName(e.target.value)} className="rounded border border-[var(--border)] bg-transparent px-2 py-1 text-[var(--text-primary)]" />
+                  <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
                     <input type="checkbox" checked={recordJoints} onChange={e => setRecordJoints(e.target.checked)} /> Joints
                   </label>
                   <Button onClick={recordTarget} disabled={!ros || !recordName}>Record</Button>
                 </div>
-                {recordMsg && <div className="text-xs text-white/60">{recordMsg}</div>}
+                {recordMsg && <div className="text-xs text-[var(--text-muted)]">{recordMsg}</div>}
               </div>
             </GlassCard>
           </div>
@@ -505,8 +505,8 @@ export default function ControlsPage() {
             <GlassCard>
               <div className="flex flex-col gap-2">
                 <h3 className="text-lg font-semibold">Camera</h3>
-                <div className="flex items-center gap-2"><span className="text-sm text-white/70">Status</span> <StatusBadge status={cameraStatus} /></div>
-                <div className="text-xs text-white/60">Topic: /camera_info</div>
+                <div className="flex items-center gap-2"><span className="text-sm text-[var(--text-secondary)]">Status</span> <StatusBadge status={cameraStatus} /></div>
+                <div className="text-xs text-[var(--text-muted)]">Topic: /camera_info</div>
               </div>
             </GlassCard>
           </div>
@@ -516,15 +516,15 @@ export default function ControlsPage() {
             <GlassCard>
               <div className="flex flex-col gap-3">
                 <h3 className="text-lg font-semibold">Vibration</h3>
-                <div className="flex items-center gap-2"><span className="text-sm text-white/70">Status</span> <StatusBadge status={vibrationPubStatus} /></div>
-                <div className="text-xs text-white/60">Publisher → /motor_speed (std_msgs/Int32)</div>
+                <div className="flex items-center gap-2"><span className="text-sm text-[var(--text-secondary)]">Status</span> <StatusBadge status={vibrationPubStatus} /></div>
+                <div className="text-xs text-[var(--text-muted)]">Publisher → /motor_speed (std_msgs/Int32)</div>
                 <div className="flex items-center gap-3">
                   <input type="range" min={0} max={255} value={vibValue} onChange={(e) => setVibValue(parseInt(e.target.value))} className="w-full" />
                   <span className="w-10 text-right text-sm">{vibValue}</span>
                   <Button onClick={publishVibration} disabled={!ros}>Publish</Button>
                 </div>
                 {lastVibrationSent && (
-                  <div className="text-xs text-white/60">Last sent: {Math.round((Date.now() - lastVibrationSent)/1000)}s ago</div>
+                  <div className="text-xs text-[var(--text-muted)]">Last sent: {Math.round((Date.now() - lastVibrationSent)/1000)}s ago</div>
                 )}
               </div>
             </GlassCard>

@@ -4,9 +4,9 @@ export default function GlassCard({ children, className = '' }: { children: Reac
   return (
     <div
       className={
-        'rounded-[12px] p-4 border border-slate-800 bg-[rgba(10,11,13,0.65)] ' +
-        'backdrop-blur-md shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_10px_30px_rgba(0,0,0,0.45)] ' +
-        'transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_16px_40px_rgba(0,0,0,0.55)] ' +
+        'rounded-[12px] border border-[var(--border)] bg-[var(--card-surface)] p-4 text-[var(--text-primary)] ' +
+        'backdrop-blur-md shadow-[var(--glass-shadow)] ' +
+        'transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-[var(--glass-shadow-hover)] ' +
         className
       }
     >

@@ -21,7 +21,7 @@ export default function DateTimeText({
   value,
   className = '',
   dateClassName = '',
-  timeClassName = 'text-xs text-white/60',
+  timeClassName = 'text-xs text-[var(--text-muted)]',
   emptyLabel = '—',
 }: DateTimeTextProps) {
   if (value == null) {
@@ -36,7 +36,14 @@ export default function DateTimeText({
   return (
     <div className={className}>
       <div className={dateClassName}>{parsed.toLocaleDateString()}</div>
-      <div className={timeClassName}>{parsed.toLocaleTimeString()}</div>
+      <div className={timeClassName}>
+        {parsed.toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false,
+        })}
+      </div>
     </div>
   )
 }

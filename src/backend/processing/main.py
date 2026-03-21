@@ -1,16 +1,20 @@
 import json
+import logging
 import os
-from datetime import datetime
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
 import re
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 import requests
 from fastapi import FastAPI, HTTPException
 from mcap_ros2.reader import read_ros2_messages
 from pydantic import BaseModel
+logger = logging.getLogger('uvicorn.error')
+
 
 
 BACKEND_URL = os.environ.get('BACKEND_URL', 'http://backend:8000')
@@ -331,8 +335,8 @@ def _compute_features(
         else None
     )
     overshoot = (
-        max(0.0, max_weight - target_weight)
-        if max_weight is not None and target_weight is not None
+        final_weight - target_weight
+        if final_weight is not None and target_weight is not None
         else None
     )
 
@@ -464,7 +468,15 @@ def _write_parquet(
 
 @app.post('/process')
 def process(req: ProcessRequest) -> Dict[str, Any]:
+    started_at = time.monotonic()
     try:
+        logger.info(
+            'Processing request received: run_db_id=%s run_folder=%s bag_path=%s out_path=%s',
+            req.run_db_id,
+            req.run_folder,
+            req.bag_path,
+            req.out_path,
+        )
         metadata: Dict[str, Any] = {}
         if req.run_folder:
             metadata, metadata_bag_path = _load_metadata(
@@ -520,15 +532,61 @@ def process(req: ProcessRequest) -> Dict[str, Any]:
                 'phases_count': len(phases),
             }
         )
+        logger.info(
+            'Processing complete: run_id=%s batch_id=%s ingredient_id=%s '
+            'weightment_id=%s weights=%s phases=%s parquet=%s elapsed=%.2fs',
+            features.get('run_id'),
+            features.get('batch_id'),
+            features.get('ingredient_id'),
+            features.get('weightment_id'),
+            len(weights),
+            len(phases),
+            parquet_path,
+            time.monotonic() - started_at,
+        )
     except Exception as exc:
+        logger.exception(
+            'Processing failed before backend callback: run_db_id=%s run_folder=%s bag_path=%s',
+            req.run_db_id,
+            req.run_folder,
+            req.bag_path,
+        )
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     payload = {'run_db_id': req.run_db_id, **features}
     try:
+        callback_started_at = time.monotonic()
+        logger.info(
+            'Posting processed result to backend: run_id=%s robot_weightment_run_id=%s '
+            'weightment_id=%s backend_url=%s',
+            payload.get('run_id'),
+            payload.get('robot_weightment_run_id'),
+            payload.get('weightment_id'),
+            f'{BACKEND_URL}/processed',
+        )
         resp = requests.post(
             f'{BACKEND_URL}/processed', json=payload, timeout=10
         )
         resp.raise_for_status()
+        logger.info(
+            'Backend processed callback succeeded: status=%s elapsed=%.2fs body=%s',
+            resp.status_code,
+            time.monotonic() - callback_started_at,
+            resp.text[:500] or '<empty>',
+        )
     except Exception as exc:
+        if isinstance(exc, requests.HTTPError) and exc.response is not None:
+            logger.error(
+                'Backend processed callback failed: status=%s body=%s',
+                exc.response.status_code,
+                exc.response.text[:1000],
+            )
+        else:
+            logger.exception(
+                'Backend processed callback failed: run_id=%s weightment_id=%s backend_url=%s',
+                payload.get('run_id'),
+                payload.get('weightment_id'),
+                f'{BACKEND_URL}/processed',
+            )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return resp.json()

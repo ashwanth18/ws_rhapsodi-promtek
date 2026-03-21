@@ -380,29 +380,29 @@ function App() {
             className="text-2xl font-bold tracking-tight"
             style={{ fontFamily: 'Space Grotesk' }}
           >
-            Webhook Operations Dashboard
+            Batch Execution Dashboard
           </h1>
-          <p className="text-white/70">
-            Monitor live webhook robot runs, current phase, weight, and the latest
+          {/* <p className="text-[var(--text-secondary)]">
+            Monitor live batch execution, robot phase, weight, and the latest
             processed result.
-          </p>
+          </p> */}
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={() => navigate('/webhook-weightments')}>
-            Open Webhook Events
+          <Button onClick={() => navigate('/batches')}>
+            View Batches
           </Button>
           <Button variant="ghost" onClick={() => navigate('/logs')}>
-            Open Run History
+            View Run History
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-12 gap-4">
-        <div className="col-span-12 md:col-span-3">
+        {/* <div className="col-span-12 md:col-span-3">
           <KpiCard
             label="Robot State"
             value={statusLabel(webhookActive ? runState : latestRun?.status || runState)}
-            help={webhookActive ? 'Live from ROS' : 'Latest known webhook run'}
+            help={webhookActive ? 'Live from ROS' : 'Latest known batch run'}
           />
         </div>
         <div className="col-span-12 md:col-span-3">
@@ -430,7 +430,7 @@ function App() {
                   : 'Pending'
             }
           />
-        </div>
+        </div> */}
 
         <div className="col-span-12">
           <GlassCard>
@@ -439,19 +439,19 @@ function App() {
               <span
                 className={`rounded-md px-2 py-0.5 text-xs ${
                   showLiveTimeline
-                    ? 'bg-emerald-400/15 text-emerald-400'
-                    : 'bg-white/10 text-white/60'
+                    ? 'bg-[var(--status-good-bg)] text-[var(--status-good-fg)]'
+                    : 'bg-[var(--status-idle-bg)] text-[var(--status-idle-fg)]'
                 }`}
               >
-                {showLiveTimeline ? 'Live webhook run' : 'Latest processed run'}
+                {showLiveTimeline ? 'Active batch run' : 'Latest run'}
               </span>
             </div>
             <PhaseTimeline phases={TIMELINE_PHASES} index={phaseIndex} />
-            <div className="mt-3 text-sm text-white/60">
+            {/* <div className="mt-3 text-sm text-[var(--text-muted)]">
               {showLiveTimeline
-                ? livePhaseEvents.join(' -> ') || livePhase || 'Waiting for webhook phase markers...'
+                ? livePhaseEvents.join(' -> ') || livePhase || 'Waiting for execution phase markers...'
                 : phaseSequence(latestDetail)}
-            </div>
+            </div> */}
           </GlassCard>
         </div>
 
@@ -464,8 +464,8 @@ function App() {
                   <span
                     className={`rounded-md px-2 py-0.5 text-xs ${
                       webhookActive
-                        ? 'bg-emerald-400/15 text-emerald-400'
-                        : 'bg-white/10 text-white/60'
+                        ? 'bg-[var(--status-good-bg)] text-[var(--status-good-fg)]'
+                        : 'bg-[var(--status-idle-bg)] text-[var(--status-idle-fg)]'
                     }`}
                   >
                     {webhookActive ? 'Active' : 'Idle'}
@@ -473,31 +473,31 @@ function App() {
                   <span
                     className={`rounded-md px-2 py-0.5 text-xs ${
                       weightStale
-                        ? 'bg-white/10 text-white/60'
-                        : 'bg-sky-400/15 text-sky-300'
+                        ? 'bg-[var(--status-idle-bg)] text-[var(--status-idle-fg)]'
+                        : 'bg-[var(--status-info-bg)] text-[var(--status-info-fg)]'
                     }`}
                   >
                     {weightStale ? 'Scale Disconnected' : 'Scale Connected'}
                   </span>
                 </div>
               </div>
-              <div className="flex items-center justify-between text-sm text-white/70">
+              <div className="flex items-center justify-between text-sm text-[var(--text-secondary)]">
                 <span>Target</span>
                 <span>{typeof targetWeightG === 'number' ? `${Math.round(targetWeightG)} g` : '—'}</span>
               </div>
-              <div className="h-4 w-full rounded bg-white/10">
+              <div className="h-4 w-full rounded bg-[var(--surface-strong)]">
                 <div className="relative h-full w-full">
                   <div
-                    className="absolute top-0 bottom-0 rounded bg-emerald-400/30"
+                    className="absolute top-0 bottom-0 rounded bg-[var(--status-good-bg)]"
                     style={{ width: `${scalePct}%` }}
                   />
                   <div
-                    className="absolute top-0 bottom-0 w-[2px] rounded bg-emerald-400"
+                    className="absolute top-0 bottom-0 w-[2px] rounded bg-[var(--status-good-fg)]"
                     style={{ left: `${targetPct}%`, transform: 'translateX(-1px)' }}
                   />
                 </div>
               </div>
-              <div className="flex items-center justify-between text-xs text-white/60">
+              <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
                 <span>{typeof weight === 'number' ? `${Math.round(weight)} g` : '—'}</span>
                 <span>{WEIGHT_TOPIC}</span>
               </div>
@@ -510,132 +510,58 @@ function App() {
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">Current / Latest Run</h3>
-                <span className="text-xs text-white/50">
+                <span className="text-xs text-[var(--text-faint)]">
                   {loading ? 'Refreshing…' : 'Auto refresh 5s'}
                 </span>
               </div>
               {latestRun ? (
                 <div className="grid grid-cols-2 gap-y-2 text-sm md:grid-cols-3">
                   <div>
-                    <span className="text-white/60">Trace</span>
+                    <span className="text-[var(--text-muted)]">Trace</span>
                     <div>{latestRun.trace_run_id || '—'}</div>
                   </div>
                   <div>
-                    <span className="text-white/60">Weightment</span>
+                    <span className="text-[var(--text-muted)]">Weightment</span>
                     <div>{latestRun.weightment_id}</div>
                   </div>
                   <div>
-                    <span className="text-white/60">Batch</span>
+                    <span className="text-[var(--text-muted)]">Batch</span>
                     <div>{latestRun.batch_id || metadata?.batch_id || '—'}</div>
                   </div>
                   <div>
-                    <span className="text-white/60">Ingredient</span>
+                    <span className="text-[var(--text-muted)]">Ingredient</span>
                     <div>{latestRun.ingredient_name || latestRun.ingredient_id || '—'}</div>
                   </div>
                   <div>
-                    <span className="text-white/60">Location</span>
+                    <span className="text-[var(--text-muted)]">Location</span>
                     <div>{latestRun.stock_location_code || '—'}</div>
                   </div>
                   <div>
-                    <span className="text-white/60">Status</span>
+                    <span className="text-[var(--text-muted)]">Status</span>
                     <div>{statusLabel(latestRun.status)}</div>
                   </div>
                   <div>
-                    <span className="text-white/60">Requested</span>
+                    <span className="text-[var(--text-muted)]">Requested</span>
                     <DateTimeText value={latestRun.requested_at} />
                   </div>
                   <div>
-                    <span className="text-white/60">Started</span>
+                    <span className="text-[var(--text-muted)]">Started</span>
                     <DateTimeText value={latestRun.started_at} />
                   </div>
                   <div>
-                    <span className="text-white/60">Finished</span>
+                    <span className="text-[var(--text-muted)]">Finished</span>
                     <DateTimeText value={latestRun.finished_at} />
                   </div>
                 </div>
               ) : (
-                <span className="text-sm text-white/70">
-                  No webhook robot run found yet.
+                <span className="text-sm text-[var(--text-secondary)]">
+                  No batch robot run found yet.
                 </span>
               )}
             </div>
           </GlassCard>
         </div>
 
-        <div className="col-span-12">
-          <GlassCard>
-            <div className="flex flex-col gap-2">
-              <h3 className="text-lg font-semibold">Latest Processed Result</h3>
-              <div className="border-t border-white/10" />
-              {latestDetail ? (
-                <div className="grid grid-cols-2 gap-y-2 text-sm md:grid-cols-4">
-                  <div className="text-right">
-                    <span className="text-white/60">Target</span>
-                    <div>
-                      {typeof latestDetail.target_weight_kg === 'number'
-                        ? `${latestDetail.target_weight_kg.toFixed(3)} kg`
-                        : '—'}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-white/60">Live Weight</span>
-                    <div>{formatNumber(latestDetail.robot_live_completion_weight_kg, 3)} kg</div>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-white/60">Processed Weight</span>
-                    <div>{formatNumber(latestDetail.robot_processed_final_weight_kg, 3)} kg</div>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-white/60">Overshoot</span>
-                    <div>{formatNumber(latestDetail.robot_processed_overshoot_g, 1)} g</div>
-                  </div>
-                  <div>
-                    <span className="text-white/60">Processed Start</span>
-                    <DateTimeText value={latestDetail.robot_processed_start_time} />
-                  </div>
-                  <div>
-                    <span className="text-white/60">Processed End</span>
-                    <DateTimeText value={latestDetail.robot_processed_end_time} />
-                  </div>
-                  <div className="text-right">
-                    <span className="text-white/60">Scoop</span>
-                    <div>{formatNumber(latestDetail.robot_processed_scoop_duration_s)} s</div>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-white/60">Pour</span>
-                    <div>{formatNumber(latestDetail.robot_processed_pour_duration_s)} s</div>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-white/60">Settle</span>
-                    <div>{formatNumber(latestDetail.robot_processed_settle_time_s)} s</div>
-                  </div>
-                  <div>
-                    <span className="text-white/60">MCAP</span>
-                    <div className="truncate">{latestDetail.robot_mcap_path || '—'}</div>
-                  </div>
-                  <div>
-                    <span className="text-white/60">Parquet</span>
-                    <div className="truncate">{latestDetail.robot_parquet_path || '—'}</div>
-                  </div>
-                  <div>
-                    <span className="text-white/60">MES</span>
-                    <div>
-                      {latestDetail.robot_mes_weighment_sent
-                        ? 'Weighment sent'
-                        : latestRun?.status === 'awaiting_processing'
-                          ? 'Waiting on processed trace'
-                          : 'Pending'}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <span className="text-sm text-white/70">
-                  No processed webhook trace available yet.
-                </span>
-              )}
-            </div>
-          </GlassCard>
-        </div>
       </div>
     </div>
   )

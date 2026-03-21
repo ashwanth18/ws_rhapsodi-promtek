@@ -4,20 +4,20 @@
     <static>true</static>
     <link name="container_link">
       <collision name="collision">
-        <pose>-0.1 -0.075 0 0 0 0</pose>
+        <pose>0 0 0 0 0 0</pose>
         <geometry>
           <mesh>
-            <uri>model://weighing_container/meshes/container.STL</uri>
-            <scale>0.0001 0.0001 0.0001</scale>
+            <uri>model://scooping_container/meshes/weighing_container.STL</uri>
+            <scale>0.001 0.001 0.001</scale>
           </mesh>
         </geometry>
       </collision>
       <visual name="visual">
-        <pose>-0.1 -0.075 0 0 0 0</pose>
+        <pose>0 0 0 0 0 0</pose>
         <geometry>
           <mesh>
-            <uri>model://weighing_container/meshes/container.STL</uri>
-            <scale>0.0001 0.0001 0.0001</scale>
+            <uri>model://scooping_container/meshes/weighing_container.STL</uri>
+            <scale>0.001 0.001 0.001</scale>
           </mesh>
         </geometry>
         <material>

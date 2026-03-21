@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import DateTimeText from '../components/DateTimeText'
@@ -102,7 +102,7 @@ function ChevronIcon({ open }: { open: boolean }) {
   )
 }
 
-export default function WebhookWeightmentDetailPage() {
+export default function BatchDetailPage() {
   const { apiBase } = useRuntimeConfig()
   const { eventId = '' } = useParams()
   const [searchParams] = useSearchParams()
@@ -120,17 +120,20 @@ export default function WebhookWeightmentDetailPage() {
   const [openRobotDetailIds, setOpenRobotDetailIds] = useState<number[]>([])
   const [robotDetailsInitialized, setRobotDetailsInitialized] = useState(false)
   const lastAutoScrolledWeightmentIdRef = useRef<number | null>(null)
-  const incompleteRowsMissingLocation = rows.filter(
-    (row) => !row.completed && row.location_id == null
+  const incompleteRowsMissingLocation = useMemo(
+    () => rows.filter((row) => !row.completed && row.location_id == null),
+    [rows]
   )
-  const robotDetailRows = rows.filter(
-    (row) =>
-      row.robot_status ||
-      row.robot_error ||
-      row.robot_trace_run_id ||
-      row.robot_processed_id != null ||
-      row.robot_mcap_path ||
-      row.robot_parquet_path
+  const robotDetailRows = useMemo(
+    () =>
+      rows.filter(
+        (row) =>
+          row.robot_status ||
+          row.robot_error ||
+          row.robot_trace_run_id ||
+          row.robot_processed_id != null
+      ),
+    [rows]
   )
   const hasActiveRobotRun =
     summary?.batch_auto_run_enabled ||
@@ -218,7 +221,7 @@ export default function WebhookWeightmentDetailPage() {
     setOpenRobotDetailIds((current) => {
       const validIds = new Set(robotDetailRows.map((row) => row.weightment_id))
       if (!robotDetailsInitialized) {
-        return []
+        return current.length === 0 ? current : []
       }
       const kept = current.filter((id) => validIds.has(id))
       if (kept.length !== current.length) {
@@ -297,7 +300,7 @@ export default function WebhookWeightmentDetailPage() {
 
   const robotStatusChip = (row: Row) => {
     if (!row.robot_status) {
-      return <span className="text-xs text-white/50">—</span>
+      return <span className="text-xs text-[var(--text-faint)]">—</span>
     }
     const label =
       row.robot_status === 'starting'
@@ -306,22 +309,22 @@ export default function WebhookWeightmentDetailPage() {
           ? 'Running'
           : row.robot_status === 'awaiting_processing'
             ? 'Awaiting Processing'
-          : row.robot_status === 'succeeded'
-            ? 'Succeeded'
-            : row.robot_status === 'mes_send_failed'
-              ? 'MES Send Failed'
-              : row.robot_status === 'failed'
-                ? 'Failed'
-                : row.robot_status
+            : row.robot_status === 'succeeded'
+              ? 'Succeeded'
+              : row.robot_status === 'mes_send_failed'
+                ? 'MES Send Failed'
+                : row.robot_status === 'failed'
+                  ? 'Failed'
+                  : row.robot_status
     const classes =
       row.robot_status === 'succeeded'
-        ? 'bg-emerald-500/20 text-emerald-300'
+        ? 'bg-[var(--status-good-bg)] text-[var(--status-good-fg)]'
         : row.robot_status === 'starting' ||
             row.robot_status === 'running'
-          ? 'bg-sky-500/20 text-sky-300'
+          ? 'bg-[var(--status-info-bg)] text-[var(--status-info-fg)]'
           : row.robot_status === 'awaiting_processing'
-            ? 'bg-amber-500/20 text-amber-300'
-          : 'bg-rose-500/20 text-rose-300'
+            ? 'bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]'
+            : 'bg-[var(--status-bad-bg)] text-[var(--status-bad-fg)]'
     return (
       <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${classes}`}>
         {label}
@@ -343,14 +346,14 @@ export default function WebhookWeightmentDetailPage() {
         <div className="mb-4 flex items-end justify-between gap-4">
           <div>
             <div className="mb-2">
-              <Link to="/webhook-weightments" className="text-sm text-sky-300 hover:text-sky-200">
-                ← Back to webhook batches
+              <Link to="/batches" className="text-sm text-sky-300 hover:text-sky-200">
+                ← Back to batches
               </Link>
             </div>
             <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk' }}>
-              Batch Weightments
+              Batch Details
             </h1>
-            <p className="text-white/70">
+            <p className="text-[var(--text-secondary)]">
               Batch `{summary?.batch_id ?? '—'}`
             </p>
           </div>
@@ -358,8 +361,8 @@ export default function WebhookWeightmentDetailPage() {
             <span
               className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
                 summary?.completed
-                  ? 'bg-emerald-500/20 text-emerald-300'
-                  : 'bg-rose-500/20 text-rose-300'
+                  ? 'bg-[var(--status-good-bg)] text-[var(--status-good-fg)]'
+                  : 'bg-[var(--status-bad-bg)] text-[var(--status-bad-fg)]'
               }`}
             >
               {summary?.completed ? 'Complete' : 'Not Complete'}
@@ -383,7 +386,7 @@ export default function WebhookWeightmentDetailPage() {
                       : 'Run Full Batch'}
                 </Button>
                 {incompleteRowsMissingLocation.length > 0 && (
-                  <span className="text-xs text-rose-300">
+                  <span className="text-xs text-[var(--status-bad-fg)]">
                     Full batch requires locations for every incomplete weightment
                   </span>
                 )}
@@ -396,17 +399,17 @@ export default function WebhookWeightmentDetailPage() {
         </div>
 
         <GlassCard className="mb-6">
-          <div className="grid grid-cols-1 gap-3 text-sm text-white/80 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 text-sm text-[var(--text-secondary)] md:grid-cols-3">
             <div>
-              <div className="text-white/50">Sent UTC</div>
+              <div className="text-[var(--text-faint)]">Batch Received Time</div>
               <DateTimeText value={summary?.sent_utc ?? null} />
             </div>
             <div>
-              <div className="text-white/50">Batch ID</div>
+              <div className="text-[var(--text-faint)]">Batch ID</div>
               <div>{summary?.batch_id ?? '—'}</div>
             </div>
             <div>
-              <div className="text-white/50">Batch Auto-Run</div>
+              <div className="text-[var(--text-faint)]">Batch Auto-Run</div>
               <div>
                 {summary?.batch_auto_run_enabled
                   ? summary?.batch_run_in_progress
@@ -419,15 +422,15 @@ export default function WebhookWeightmentDetailPage() {
         </GlassCard>
 
         <GlassCard>
-          <div className="mb-3 text-xs text-white/60">Showing {rows.length} weightments</div>
+          <div className="mb-3 text-xs text-[var(--text-muted)]">Showing {rows.length} weightments</div>
           <div className="overflow-auto">
             <table className="w-full text-sm">
-              <thead className="text-left text-white/70">
+              <thead className="text-left text-[var(--text-secondary)]">
                 <tr>
                   <th>Weightment ID</th>
                   <th className="text-right">Target Weight (kg)</th>
                   <th className="text-right">Actual Weight (kg)</th>
-                  <th>Completed</th>
+                  <th>Status</th>
                   <th>Stock Item ID</th>
                   <th>Ingredient Name</th>
                   <th>Location ID</th>
@@ -440,13 +443,13 @@ export default function WebhookWeightmentDetailPage() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td className="py-6 text-center text-white/70" colSpan={11}>
+                    <td className="py-6 text-center text-[var(--text-secondary)]" colSpan={11}>
                       Loading…
                     </td>
                   </tr>
                 ) : rows.length === 0 ? (
                   <tr>
-                    <td className="py-6 text-center text-white/70" colSpan={11}>
+                    <td className="py-6 text-center text-[var(--text-secondary)]" colSpan={11}>
                       No weightments found for this event.
                     </td>
                   </tr>
@@ -455,7 +458,7 @@ export default function WebhookWeightmentDetailPage() {
                     <tr
                       id={`weightment-row-${row.weightment_id}`}
                       key={row.weightment_id}
-                      className={`border-t border-slate-800 ${
+                      className={`border-t border-[var(--border)] ${
                         Number.isFinite(focusedWeightmentId) &&
                         row.weightment_id === focusedWeightmentId
                           ? 'bg-sky-500/10 ring-1 ring-sky-400/40'
@@ -473,8 +476,8 @@ export default function WebhookWeightmentDetailPage() {
                         <span
                           className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
                             row.completed
-                              ? 'bg-emerald-500/20 text-emerald-300'
-                              : 'bg-rose-500/20 text-rose-300'
+                              ? 'bg-[var(--status-good-bg)] text-[var(--status-good-fg)]'
+                              : 'bg-[var(--status-bad-bg)] text-[var(--status-bad-fg)]'
                           }`}
                         >
                           {row.completed ? 'Complete' : 'Not Complete'}
@@ -514,7 +517,7 @@ export default function WebhookWeightmentDetailPage() {
                                     ? 'Running…'
                                     : row.robot_status === 'awaiting_processing'
                                       ? 'Awaiting Trace…'
-                                    : 'Run Robot'}
+                                      : 'Run Robot'}
                             </Button>
                             <Button
                               size="sm"
@@ -532,7 +535,7 @@ export default function WebhookWeightmentDetailPage() {
                                 : 'Send To MES'}
                             </Button>
                             {row.location_id == null && (
-                              <span className="text-xs text-rose-300">
+                              <span className="text-xs text-[var(--status-bad-fg)]">
                                 No matching location id found
                               </span>
                             )}
@@ -549,7 +552,7 @@ export default function WebhookWeightmentDetailPage() {
 
         {robotDetailRows.length > 0 && (
           <div className="mt-6 space-y-4">
-            <div className="text-sm text-white/70">Robot Run Details</div>
+            <div className="text-sm text-[var(--text-secondary)]">Robot Run Details</div>
             {robotDetailRows.map((row) => (
               <GlassCard key={`robot-details-${row.weightment_id}`}>
                 <div className="flex flex-col gap-4">
@@ -558,10 +561,10 @@ export default function WebhookWeightmentDetailPage() {
                     className="flex flex-wrap items-center justify-between gap-3"
                   >
                     <div>
-                      <div className="text-sm font-semibold text-white">
+                      <div className="text-sm font-semibold text-[var(--text-primary)]">
                         Weightment {row.weightment_id}
                       </div>
-                      <div className="text-xs text-white/50">
+                      <div className="text-xs text-[var(--text-faint)]">
                         Ingredient {row.ingredient_name ?? row.stock_item_id ?? '—'}
                       </div>
                     </div>
@@ -590,49 +593,30 @@ export default function WebhookWeightmentDetailPage() {
                     }`}
                   >
                     <div className="flex flex-col gap-4 pt-1">
-                      <div className="grid grid-cols-1 gap-3 text-sm text-white/80 md:grid-cols-3">
+                      <div className="grid grid-cols-1 gap-3 text-sm text-[var(--text-secondary)] md:grid-cols-3">
                         <div>
-                          <div className="text-white/50">Requested</div>
+                          <div className="text-[var(--text-faint)]">Requested</div>
                           <DateTimeText value={row.robot_requested_at} />
                         </div>
                         <div>
-                          <div className="text-white/50">Started</div>
+                          <div className="text-[var(--text-faint)]">Started</div>
                           <DateTimeText value={row.robot_started_at} />
                         </div>
                         <div>
-                          <div className="text-white/50">Finished</div>
+                          <div className="text-[var(--text-faint)]">Finished</div>
                           <DateTimeText value={row.robot_finished_at} />
                         </div>
                         <div>
-                          <div className="text-white/50">Trace Run ID</div>
+                          <div className="text-[var(--text-faint)]">Trace Run ID</div>
                           <div>{row.robot_trace_run_id ?? '—'}</div>
                         </div>
                         <div>
-                          <div className="text-white/50">Processed Log ID</div>
+                          <div className="text-[var(--text-faint)]">Log ID</div>
                           <div>{row.robot_processed_id ?? '—'}</div>
                         </div>
                         <div>
-                          <div className="text-white/50">Weights</div>
-                          <div>
-                            Live {formatNumber(row.robot_live_completion_weight_kg)} kg,
-                            processed {formatNumber(row.robot_processed_final_weight_kg)} kg
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-white/50">Processed Start</div>
-                          <DateTimeText value={row.robot_processed_start_time} />
-                        </div>
-                        <div>
-                          <div className="text-white/50">Processed End</div>
-                          <DateTimeText value={row.robot_processed_end_time} />
-                        </div>
-                        <div>
-                          <div className="text-white/50">MCAP / Parquet</div>
-                          <div className="break-all text-xs">
-                            {row.robot_mcap_path ?? '—'}
-                            <br />
-                            {row.robot_parquet_path ?? '—'}
-                          </div>
+                          <div className="text-[var(--text-faint)]">Final Weight</div>
+                          <div>{formatNumber(row.robot_processed_final_weight_kg)} kg</div>
                         </div>
                       </div>
 
@@ -640,22 +624,22 @@ export default function WebhookWeightmentDetailPage() {
                         row.robot_processed_scoop_duration_s != null ||
                         row.robot_processed_settle_time_s != null ||
                         row.robot_processed_overshoot_g != null) && (
-                        <div className="text-sm text-white/70">
-                          Processed metrics: scoop {formatNumber(row.robot_processed_scoop_duration_s, 2)}s,
+                        <div className="text-sm text-[var(--text-secondary)]">
+                          Metrics: scoop {formatNumber(row.robot_processed_scoop_duration_s, 2)}s,
                           pour {formatNumber(row.robot_processed_pour_duration_s, 2)}s, settle{' '}
-                          {formatNumber(row.robot_processed_settle_time_s, 2)}s, overshoot{' '}
+                          {formatNumber(row.robot_processed_settle_time_s, 2)}s, final error{' '}
                           {formatNumber(row.robot_processed_overshoot_g, 1)} g
                         </div>
                       )}
 
                       {row.robot_status === 'awaiting_processing' && (
-                        <div className="text-sm text-amber-300">
+                        <div className="text-sm text-[var(--status-warn-fg)]">
                           Waiting for processed MCAP before MES send
                         </div>
                       )}
 
                       {row.robot_error && (
-                        <div className="text-sm text-rose-300">{row.robot_error}</div>
+                        <div className="text-sm text-[var(--status-bad-fg)]">{row.robot_error}</div>
                       )}
                     </div>
                   </div>

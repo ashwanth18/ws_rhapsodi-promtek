@@ -3,6 +3,8 @@ import json
 import logging
 import os
 import socket
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib import error, request
@@ -32,7 +34,7 @@ from .schemas import (
 
 Base.metadata.create_all(bind=engine)
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('uvicorn.error')
 
 WEIGHMENT_URL = os.environ.get(
     'WEIGHMENT_URL', 'http://localhost:5002/batch/weighment'
@@ -59,6 +61,46 @@ def utc_now_dt() -> datetime:
 
 def utc_now() -> str:
     return utc_now_dt().isoformat()
+
+
+def parse_request_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f'Invalid datetime: {value}') from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def parse_stored_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def datetime_to_ns(value: datetime | None) -> int | None:
+    if value is None:
+        return None
+    return int(value.timestamp() * 1_000_000_000)
+
+
+def signed_final_error_g(
+    target_weight_g: float | None,
+    final_weight_g: float | None,
+    fallback: float | None = None,
+) -> float | None:
+    if target_weight_g is None or final_weight_g is None:
+        return fallback
+    return final_weight_g - target_weight_g
 
 
 def ensure_webhook_weightment_columns() -> None:
@@ -534,17 +576,44 @@ def post_json(url: str, payload: dict, timeout_seconds: float = 10) -> dict:
         headers={'Content-Type': 'application/json'},
         method='POST',
     )
+    started_at = time.monotonic()
+    logger.info(
+        'Posting downstream JSON: url=%s timeout=%.2fs payload=%s',
+        url,
+        timeout_seconds,
+        json.dumps(payload, sort_keys=True)[:1000],
+    )
     try:
         with request.urlopen(req, timeout=timeout_seconds) as response:
             raw = response.read().decode('utf-8')
+            logger.info(
+                'Downstream JSON succeeded: url=%s status=%s elapsed=%.2fs body=%s',
+                url,
+                getattr(response, 'status', 'unknown'),
+                time.monotonic() - started_at,
+                raw[:1000] if raw else '<empty>',
+            )
             return json.loads(raw) if raw else {}
     except error.HTTPError as exc:
         detail = exc.read().decode('utf-8')
+        logger.error(
+            'Downstream JSON failed: url=%s status=%s elapsed=%.2fs body=%s',
+            url,
+            exc.code,
+            time.monotonic() - started_at,
+            detail[:1000],
+        )
         raise HTTPException(
             status_code=502,
             detail=f'Downstream request failed ({url}): {exc.code} {detail}',
         ) from exc
     except error.URLError as exc:
+        logger.error(
+            'Downstream JSON failed: url=%s elapsed=%.2fs error=%r',
+            url,
+            time.monotonic() - started_at,
+            exc,
+        )
         raise HTTPException(
             status_code=502, detail=f'Downstream request failed ({url}): {exc}'
         ) from exc
@@ -875,6 +944,13 @@ def send_processed_weightment_to_mes(
             'run': serialize_robot_run(run_row),
         }
     try:
+        logger.info(
+            'Sending processed weightment to MES: run_id=%s weightment_id=%s event_id=%s batch_id=%s',
+            run_row.id,
+            weightment_row.id,
+            weightment_row.event_id,
+            weightment_row.batch_id,
+        )
         send_result = send_weightment_to_mes(db, weightment_row)
     except HTTPException as exc:
         if weightment_row.event_id:
@@ -897,6 +973,12 @@ def send_processed_weightment_to_mes(
     run_row.mes_batch_end_sent = bool(send_result['batchEndSent'])
     db.commit()
     db.refresh(run_row)
+    logger.info(
+        'Processed weightment send succeeded: run_id=%s weightment_id=%s batch_end_sent=%s',
+        run_row.id,
+        weightment_row.id,
+        bool(send_result['batchEndSent']),
+    )
     next_batch_run = maybe_start_next_batch_weightment(weightment_row.event_id)
     return {
         'ok': True,
@@ -905,6 +987,75 @@ def send_processed_weightment_to_mes(
         'sendResult': send_result,
         'nextBatchRun': next_batch_run,
     }
+
+
+def complete_processed_weightment_in_background(robot_run_id: int) -> None:
+    db = SessionLocal()
+    try:
+        logger.info(
+            'Background processed completion started: robot_run_id=%s',
+            robot_run_id,
+        )
+        run_row = (
+            db.query(RobotWeightmentRun)
+            .filter(RobotWeightmentRun.id == robot_run_id)
+            .first()
+        )
+        if run_row is None:
+            logger.warning(
+                'Background processed completion skipped: missing run robot_run_id=%s',
+                robot_run_id,
+            )
+            return
+        if run_row.status != 'awaiting_processing' or run_row.mes_weighment_sent:
+            logger.info(
+                'Background processed completion skipped: run_id=%s status=%s mes_sent=%s',
+                run_row.id,
+                run_row.status,
+                run_row.mes_weighment_sent,
+            )
+            return
+        weightment_row = (
+            db.query(WebhookWeightment)
+            .filter(WebhookWeightment.id == run_row.weightment_id)
+            .first()
+        )
+        if weightment_row is None:
+            logger.warning(
+                'Background processed completion skipped: missing weightment run_id=%s weightment_id=%s',
+                run_row.id,
+                run_row.weightment_id,
+            )
+            return
+        send_processed_weightment_to_mes(db, run_row, weightment_row)
+        logger.info(
+            'Background processed completion finished: run_id=%s weightment_id=%s',
+            run_row.id,
+            weightment_row.id,
+        )
+    except Exception:
+        db.rollback()
+        logger.exception(
+            'Failed to complete processed weightment run in background: run_id=%s',
+            robot_run_id,
+        )
+    finally:
+        db.close()
+
+
+def schedule_processed_weightment_completion(robot_run_id: int) -> None:
+    worker = threading.Thread(
+        target=complete_processed_weightment_in_background,
+        args=(robot_run_id,),
+        name=f'processed-completion-{robot_run_id}',
+        daemon=True,
+    )
+    worker.start()
+    logger.info(
+        'Started processed completion worker thread: run_id=%s thread=%s',
+        robot_run_id,
+        worker.name,
+    )
 
 
 def finalize_robot_weightment_run(
@@ -1027,6 +1178,15 @@ rosbridge_robot_client.set_completion_handler(handle_rosbridge_completion)
 def processed(req: ProcessedRequest) -> ProcessedResponse:
     db = SessionLocal()
     try:
+        logger.info(
+            'Received processed callback: run_id=%s robot_weightment_run_id=%s '
+            'run_db_id=%s mcap_path=%s parquet_path=%s',
+            req.run_id,
+            req.robot_weightment_run_id,
+            req.run_db_id,
+            req.mcap_path,
+            req.parquet_path,
+        )
         processed_row = store_processed_run(db, req.model_dump())
         processed_id = processed_row.id
         run_db_id = processed_row.run_db_id
@@ -1058,13 +1218,13 @@ def processed(req: ProcessedRequest) -> ProcessedResponse:
             and run_row.status == 'awaiting_processing'
             and not run_row.mes_weighment_sent
         ):
-            weightment_row = (
-                db.query(WebhookWeightment)
-                .filter(WebhookWeightment.id == run_row.weightment_id)
-                .first()
+            logger.info(
+                'Scheduling background processed completion: run_id=%s processed_id=%s weightment_id=%s',
+                run_row.id,
+                processed_id,
+                run_row.weightment_id,
             )
-            if weightment_row is not None:
-                send_processed_weightment_to_mes(db, run_row, weightment_row)
+            schedule_processed_weightment_completion(run_row.id)
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -1080,11 +1240,26 @@ def list_lightsout_processed(
     mode: str | None = None,
     batch_id: str | None = None,
     episode_index: int | None = None,
+    time_from: str | None = None,
+    time_to: str | None = None,
+    time_sort: str = 'desc',
+    time_sort_field: str = 'start',
 ) -> dict:
     db = SessionLocal()
     try:
         safe_limit = max(limit, 0)
         safe_offset = max(offset, 0)
+        start_from_ns = datetime_to_ns(parse_request_datetime(time_from))
+        start_to_ns = datetime_to_ns(parse_request_datetime(time_to))
+        if time_sort not in {'asc', 'desc'}:
+            raise HTTPException(
+                status_code=400, detail='time_sort must be "asc" or "desc"'
+            )
+        if time_sort_field not in {'start', 'end'}:
+            raise HTTPException(
+                status_code=400,
+                detail='time_sort_field must be "start" or "end"',
+            )
 
         base_query = db.query(LightsOutProcessed, Run).join(
             Run, LightsOutProcessed.run_db_id == Run.id
@@ -1097,10 +1272,31 @@ def list_lightsout_processed(
             base_query = base_query.filter(
                 LightsOutProcessed.episode_index == episode_index
             )
+        if start_from_ns is not None:
+            base_query = base_query.filter(
+                Run.start_time_ns.is_not(None), Run.start_time_ns >= start_from_ns
+            )
+        if start_to_ns is not None:
+            base_query = base_query.filter(
+                Run.start_time_ns.is_not(None), Run.start_time_ns <= start_to_ns
+            )
 
         total = base_query.count()
 
-        rows_query = base_query.order_by(LightsOutProcessed.id.desc()).offset(safe_offset)
+        sort_column = Run.start_time_ns if time_sort_field == 'start' else Run.end_time_ns
+        if time_sort == 'asc':
+            rows_query = base_query.order_by(
+                sort_column.is_(None),
+                sort_column.asc(),
+                LightsOutProcessed.id.asc(),
+            )
+        else:
+            rows_query = base_query.order_by(
+                sort_column.is_(None),
+                sort_column.desc(),
+                LightsOutProcessed.id.desc(),
+            )
+        rows_query = rows_query.offset(safe_offset)
         if safe_limit > 0:
             rows_query = rows_query.limit(safe_limit)
         rows = rows_query.all()
@@ -1161,7 +1357,11 @@ def list_lightsout_processed(
                     'net_weight_g': processed_row.net_weight_g,
                     'avg_flow_rate_g_s': processed_row.avg_flow_rate_g_s,
                     'total_episode_time_s': processed_row.total_episode_time_s,
-                    'overshoot_g': processed_row.overshoot_g,
+                    'overshoot_g': signed_final_error_g(
+                        processed_row.target_weight_g,
+                        processed_row.final_weight_g,
+                        processed_row.overshoot_g,
+                    ),
                     'scoop_duration_s': processed_row.scoop_duration_s,
                     'pour_duration_s': processed_row.pour_duration_s,
                     'parquet_path': processed_row.parquet_path,
@@ -1281,13 +1481,34 @@ async def stream_active_robot_weightment_run(request: Request) -> StreamingRespo
 
 
 @app.get('/webhook_weightments/summary')
-def list_webhook_weightment_summary(limit: int = 200) -> dict:
+def list_webhook_weightment_summary(
+    limit: int = 20,
+    offset: int = 0,
+    status: str = 'all',
+    batch_query: str | None = None,
+    time_from: str | None = None,
+    time_to: str | None = None,
+    time_sort: str = 'desc',
+) -> dict:
     db = SessionLocal()
     try:
+        safe_limit = max(limit, 0)
+        safe_offset = max(offset, 0)
+        filter_time_from = parse_request_datetime(time_from)
+        filter_time_to = parse_request_datetime(time_to)
+        normalized_status = status or 'all'
+        if normalized_status not in {'all', 'completed', 'not_completed'}:
+            raise HTTPException(
+                status_code=400,
+                detail='status must be "all", "completed", or "not_completed"',
+            )
+        if time_sort not in {'asc', 'desc'}:
+            raise HTTPException(
+                status_code=400, detail='time_sort must be "asc" or "desc"'
+            )
         rows = (
             db.query(WebhookWeightment)
             .order_by(WebhookWeightment.id.desc())
-            .limit(limit)
             .all()
         )
         batch_completion: dict[str, bool] = {}
@@ -1317,9 +1538,57 @@ def list_webhook_weightment_summary(limit: int = 200) -> dict:
                     summary['completed'] and row.weightment_completed
                 )
         data = list(grouped.values())
+        query_text = (batch_query or '').strip().lower()
+        if query_text:
+            data = [
+                summary
+                for summary in data
+                if query_text in (summary.get('batch_id') or '').lower()
+                or query_text in (summary.get('event_id') or '').lower()
+            ]
+        if normalized_status == 'completed':
+            data = [summary for summary in data if summary.get('completed')]
+        elif normalized_status == 'not_completed':
+            data = [summary for summary in data if not summary.get('completed')]
+
+        filtered_data = []
+        for summary in data:
+            sent_dt = parse_stored_datetime(summary.get('sent_utc'))
+            if filter_time_from is not None and (
+                sent_dt is None or sent_dt < filter_time_from
+            ):
+                continue
+            if filter_time_to is not None and (
+                sent_dt is None or sent_dt > filter_time_to
+            ):
+                continue
+            enriched = dict(summary)
+            enriched['_sent_dt'] = sent_dt
+            filtered_data.append(enriched)
+        data = filtered_data
+
+        non_null_data = [summary for summary in data if summary['_sent_dt'] is not None]
+        null_data = [summary for summary in data if summary['_sent_dt'] is None]
+        non_null_data.sort(
+            key=lambda summary: summary['_sent_dt'],
+            reverse=time_sort == 'desc',
+        )
+        data = non_null_data + null_data
+        total = len(data)
+        if safe_limit > 0:
+            data = data[safe_offset : safe_offset + safe_limit]
+        else:
+            data = data[safe_offset:]
+        for summary in data:
+            summary.pop('_sent_dt', None)
     finally:
         db.close()
-    return {'rows': data}
+    return {
+        'rows': data,
+        'total': total,
+        'limit': safe_limit,
+        'offset': safe_offset,
+    }
 
 
 @app.get('/webhook_weightments/{event_id}')
@@ -1426,7 +1695,11 @@ def get_webhook_weightment_details(event_id: str) -> dict:
                         else None
                     ),
                     'robot_processed_overshoot_g': (
-                        processed_row.overshoot_g
+                        signed_final_error_g(
+                            processed_row.target_weight_g,
+                            processed_row.final_weight_g,
+                            processed_row.overshoot_g,
+                        )
                         if processed_row is not None
                         else None
                     ),

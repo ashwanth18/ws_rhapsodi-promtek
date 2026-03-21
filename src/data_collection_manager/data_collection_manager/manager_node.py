@@ -1,7 +1,8 @@
+import json
 import subprocess
 import time
+import urllib.error
 import urllib.request
-import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -254,20 +255,65 @@ class DataCollectionManager(Node):
         if not self._processing_url:
             self.get_logger().warn('processing_url is empty')
             return
-        payload = json.dumps(
-            {'run_folder': str(ctx.folder), 'bag_path': str(ctx.bag_path)}
-        ).encode('utf-8')
+        payload_dict = {
+            'run_folder': str(ctx.folder),
+            'bag_path': str(ctx.bag_path),
+        }
+        payload = json.dumps(payload_dict).encode('utf-8')
         req = urllib.request.Request(
             self._processing_url,
             data=payload,
             headers={'Content-Type': 'application/json'},
             method='POST',
         )
+        started_at = time.monotonic()
+        self.get_logger().info(
+            'Posting run for processing: '
+            f'source={ctx.source} '
+            f'episode={ctx.episode_index} '
+            f'folder={ctx.folder} '
+            f'bag_path={ctx.bag_path} '
+            f'url={self._processing_url}'
+        )
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
-                self.get_logger().info(f'Process response: {resp.status}')
+                body = resp.read().decode('utf-8', errors='replace')
+                elapsed_s = time.monotonic() - started_at
+                self.get_logger().info(
+                    'Process response: '
+                    f'status={resp.status} '
+                    f'elapsed={elapsed_s:.2f}s '
+                    f'body={body[:500] or "<empty>"}'
+                )
+        except urllib.error.HTTPError as exc:
+            elapsed_s = time.monotonic() - started_at
+            try:
+                error_body = exc.read().decode('utf-8', errors='replace')
+            except Exception:
+                error_body = '<unreadable>'
+            self.get_logger().warn(
+                'Failed to process run: '
+                f'http_error status={exc.code} '
+                f'elapsed={elapsed_s:.2f}s '
+                f'url={self._processing_url} '
+                f'source={ctx.source} '
+                f'episode={ctx.episode_index} '
+                f'folder={ctx.folder} '
+                f'bag_path={ctx.bag_path} '
+                f'body={error_body[:500]}'
+            )
         except Exception as exc:
-            self.get_logger().warn(f'Failed to process run: {exc}')
+            elapsed_s = time.monotonic() - started_at
+            self.get_logger().warn(
+                'Failed to process run: '
+                f'error={exc!r} '
+                f'elapsed={elapsed_s:.2f}s '
+                f'url={self._processing_url} '
+                f'source={ctx.source} '
+                f'episode={ctx.episode_index} '
+                f'folder={ctx.folder} '
+                f'bag_path={ctx.bag_path}'
+            )
 
     def _start_episode(self, episode_index: int) -> None:
         if self._current_episode is not None:

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import SidebarLayout from './SidebarLayout'
 import DateTimeText from '../components/DateTimeText'
+import DateTimeRangeField from '../components/DateTimeRangeField'
 import GlassCard from '../components/GlassCard'
 import Button from '../components/ui/button'
 import {
@@ -18,6 +19,7 @@ import {
   YAxis,
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
+import Select from '../components/ui/select'
 import { useRuntimeConfig } from '../config/RuntimeConfig'
 
 type Row = {
@@ -37,6 +39,8 @@ type Row = {
   avg_flow_rate_g_s: number | null
   total_episode_time_s: number | null
   overshoot_g: number | null
+  scoop_duration_s: number | null
+  pour_duration_s: number | null
 }
 
 type LogsResponse = {
@@ -46,12 +50,77 @@ type LogsResponse = {
   available_modes?: string[]
 }
 
+function TimeSortIcon({
+  order,
+  active = true,
+}: {
+  order: 'asc' | 'desc'
+  active?: boolean
+}) {
+  return (
+    <svg
+      className={`h-4 w-4 ${active ? 'text-[var(--text-primary)]' : 'text-[var(--text-faint)]'}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M8 7L12 3L16 7"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={order === 'asc' ? 'opacity-100' : 'opacity-25'}
+      />
+      <path
+        d="M16 17L12 21L8 17"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={order === 'desc' ? 'opacity-100' : 'opacity-25'}
+      />
+    </svg>
+  )
+}
+
+function FilterField({
+  label,
+  children,
+  className = '',
+}: {
+  label: string
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <label
+      className={`flex shrink-0 flex-col gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface)]/70 px-3 py-2 ${className}`}
+    >
+      <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-faint)]">
+        {label}
+      </span>
+      {children}
+    </label>
+  )
+}
+
+function toFilterIsoStart(dateValue: string): string | undefined {
+  return dateValue ? `${dateValue}T00:00:00Z` : undefined
+}
+
+function toFilterIsoEnd(dateValue: string): string | undefined {
+  return dateValue ? `${dateValue}T23:59:59.999Z` : undefined
+}
+
 export default function LogsPage() {
   const { apiBase } = useRuntimeConfig()
   const navigate = useNavigate()
   const [tableRows, setTableRows] = useState<Row[]>([])
   const [plotRows, setPlotRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(false)
+  const [manualRefreshing, setManualRefreshing] = useState(false)
   const [tableTotal, setTableTotal] = useState<number>(0)
   const [availableBatches, setAvailableBatches] = useState<string[]>([])
   const [availableModes, setAvailableModes] = useState<string[]>([])
@@ -60,8 +129,12 @@ export default function LogsPage() {
   const [tableBatchFilter, setTableBatchFilter] = useState<string>('all')
   const [tableModeFilter, setTableModeFilter] = useState<string>('all')
   const [tableEpisodeFilter, setTableEpisodeFilter] = useState<string>('')
+  const [tableTimeFrom, setTableTimeFrom] = useState<string>('')
+  const [tableTimeTo, setTableTimeTo] = useState<string>('')
+  const [tableTimeSort, setTableTimeSort] = useState<'asc' | 'desc'>('desc')
+  const [tableTimeSortField, setTableTimeSortField] = useState<'start' | 'end'>('start')
   const [tablePage, setTablePage] = useState<number>(1)
-  const tablePageSize = 20
+  const tablePageSize = 10
 
   // helpers
   const buildLogsUrl = (params: {
@@ -70,6 +143,10 @@ export default function LogsPage() {
     batchFilter?: string
     modeFilter?: string
     episodeIndex?: number | null
+    timeFrom?: string
+    timeTo?: string
+    timeSort?: 'asc' | 'desc'
+    timeSortField?: 'start' | 'end'
   }) => {
     const search = new URLSearchParams()
     search.set('limit', String(params.limit))
@@ -85,12 +162,27 @@ export default function LogsPage() {
     if (params.episodeIndex != null) {
       search.set('episode_index', String(params.episodeIndex))
     }
+    if (params.timeFrom) {
+      search.set('time_from', params.timeFrom)
+    }
+    if (params.timeTo) {
+      search.set('time_to', params.timeTo)
+    }
+    if (params.timeSort) {
+      search.set('time_sort', params.timeSort)
+    }
+    if (params.timeSortField) {
+      search.set('time_sort_field', params.timeSortField)
+    }
     return `${apiBase}/lightsout_processed?${search.toString()}`
   }
 
-  const loadRows = async () => {
+  const loadRows = async ({ manual = false }: { manual?: boolean } = {}) => {
     try {
       setLoading(true)
+      if (manual) {
+        setManualRefreshing(true)
+      }
       const rawEpisode = tableEpisodeFilter.trim()
       const parsedEpisode = rawEpisode ? Number.parseInt(rawEpisode, 10) : null
       const hasValidEpisode = parsedEpisode != null && Number.isFinite(parsedEpisode)
@@ -104,6 +196,10 @@ export default function LogsPage() {
             batchFilter: tableBatchFilter,
             modeFilter: tableModeFilter,
             episodeIndex: hasValidEpisode ? parsedEpisode : null,
+            timeFrom: toFilterIsoStart(tableTimeFrom),
+            timeTo: toFilterIsoEnd(tableTimeTo),
+            timeSort: tableTimeSort,
+            timeSortField: tableTimeSortField,
           })
       const plotUrl = buildLogsUrl({
         limit: 0,
@@ -125,6 +221,9 @@ export default function LogsPage() {
       setAvailableModes(tableJson.available_modes || plotJson.available_modes || [])
     } finally {
       setLoading(false)
+      if (manual) {
+        setManualRefreshing(false)
+      }
     }
   }
 
@@ -138,6 +237,10 @@ export default function LogsPage() {
     tableBatchFilter,
     tableModeFilter,
     tableEpisodeFilter,
+    tableTimeFrom,
+    tableTimeTo,
+    tableTimeSort,
+    tableTimeSortField,
     tablePage,
   ])
 
@@ -146,6 +249,9 @@ export default function LogsPage() {
 
   const tablePageCount = Math.max(1, Math.ceil(tableTotal / tablePageSize))
   const tablePageSafe = Math.min(tablePage, tablePageCount)
+  const visibleTableStart = tableTotal === 0 ? 0 : (tablePageSafe - 1) * tablePageSize + 1
+  const visibleTableEnd =
+    tableTotal === 0 ? 0 : Math.min(visibleTableStart + tableRows.length - 1, tableTotal)
 
   const plotDistinctBatches = Array.from(
     new Set(plotRows.map((row) => row.batch_id).filter((value): value is string => Boolean(value)))
@@ -153,7 +259,24 @@ export default function LogsPage() {
 
   useEffect(() => {
     setTablePage(1)
-  }, [tableBatchFilter, tableModeFilter, tableEpisodeFilter])
+  }, [
+    tableBatchFilter,
+    tableModeFilter,
+    tableEpisodeFilter,
+    tableTimeFrom,
+    tableTimeTo,
+    tableTimeSort,
+    tableTimeSortField,
+  ])
+
+  const toggleTableTimeSort = (field: 'start' | 'end') => {
+    if (tableTimeSortField === field) {
+      setTableTimeSort((current) => (current === 'desc' ? 'asc' : 'desc'))
+      return
+    }
+    setTableTimeSortField(field)
+    setTableTimeSort('desc')
+  }
 
   const plotPointsFinalVsTarget = plotRows
     .filter((row) => row.target_weight_g != null && row.final_weight_g != null)
@@ -222,13 +345,11 @@ export default function LogsPage() {
     return values.reduce((sum, value) => sum + value, 0) / values.length
   }
 
-  const openWebhookWeightment = (row: Row) => {
+  const openBatchDetails = (row: Row) => {
     if (!row.event_id || row.weightment_id == null) {
       return
     }
-    navigate(
-      `/webhook-weightments/${encodeURIComponent(row.event_id)}?weightmentId=${row.weightment_id}`
-    )
+    navigate(`/batches/${encodeURIComponent(row.event_id)}?weightmentId=${row.weightment_id}`)
   }
 
   const totalEpisodes = plotRows.length
@@ -268,11 +389,11 @@ export default function LogsPage() {
         <div className="flex items-end justify-between mb-4">
           <div>
             <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk' }}>Run History</h1>
-            <p className="text-white/70">Processed robot traces and derived metrics</p>
+            <p className="text-[var(--text-secondary)]">Processed robot traces and derived metrics</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button onClick={() => loadRows()} disabled={loading}>
-              {loading ? (
+            <Button onClick={() => loadRows({ manual: true })} disabled={loading}>
+              {manualRefreshing ? (
                 <span className="inline-flex items-center gap-2">
                   <svg
                     className="h-4 w-4 animate-spin"
@@ -304,66 +425,98 @@ export default function LogsPage() {
           </div>
         </div>
         <GlassCard>
-          <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-white/60">Batch</span>
-              <select
-                className="rounded-md bg-slate-900/60 border border-slate-700 px-2 py-1 text-sm"
-                value={tableBatchFilter}
-                onChange={(event) => setTableBatchFilter(event.target.value)}
-              >
-                <option value="all">All</option>
-                {distinctBatches.map((batch) => (
-                  <option key={batch} value={batch}>{batch}</option>
-                ))}
-              </select>
-              <span className="text-white/60">Mode</span>
-              <select
-                className="rounded-md bg-slate-900/60 border border-slate-700 px-2 py-1 text-sm"
-                value={tableModeFilter}
-                onChange={(event) => setTableModeFilter(event.target.value)}
-              >
-                <option value="all">All</option>
-                {distinctModes.map((mode) => (
-                  <option key={mode} value={mode}>{mode}</option>
-                ))}
-              </select>
-              <span className="text-white/60">Run</span>
-              <input
-                className="w-24 rounded-md bg-slate-900/60 border border-slate-700 px-2 py-1 text-sm"
-                placeholder="e.g. 3"
-                value={tableEpisodeFilter}
-                onChange={(event) => setTableEpisodeFilter(event.target.value)}
+          <div className="mb-4 flex items-end justify-between gap-3">
+            <div className="flex flex-1 items-end gap-3 overflow-x-auto pb-1">
+              <FilterField label="Batch" className="min-w-[140px]">
+                <Select
+                  value={tableBatchFilter}
+                  onChange={(event) => setTableBatchFilter(event.target.value)}
+                >
+                  <option value="all">All</option>
+                  {distinctBatches.map((batch) => (
+                    <option key={batch} value={batch}>{batch}</option>
+                  ))}
+                </Select>
+              </FilterField>
+              <FilterField label="Mode" className="min-w-[140px]">
+                <Select
+                  value={tableModeFilter}
+                  onChange={(event) => setTableModeFilter(event.target.value)}
+                >
+                  <option value="all">All</option>
+                  {distinctModes.map((mode) => (
+                    <option key={mode} value={mode}>{mode}</option>
+                  ))}
+                </Select>
+              </FilterField>
+              <FilterField label="Run" className="min-w-[110px]">
+                <input
+                  className="w-24 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-sm text-[var(--text-primary)]"
+                  placeholder="e.g. 3"
+                  value={tableEpisodeFilter}
+                  onChange={(event) => setTableEpisodeFilter(event.target.value)}
+                />
+              </FilterField>
+              <DateTimeRangeField
+                from={tableTimeFrom}
+                to={tableTimeTo}
+                onFromChange={setTableTimeFrom}
+                onToChange={setTableTimeTo}
+                onClear={() => {
+                  setTableTimeFrom('')
+                  setTableTimeTo('')
+                }}
               />
             </div>
-            <div className="text-xs text-white/60">
-              Showing {tableRows.length} of {tableTotal} entries
+            <div className="shrink-0 rounded-xl border border-[var(--border)] bg-[var(--surface)]/70 px-3 py-2 text-xs text-[var(--text-muted)]">
+              {tableTotal === 0
+                ? 'Showing 0 of 0 entries'
+                : `Showing ${visibleTableStart}-${visibleTableEnd} of ${tableTotal} entries`}
             </div>
           </div>
           <div className="overflow-auto">
             <table className="w-full text-sm">
-              <thead className="text-left text-white/70">
+              <thead className="text-left text-[var(--text-secondary)]">
                 <tr>
                   <th>Batch</th>
-                  <th>Mode</th>
                   <th>Run ID</th>
                   <th>Ingredient</th>
-                  <th>Run</th>
-                  <th>Start</th>
-                  <th>End</th>
+                  <th>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 font-medium hover:text-[var(--text-primary)]"
+                      onClick={() => toggleTableTimeSort('start')}
+                      aria-label={`Sort start time ${tableTimeSort === 'desc' ? 'ascending' : 'descending'}`}
+                    >
+                      <span>Start</span>
+                      <TimeSortIcon order={tableTimeSort} active={tableTimeSortField === 'start'} />
+                    </button>
+                  </th>
+                  <th>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 font-medium hover:text-[var(--text-primary)]"
+                      onClick={() => toggleTableTimeSort('end')}
+                      aria-label={`Sort end time ${tableTimeSort === 'desc' ? 'ascending' : 'descending'}`}
+                    >
+                      <span>End</span>
+                      <TimeSortIcon order={tableTimeSort} active={tableTimeSortField === 'end'} />
+                    </button>
+                  </th>
                   <th className="text-right">Target (g)</th>
                   <th className="text-right">Final (g)</th>
                   <th className="text-right">Net (g)</th>
-                  <th className="text-right">Avg Flow (g/s)</th>
                   <th className="text-right">Duration (s)</th>
-                  <th className="text-right">Overshoot (g)</th>
+                  <th className="text-right">Scoop Duration (s)</th>
+                  <th className="text-right">Pour Duration (s)</th>
+                  <th className="text-right">Final Error (g)</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td className="py-6 text-center" colSpan={13}>
-                      <span className="inline-flex items-center gap-2 text-white/70">
+                    <td className="py-6 text-center" colSpan={12}>
+                      <span className="inline-flex items-center gap-2 text-[var(--text-secondary)]">
                         <svg
                           className="h-4 w-4 animate-spin"
                           viewBox="0 0 24 24"
@@ -390,32 +543,31 @@ export default function LogsPage() {
                     </td>
                   </tr>
                 ) : tableRows.length === 0 ? (
-                  <tr><td className="py-4" colSpan={13}>No data</td></tr>
+                  <tr><td className="py-4" colSpan={12}>No data</td></tr>
                 ) : (
                   tableRows.map((r) => {
                     const startMs = r.start_time_ns ? r.start_time_ns / 1_000_000 : null
                     const endMs = r.end_time_ns ? r.end_time_ns / 1_000_000 : null
-                    const isWebhookRow = Boolean(r.event_id && r.weightment_id != null)
+                    const isBatchRow = Boolean(r.event_id && r.weightment_id != null)
                     return (
                       <tr
                         key={r.id}
-                        className={`border-t border-slate-800 ${
-                          isWebhookRow ? 'cursor-pointer hover:bg-white/5' : ''
+                        className={`border-t border-[var(--border)] ${
+                          isBatchRow ? 'cursor-pointer hover:bg-[var(--table-row-hover)]' : ''
                         }`}
-                        onClick={isWebhookRow ? () => openWebhookWeightment(r) : undefined}
+                        onClick={isBatchRow ? () => openBatchDetails(r) : undefined}
                       >
                         <td>{r.batch_id ?? '—'}</td>
-                        <td>{r.mode ?? '—'}</td>
                         <td>{r.run_id ?? '—'}</td>
                         <td>{r.ingredient_id ?? '—'}</td>
-                        <td>{r.episode_index ?? '—'}</td>
                         <td><DateTimeText value={startMs} /></td>
                         <td><DateTimeText value={endMs} /></td>
                         <td className="text-right">{r.target_weight_g != null ? r.target_weight_g.toFixed(2) : '—'}</td>
                         <td className="text-right">{r.final_weight_g != null ? r.final_weight_g.toFixed(2) : '—'}</td>
                         <td className="text-right">{r.net_weight_g != null ? r.net_weight_g.toFixed(2) : '—'}</td>
-                        <td className="text-right">{r.avg_flow_rate_g_s != null ? r.avg_flow_rate_g_s.toFixed(2) : '—'}</td>
                         <td className="text-right">{r.total_episode_time_s != null ? r.total_episode_time_s.toFixed(2) : '—'}</td>
+                        <td className="text-right">{r.scoop_duration_s != null ? r.scoop_duration_s.toFixed(2) : '—'}</td>
+                        <td className="text-right">{r.pour_duration_s != null ? r.pour_duration_s.toFixed(2) : '—'}</td>
                         <td className="text-right">{r.overshoot_g != null ? r.overshoot_g.toFixed(2) : '—'}</td>
                       </tr>
                     )
@@ -425,7 +577,7 @@ export default function LogsPage() {
             </table>
           </div>
           <div className="mt-3 flex items-center justify-between text-sm">
-            <div className="text-white/60">
+            <div className="text-[var(--text-muted)]">
               Page {tablePageSafe} of {tablePageCount}
             </div>
             <div className="flex items-center gap-2">
@@ -449,7 +601,7 @@ export default function LogsPage() {
 
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
           <GlassCard>
-            <div className="text-xs text-white/60 mb-2">Run Summary</div>
+            <div className="mb-2 text-xs text-[var(--text-muted)]">Run Summary</div>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>Total Runs</div>
               <div className="text-right">{totalEpisodes}</div>
@@ -461,14 +613,14 @@ export default function LogsPage() {
               <div className="text-right">{avgFlow != null ? avgFlow.toFixed(2) : '—'}</div>
               <div>Avg Duration (s)</div>
               <div className="text-right">{avgDuration != null ? avgDuration.toFixed(2) : '—'}</div>
-              <div>Avg Overshoot (g)</div>
+              <div>Avg Final Error (g)</div>
               <div className="text-right">{avgOvershoot != null ? avgOvershoot.toFixed(2) : '—'}</div>
             </div>
           </GlassCard>
-          <GlassCard>
-            <div className="text-xs text-white/60 mb-2">Avg Overshoot by Batch</div>
+          {/* <GlassCard>
+            <div className="mb-2 text-xs text-[var(--text-muted)]">Avg Final Error by Batch</div>
             {overshootByBatch.length === 0 ? (
-              <div className="text-sm text-white/60">No batch data.</div>
+              <div className="text-sm text-[var(--text-muted)]">No batch data.</div>
             ) : (
               <div className="space-y-2">
                 {overshootByBatch.map((item) => {
@@ -477,12 +629,12 @@ export default function LogsPage() {
                   return (
                     <div key={item.batch} className="text-xs">
                       <div className="flex justify-between mb-1">
-                        <span className="text-white/80">{item.batch} ({item.count})</span>
-                        <span className="text-white/60">{item.avgOvershoot.toFixed(2)} g</span>
+                        <span className="text-[var(--text-secondary)]">{item.batch} ({item.count})</span>
+                        <span className="text-[var(--text-muted)]">{item.avgOvershoot.toFixed(2)} g</span>
                       </div>
-                      <div className="h-2 rounded-full bg-slate-800">
+                      <div className="h-2 rounded-full bg-[var(--surface-strong)]">
                         <div
-                          className="h-2 rounded-full bg-emerald-400"
+                          className="h-2 rounded-full bg-[var(--status-good-fg)]"
                           style={{ width: `${width}%` }}
                         />
                       </div>
@@ -491,16 +643,15 @@ export default function LogsPage() {
                 })}
               </div>
             )}
-          </GlassCard>
+          </GlassCard> */}
         </div>
 
         <div className="mt-8">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-semibold">Plots (shadcn/ui)</h2>
             <div className="flex items-center gap-2 text-sm">
-              <span className="text-white/60">Batch</span>
-              <select
-                className="rounded-md bg-slate-900/60 border border-slate-700 px-2 py-1 text-sm"
+              <span className="text-[var(--text-muted)]">Batch</span>
+              <Select
                 value={plotBatchFilter}
                 onChange={(event) => setPlotBatchFilter(event.target.value)}
               >
@@ -508,10 +659,9 @@ export default function LogsPage() {
                 {distinctBatches.map((batch) => (
                   <option key={batch} value={batch}>{batch}</option>
                 ))}
-              </select>
-              <span className="text-white/60">Mode</span>
-              <select
-                className="rounded-md bg-slate-900/60 border border-slate-700 px-2 py-1 text-sm"
+              </Select>
+              <span className="text-[var(--text-muted)]">Mode</span>
+              <Select
                 value={plotModeFilter}
                 onChange={(event) => setPlotModeFilter(event.target.value)}
               >
@@ -519,7 +669,7 @@ export default function LogsPage() {
                 {distinctModes.map((mode) => (
                   <option key={mode} value={mode}>{mode}</option>
                 ))}
-              </select>
+              </Select>
             </div>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -531,27 +681,27 @@ export default function LogsPage() {
                 <div style={{ width: '100%', height: 240 }}>
                   <ResponsiveContainer>
                     <ScatterChart>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
                       <XAxis
                         dataKey="target"
                         type="number"
                         name="Target"
                         unit="g"
-                        tick={{ fill: '#cbd5f5', fontSize: 11 }}
+                        tick={{ fill: 'var(--chart-axis)', fontSize: 11 }}
                       />
                       <YAxis
                         dataKey="final"
                         type="number"
                         name="Final"
                         unit="g"
-                        tick={{ fill: '#cbd5f5', fontSize: 11 }}
+                        tick={{ fill: 'var(--chart-axis)', fontSize: 11 }}
                       />
                       <Tooltip cursor={{ strokeDasharray: '3 3' }} />
                       <Legend />
                       <Scatter
                         name={`Episodes (${rechartsFinalVsTarget.length})`}
                         data={rechartsFinalVsTarget}
-                        fill="#38bdf8"
+                        fill="var(--accent)"
                       />
                     </ScatterChart>
                   </ResponsiveContainer>
@@ -566,13 +716,13 @@ export default function LogsPage() {
                 <div style={{ width: '100%', height: 240 }}>
                   <ResponsiveContainer>
                     <ScatterChart>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
                       <XAxis
                         dataKey="duration"
                         type="number"
                         name="Duration"
                         unit="s"
-                        tick={{ fill: '#cbd5f5', fontSize: 11 }}
+                        tick={{ fill: 'var(--chart-axis)', fontSize: 11 }}
                       />
                       <YAxis
                         dataKey="final"
@@ -597,7 +747,7 @@ export default function LogsPage() {
           <div className="mt-4">
             <Card>
               <CardHeader>
-                <CardTitle>Overshoot Distribution (% of Runs)</CardTitle>
+                <CardTitle>Final Error Distribution (% of Runs)</CardTitle>
               </CardHeader>
               <CardContent>
                 <div style={{ width: '100%', height: 240 }}>
