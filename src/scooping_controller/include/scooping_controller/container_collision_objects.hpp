@@ -13,14 +13,17 @@
 #include <geometry_msgs/msg/pose.hpp>
 #include <moveit_msgs/msg/collision_object.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <shape_msgs/msg/solid_primitive.hpp>
 
 namespace scooping_controller
 {
 struct ContainerSceneSpec
 {
   std::string id;
+  std::string geometry_type;
   std::string mesh_resource;
   std::array<double, 3> scale;
+  std::array<double, 3> dimensions;
   geometry_msgs::msg::Pose pose;
   std::array<float, 3> color;
 };
@@ -46,19 +49,33 @@ inline std::vector<ContainerSceneSpec> default_container_scene_specs()
 
   ContainerSceneSpec scooping;
   scooping.id = "scooping_container";
+  scooping.geometry_type = "mesh";
   scooping.mesh_resource = "package://scooping_controller/models/scooping_container/meshes/container.STL";
   scooping.scale = {0.0004, 0.0004, 0.0003};
+  scooping.dimensions = {0.0, 0.0, 0.0};
   scooping.pose = make_pose({0.10, -0.30, 0.00}, {0.0, 0.0, 0.0, 1.0});
   scooping.color = {0.7F, 0.7F, 0.7F};
   specs.push_back(scooping);
 
   ContainerSceneSpec weighing;
   weighing.id = "weighing_container";
+  weighing.geometry_type = "mesh";
   weighing.mesh_resource = "package://scooping_controller/models/weighing_container/meshes/container.STL";
   weighing.scale = {0.0001, 0.0001, 0.0001};
+  weighing.dimensions = {0.0, 0.0, 0.0};
   weighing.pose = make_pose({-0.075, -0.40, 0.00}, {0.0, 0.0, -0.70710678, 0.70710678});
   weighing.color = {0.4F, 0.8F, 0.4F};
   specs.push_back(weighing);
+
+  ContainerSceneSpec table;
+  table.id = "table";
+  table.geometry_type = "box";
+  table.mesh_resource = "";
+  table.scale = {1.0, 1.0, 1.0};
+  table.dimensions = {1.02, 0.61, 0.03};
+  table.pose = make_pose({0.0, 0.0, -0.015}, {0.0, 0.0, 0.0, 1.0});
+  table.color = {0.55F, 0.39F, 0.22F};
+  specs.push_back(table);
 
   return specs;
 }
@@ -112,6 +129,7 @@ inline void declare_container_scene_parameters(rclcpp::Node& node)
 {
   for (const auto& spec : default_container_scene_specs()) {
     const std::string prefix = spec.id + "_";
+    node.declare_parameter<std::string>(prefix + "geometry_type", spec.geometry_type);
     node.declare_parameter<std::string>(prefix + "mesh_resource", spec.mesh_resource);
     node.declare_parameter<std::vector<double>>(
       prefix + "position_xyz",
@@ -127,6 +145,9 @@ inline void declare_container_scene_parameters(rclcpp::Node& node)
       prefix + "scale_xyz",
       {spec.scale[0], spec.scale[1], spec.scale[2]});
     node.declare_parameter<std::vector<double>>(
+      prefix + "dimensions_xyz",
+      {spec.dimensions[0], spec.dimensions[1], spec.dimensions[2]});
+    node.declare_parameter<std::vector<double>>(
       prefix + "color_rgb",
       {
         static_cast<double>(spec.color[0]),
@@ -140,6 +161,7 @@ inline std::vector<ContainerSceneSpec> load_container_scene_specs(const rclcpp::
   std::vector<ContainerSceneSpec> specs = default_container_scene_specs();
   for (auto& spec : specs) {
     const std::string prefix = spec.id + "_";
+    spec.geometry_type = node.get_parameter(prefix + "geometry_type").as_string();
     spec.mesh_resource = node.get_parameter(prefix + "mesh_resource").as_string();
     spec.pose = make_pose(
       get_array_parameter(node, prefix + "position_xyz", std::array<double, 3>{
@@ -152,6 +174,7 @@ inline std::vector<ContainerSceneSpec> load_container_scene_specs(const rclcpp::
         spec.pose.orientation.z,
         spec.pose.orientation.w}));
     spec.scale = get_array_parameter(node, prefix + "scale_xyz", spec.scale);
+    spec.dimensions = get_array_parameter(node, prefix + "dimensions_xyz", spec.dimensions);
     spec.color = get_color_parameter(node, prefix + "color_rgb", spec.color);
   }
   return specs;
@@ -163,6 +186,24 @@ inline std::vector<moveit_msgs::msg::CollisionObject> make_container_collision_o
 {
   std::vector<moveit_msgs::msg::CollisionObject> objects;
   for (const auto& spec : specs) {
+    moveit_msgs::msg::CollisionObject object;
+    object.id = spec.id;
+    object.header.frame_id = frame_id;
+    object.operation = moveit_msgs::msg::CollisionObject::ADD;
+
+    if (spec.geometry_type == "box") {
+      shape_msgs::msg::SolidPrimitive primitive;
+      primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
+      primitive.dimensions = {
+        spec.dimensions[0],
+        spec.dimensions[1],
+        spec.dimensions[2]};
+      object.primitives.push_back(primitive);
+      object.primitive_poses.push_back(spec.pose);
+      objects.push_back(object);
+      continue;
+    }
+
     std::unique_ptr<shapes::Mesh> mesh(shapes::createMeshFromResource(
       spec.mesh_resource,
       Eigen::Vector3d(spec.scale[0], spec.scale[1], spec.scale[2])));
@@ -175,12 +216,8 @@ inline std::vector<moveit_msgs::msg::CollisionObject> make_container_collision_o
       continue;
     }
 
-    moveit_msgs::msg::CollisionObject object;
-    object.id = spec.id;
-    object.header.frame_id = frame_id;
     object.meshes.push_back(boost::get<shape_msgs::msg::Mesh>(shape_msg));
     object.mesh_poses.push_back(spec.pose);
-    object.operation = moveit_msgs::msg::CollisionObject::ADD;
     objects.push_back(object);
   }
   return objects;

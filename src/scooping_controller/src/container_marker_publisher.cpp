@@ -43,18 +43,26 @@ private:
     marker.header.stamp = stamp;
     marker.ns = spec.id;
     marker.id = id;
-    marker.type = visualization_msgs::msg::Marker::MESH_RESOURCE;
+    marker.type = spec.geometry_type == "box"
+      ? visualization_msgs::msg::Marker::CUBE
+      : visualization_msgs::msg::Marker::MESH_RESOURCE;
     marker.action = visualization_msgs::msg::Marker::ADD;
     marker.pose = spec.pose;
-    marker.scale.x = spec.scale[0];
-    marker.scale.y = spec.scale[1];
-    marker.scale.z = spec.scale[2];
+    if (spec.geometry_type == "box") {
+      marker.scale.x = spec.dimensions[0];
+      marker.scale.y = spec.dimensions[1];
+      marker.scale.z = spec.dimensions[2];
+    } else {
+      marker.scale.x = spec.scale[0];
+      marker.scale.y = spec.scale[1];
+      marker.scale.z = spec.scale[2];
+      marker.mesh_resource = spec.mesh_resource;
+      marker.mesh_use_embedded_materials = false;
+    }
     marker.color.r = spec.color[0];
     marker.color.g = spec.color[1];
     marker.color.b = spec.color[2];
     marker.color.a = 1.0F;
-    marker.mesh_resource = spec.mesh_resource;
-    marker.mesh_use_embedded_materials = false;
     return marker;
   }
 

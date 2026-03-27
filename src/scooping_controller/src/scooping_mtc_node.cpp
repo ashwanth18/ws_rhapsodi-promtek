@@ -39,7 +39,7 @@ public:
   : Node("scooping_mtc_node")
   {
     this->declare_parameter<std::string>("group", "arm");
-    this->declare_parameter<std::string>("ik_frame", "tool_link");
+    this->declare_parameter<std::string>("ik_frame", "tcp_link");
     this->declare_parameter<std::string>("frame_id", "base_link");
     this->declare_parameter<std::string>(
       "trajectory_controller",

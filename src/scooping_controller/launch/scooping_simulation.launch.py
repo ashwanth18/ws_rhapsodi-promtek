@@ -332,7 +332,7 @@ def generate_launch_description():
         parameters=[
             {
                 "planning_group": "arm",
-                "eef_link": "tool_link",
+                "eef_link": "tcp_link",
                 "constrain_upright": False,
                 "upright_roll_tolerance_rad": 0.0872665,
                 "upright_pitch_tolerance_rad": 0.0872665,
@@ -350,7 +350,7 @@ def generate_launch_description():
         parameters=[
             {
                 "planning_group": "arm",
-                "eef_link": "tool_link",
+                "eef_link": "tcp_link",
                 "targets_yaml": targets_yaml,
                 "use_sim_time": use_sim_time,
             }
@@ -367,7 +367,7 @@ def generate_launch_description():
             {
                 "use_sim_time": use_sim_time,
                 "group": "arm",
-                "ik_frame": "tool_link",
+                "ik_frame": "tcp_link",
                 "frame_id": "base_link",
                 "pattern_offset_y": pattern_offset_y,
             },

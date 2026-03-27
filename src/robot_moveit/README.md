@@ -95,7 +95,7 @@ Start:
 ros2 run robot_moveit target_recorder_node --ros-args \
   -p planning_group:=arm \
   -p targets_yaml:=/absolute/path/to/targets.yaml \
-  -p eef_link:=tool_link \
+  -p eef_link:=tcp_link \
   -p pose_source:=auto   # tf | moveit | auto
 ```
 Parameters:

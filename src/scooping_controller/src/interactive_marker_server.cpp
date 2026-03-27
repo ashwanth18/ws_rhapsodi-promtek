@@ -28,6 +28,10 @@ using InteractiveMarkerControl = visualization_msgs::msg::InteractiveMarkerContr
 using Marker = visualization_msgs::msg::Marker;
 using MarkerArray = visualization_msgs::msg::MarkerArray;
 
+constexpr double kTcpOffsetX = 0.183;
+constexpr double kTcpOffsetY = 0.0;
+constexpr double kTcpOffsetZ = -0.072;
+
 struct MarkerSeed
 {
   std::string marker_name;
@@ -135,7 +139,8 @@ Marker make_origin_marker(const std::array<float, 3>& color, double size)
 Marker make_tool_mesh_marker(
   const std::array<float, 3>& color,
   const std::string& mesh_resource,
-  bool apply_visual_offset = true)
+  bool apply_visual_offset = true,
+  bool draw_relative_to_tcp = false)
 {
   Marker marker;
   marker.type = Marker::MESH_RESOURCE;
@@ -144,7 +149,11 @@ Marker make_tool_mesh_marker(
   marker.scale.x = 0.001;
   marker.scale.y = 0.001;
   marker.scale.z = 0.001;
-  if (apply_visual_offset) {
+  if (draw_relative_to_tcp) {
+    marker.pose.position.x = -kTcpOffsetX;
+    marker.pose.position.y = -kTcpOffsetY;
+    marker.pose.position.z = -kTcpOffsetZ;
+  } else if (apply_visual_offset) {
     marker.pose.position.y = -0.038;
     marker.pose.position.z = -0.03;
   }
@@ -282,9 +291,10 @@ private:
       visual_control.markers.push_back(make_cube_marker(seed.color, 0.035, 0.035, 0.035));
     } else {
       visual_control.markers.push_back(
-        make_tool_mesh_marker(seed.color, tool_mesh_resource_, false));
+        make_tool_mesh_marker(seed.color, tool_mesh_resource_, false, true));
     }
-    visual_control.markers.push_back(make_text_marker(seed.label, seed.color, 0.07, 0.04));
+    visual_control.markers.push_back(
+      make_text_marker(seed.label + " (TCP)", seed.color, 0.07, 0.04));
     int_marker.controls.push_back(visual_control);
 
     for (const auto& axis : {"x", "y", "z"}) {
@@ -313,9 +323,10 @@ private:
       visual_control.markers.push_back(make_cube_marker(goal_seed_.color, 0.04, 0.04, 0.04));
     } else {
       visual_control.markers.push_back(
-        make_tool_mesh_marker(goal_seed_.color, tool_mesh_resource_, false));
+        make_tool_mesh_marker(goal_seed_.color, tool_mesh_resource_, false, true));
     }
-    visual_control.markers.push_back(make_text_marker(goal_seed_.label, goal_seed_.color, 0.08, 0.045));
+    visual_control.markers.push_back(
+      make_text_marker(goal_seed_.label + " (TCP)", goal_seed_.color, 0.08, 0.045));
     int_marker.controls.push_back(visual_control);
 
     for (const auto& axis : {"x", "y", "z"}) {
@@ -493,7 +504,7 @@ private:
     legend.markers.push_back(make_legend_cube(id++, 0.02, -0.72, 0.20, goal_seed_.color));
     legend.markers.push_back(make_legend_text(
       id++,
-      "Move Goal marker: drag in RViz, then use panel Move/Record",
+      "Move Goal marker: white cube is tcp_link, mesh is offset from it",
       0.24,
       -0.72,
       0.20,

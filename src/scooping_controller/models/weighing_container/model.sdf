@@ -7,7 +7,7 @@
         <pose>0 0 0 0 0 0</pose>
         <geometry>
           <mesh>
-            <uri>model://scooping_container/meshes/weighing_container.STL</uri>
+            <uri>model://weighing_container/meshes/rs3_container.STL</uri>
             <scale>0.001 0.001 0.001</scale>
           </mesh>
         </geometry>
@@ -16,7 +16,7 @@
         <pose>0 0 0 0 0 0</pose>
         <geometry>
           <mesh>
-            <uri>model://scooping_container/meshes/weighing_container.STL</uri>
+            <uri>model://weighing_container/meshes/rs3_container.STL</uri>
             <scale>0.001 0.001 0.001</scale>
           </mesh>
         </geometry>
