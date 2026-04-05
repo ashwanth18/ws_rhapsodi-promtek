@@ -74,6 +74,14 @@ type DetailRow = {
   robot_mes_batch_end_sent: boolean
 }
 
+type PourStatusMsg = {
+  target_g?: number
+  band_threshold_g?: number
+  remaining_to_band_g?: number
+  active?: boolean
+  phase?: string
+}
+
 const WEIGHT_TOPIC: string =
   (import.meta as any).env.VITE_WEIGHT_TOPIC || '/weight'
 const WEBHOOK_PHASE_TOPIC: string =
@@ -84,13 +92,17 @@ const WEBHOOK_METADATA_TOPIC: string =
   (import.meta as any).env.VITE_WEBHOOK_METADATA_TOPIC || '/webhook_run/metadata'
 const RUN_STATE_TOPIC: string =
   (import.meta as any).env.VITE_RUN_STATE_TOPIC || '/orchestrator/run_state'
+const POUR_STATUS_TOPIC: string =
+  (import.meta as any).env.VITE_POUR_STATUS_TOPIC || '/pour_status'
+const VIBRATION_TOPIC: string =
+  (import.meta as any).env.VITE_VIBRATION_TOPIC || '/vibration/intensity'
 
 const TIMELINE_PHASES = [
   'Move To Scoop',
   'Scooping',
   'Move To Weigh',
   'Pouring',
-  'Return Home',
+  'Return To Scoop',
 ]
 
 function formatNumber(value: number | null | undefined, digits = 2): string {
@@ -173,12 +185,12 @@ function phaseSequence(detail: DetailRow | null): string {
         transportLeg += 1
         if (transportLeg === 1) return 'Start move to scoop'
         if (transportLeg === 2) return 'Start move to weigh'
-        return 'Start return home'
+        return 'Start return to scoop'
       }
       if (phase === 'transport_end') {
         if (transportLeg === 1) return 'Reached scoop position'
         if (transportLeg === 2) return 'Reached weigh position'
-        return 'Returned home'
+        return 'Returned to scoop'
       }
       if (phase === 'scoop_start') return 'Start scooping'
       if (phase === 'scoop_end') return 'Scooping complete'
@@ -195,6 +207,13 @@ function statusLabel(state: string | null): string {
   return state.replace(/_/g, ' ')
 }
 
+function formatPhaseLabel(phase: string | null | undefined): string {
+  if (!phase) return '—'
+  return phase
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 function App() {
   const navigate = useNavigate()
   const ros = useRos()
@@ -207,6 +226,8 @@ function App() {
   const [metadata, setMetadata] = useState<Metadata | null>(null)
   const [weight, setWeight] = useState<number | null>(null)
   const [lastWeightTs, setLastWeightTs] = useState<number | null>(null)
+  const [pourStatus, setPourStatus] = useState<PourStatusMsg | null>(null)
+  const [vibrationIntensity, setVibrationIntensity] = useState<number | null>(null)
   const [latestRun, setLatestRun] = useState<RobotRunRow | null>(null)
   const [latestDetail, setLatestDetail] = useState<DetailRow | null>(null)
   const [loading, setLoading] = useState(false)
@@ -265,6 +286,26 @@ function App() {
       }
     })
 
+    const pourStatusTopic = new ROSLIB.Topic({
+      ros: r,
+      name: POUR_STATUS_TOPIC,
+      messageType: 'robot_common_msgs/PourStatus',
+    })
+    pourStatusTopic.subscribe((msg: PourStatusMsg) => {
+      setPourStatus(msg)
+    })
+
+    const vibrationTopic = new ROSLIB.Topic({
+      ros: r,
+      name: VIBRATION_TOPIC,
+      messageType: 'std_msgs/Float64',
+    })
+    vibrationTopic.subscribe((msg: { data: number }) => {
+      if (typeof msg.data === 'number' && Number.isFinite(msg.data)) {
+        setVibrationIntensity(msg.data)
+      }
+    })
+
     const runStateTopic = new ROSLIB.Topic({
       ros: r,
       name: RUN_STATE_TOPIC,
@@ -279,6 +320,8 @@ function App() {
       activeTopic.unsubscribe()
       metadataTopic.unsubscribe()
       weightTopic.unsubscribe()
+      pourStatusTopic.unsubscribe()
+      vibrationTopic.unsubscribe()
       runStateTopic.unsubscribe()
     }
   }, [ros])
@@ -359,6 +402,20 @@ function App() {
 
   const weightStale =
     !lastWeightTs || Date.now() - lastWeightTs > 1500
+
+  const pourPhaseLabel = useMemo(() => {
+    if (pourStatus?.active) return formatPhaseLabel(pourStatus.phase)
+    if (livePhase === 'pour_start') return 'Starting'
+    if (livePhase === 'pour_end') return 'Complete'
+    return '—'
+  }, [livePhase, pourStatus])
+
+  const pourTelemetryVisible = showLiveTimeline && (
+    Boolean(pourStatus?.active) ||
+    livePhase === 'pour_start' ||
+    livePhase === 'pour_end' ||
+    (typeof vibrationIntensity === 'number' && vibrationIntensity > 0)
+  )
 
   const scalePct = useMemo(() => {
     if (typeof weight !== 'number' || typeof targetWeightG !== 'number') return 0
@@ -447,6 +504,26 @@ function App() {
               </span>
             </div>
             <PhaseTimeline phases={TIMELINE_PHASES} index={phaseIndex} />
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
+                <div className="text-xs uppercase tracking-wide text-[var(--text-faint)]">
+                  Pour Phase
+                </div>
+                <div className="mt-1 text-sm font-medium text-[var(--text-primary)]">
+                  {pourTelemetryVisible ? pourPhaseLabel : '—'}
+                </div>
+              </div>
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
+                <div className="text-xs uppercase tracking-wide text-[var(--text-faint)]">
+                  Vibration Intensity
+                </div>
+                <div className="mt-1 text-sm font-medium text-[var(--text-primary)]">
+                  {pourTelemetryVisible && typeof vibrationIntensity === 'number'
+                    ? vibrationIntensity.toFixed(2)
+                    : '—'}
+                </div>
+              </div>
+            </div>
             {/* <div className="mt-3 text-sm text-[var(--text-muted)]">
               {showLiveTimeline
                 ? livePhaseEvents.join(' -> ') || livePhase || 'Waiting for execution phase markers...'

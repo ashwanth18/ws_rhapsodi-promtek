@@ -1,124 +1,148 @@
-# ROS 2 Jazzy Docker (Raspberry Pi 5 / Raspberry Pi OS)
+# ROS 2 Jazzy Docker
 
-This workspace can be built into a container image that includes the full colcon overlay at `/ws/install`.
+This repo now distinguishes between:
 
-For a complete Laptop + Raspberry Pi guide, see the repo root `README.md`.
+- `docker/ros/Dockerfile.dev`: local development image
+- `docker/ros/Dockerfile.prod`: production/runtime image for registry push and Pi consumption
+- `docker-compose.yml`: local build/dev workflow
+- `docker-compose.prod.yml`: production counterpart to `docker-compose.yml` using prebuilt images
+- `docker-compose.robot-prod.yml`: full webhook physical robot stack for Pi deployment
+- `docker-compose.lightsout.yml`: special-purpose lightsout/runtime stack for the training/robot-run flow
 
-## Prereqs on the Pi
+MoveIt and MoveIt Task Constructor are expected from the Jazzy apt underlay on both `amd64` and
+`arm64`; they are not vendored from source in this repo.
 
-- Install Docker Engine + Compose plugin on Raspberry Pi OS (64-bit).
-- Use **ARM64** userspace (recommended on Pi 5).
+## Prereqs
 
-## Build the image
+- Docker Engine + Compose plugin
+- For Raspberry Pi 5, use a 64-bit userspace and prefer pulling prebuilt multi-arch images instead
+  of building large ROS images directly on the Pi
 
-From the repo root:
+## Build local ROS images
 
-```bash
-docker build -t rhapsodi-promtek:jazzy .
-```
-
-If the build fails with `cc1plus ... Killed` / `cannot allocate memory`, rebuild with lower parallelism:
-
-```bash
-docker build --build-arg COLCON_PARALLEL_WORKERS=1 -t rhapsodi-promtek:jazzy .
-```
-
-## Run (recommended for ROS 2 discovery)
+Production-style runtime image:
 
 ```bash
-docker run --rm -it --net=host --ipc=host rhapsodi-promtek:jazzy bash
+docker build \
+  --build-arg COLCON_PARALLEL_WORKERS=1 \
+  -f docker/ros/Dockerfile.prod \
+  -t rhapsodi-promtek:ros-prod-local .
 ```
 
-Inside the container your environment is already sourced (ROS + `/ws/install` overlay).tage Example:
+Development shell image:
 
 ```bash
-ros2 pkg list | head
+docker build \
+  --build-arg COLCON_PARALLEL_WORKERS=8 \
+  -f docker/ros/Dockerfile.dev \
+  -t rhapsodi-promtek:ros-dev-local .
 ```
 
-## Using docker compose
+## Run with compose
 
-- Runtime (no source mounts):
+Runtime shell (local build, baked `/ws/install` overlay):
 
 ```bash
 docker compose run --rm runtime
 ```
 
-- Dev (mounts your local `./src` so you can edit and rebuild):
+Dev shell (bind-mounts the repo at `/workspace`):
 
 ```bash
 docker compose run --rm dev
 ```
 
-If you change code in dev mode, rebuild the overlay inside the container:
+If you rebuild from the mounted repo inside `dev`:
 
 ```bash
+cd /workspace
 source /opt/ros/jazzy/setup.bash
-cd /ws
-colcon build --merge-install
-source /ws/install/setup.bash
+vcs import src < src/ros2.repos
+rosdep install --from-paths src --ignore-src -r -y --rosdistro jazzy
+colcon build --merge-install --parallel-workers 1 --packages-skip micro_ros_agent
+source install/setup.bash
 ```
 
-## Dashboard (React + rosbridge)
+## Dashboard
 
-Your React dashboard lives under `src/dashboard` and uses `roslib` to connect to rosbridge.
-
-- **Default URL**: `ws://localhost:9090`
-- **Override**: set `VITE_ROSBRIDGE_URL` at build time (it gets baked into the bundle)
-
-Build + run the dashboard:
+The dashboard is built from `docker/dashboard.Dockerfile` so its build args stay consistent with the
+registry image.
 
 ```bash
-VITE_ROSBRIDGE_URL=ws://localhost:9090 DASHBOARD_PORT=8080 docker compose up --build dashboard
-```
-
-Run rosbridge in the ROS container (port 9090):
-
-```bash
-docker compose run --rm --service-ports runtime bash -lc "ros2 launch niryo_robot_simulation_client rosbridge_websocket_fixed.launch.py address:=0.0.0.0 port:=9090"
-```
-
-If you open the dashboard from another machine (not the Pi), set:
-
-```bash
-VITE_ROSBRIDGE_URL=ws://<pi-ip>:9090 docker compose up --build dashboard
-```
-
-## Sensor lifecycle (Docker-native)
-
-Start lifecycle launchers (camera + scale + micro-ROS):
-
-```bash
-docker compose up realsense_launcher scale_launcher micro_ros_launcher
-```
-
-The dashboard uses lifecycle services to start/stop each sensor.
-If your RealSense info topic differs, set:
-
-```bash
-VITE_REALSENSE_CAMERA_INFO_TOPIC=/camera/camera/color/camera_info \
+VITE_API_BASE=http://localhost:8000 \
+VITE_ROSBRIDGE_URL=ws://localhost:9090 \
+VITE_MICROROS_HEARTBEAT_TOPIC=/microros/heartbeat \
 docker compose up --build dashboard
 ```
 
-## Open a container shell
+## Pi / production pull model
 
-Enter a running container and list ROS 2 topics:
+The image-backed stack in `docker-compose.prod.yml` mirrors the same service architecture as
+`docker-compose.yml`, but expects prebuilt tags such as:
+
+- `iserenity/rhapsodi-promtek:ros-prod`
+- `iserenity/rhapsodi-promtek:backend`
+- `iserenity/rhapsodi-promtek:processing`
+- `iserenity/rhapsodi-promtek:webhook`
+
+Start it on a Pi with:
 
 ```bash
-docker compose exec rosbridge bash -lc "source /opt/ros/jazzy/setup.bash && source /ws/install/setup.bash && ros2 topic list"
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
 ```
 
-## Hardware access (serial/USB/cameras)
+## Lightsout stack
 
-For drivers that need device access on the Pi, add one of the following when running:
+`docker-compose.lightsout.yml` is intentionally different. It is a special-purpose runtime stack for
+the lightsout / robot-run workflow and includes services like `pouring_controller`, `orchestrator`,
+`weight_sim`, and `data_collection` that are not part of the generic app-stack architecture.
 
-- Serial device example:
+## Robot-prod stack
+
+`docker-compose.robot-prod.yml` is the one-command Pi deployment for the webhook physical robot flow.
+It starts:
+
+- the Pi-side app services (`db`, `backend`, `processing`, `webhook_service`)
+- `rosbridge`
+- `robot_start_adapter`
+- `scooping_stack`
+- `scale_launcher`
+- `micro_ros_launcher`
+- `pouring_controller`
+- `data_collection`
+- `orchestrator`
+
+Use it on the Pi with:
 
 ```bash
-docker run --rm -it --net=host --ipc=host --device=/dev/ttyACM0 rhapsodi-promtek:jazzy bash
+cp robot-prod.env.example robot-prod.env
+# edit robot-prod.env for this Pi / robot
+docker compose --env-file robot-prod.env -f docker-compose.robot-prod.yml pull
+docker compose --env-file robot-prod.env -f docker-compose.robot-prod.yml up -d
 ```
 
-- Broad device access (use only if needed):
+The recommended per-robot settings file is `robot-prod.env`, created from
+`robot-prod.env.example`.
+
+Recommended operator setup:
+
+- run the dashboard on your laptop and point it to the Pi backend/rosbridge
+- keep the Pi focused on robot runtime services
+- if you separately host the dashboard on the Pi, build the dashboard image with Pi-reachable `VITE_API_BASE` and `VITE_ROSBRIDGE_URL` values because they are baked into the static app at build time
+
+## Multi-arch push
+
+Use the helper:
 
 ```bash
-docker run --rm -it --net=host --ipc=host --privileged rhapsodi-promtek:jazzy bash
+bash scripts/buildx_push_images.sh
+```
+
+or build manually with:
+
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -f docker/ros/Dockerfile.prod \
+  -t iserenity/rhapsodi-promtek:ros-prod --push .
 ```

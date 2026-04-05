@@ -49,7 +49,7 @@ source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ros2 run pouring_controller pour_server_node --ros-args \
   -p weight_topic:=/weight \
-  -p vibration_topic:=/motor_speed \
+  -p vibration_topic:=/vibration/intensity \
   -p joint_state_topic:=/joint_states
 ```
 
@@ -107,7 +107,7 @@ source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ros2 run pouring_controller pour_server_node --ros-args \
   -p weight_topic:=/weight \
-  -p vibration_topic:=/motor_speed \
+  -p vibration_topic:=/vibration/intensity \
   -p joint_state_topic:=/joint_states
 ```
 

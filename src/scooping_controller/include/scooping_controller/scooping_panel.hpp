@@ -10,14 +10,17 @@
 #include <robot_common_msgs/srv/record_target.hpp>
 #include <std_msgs/msg/int32.hpp>
 #include <std_srvs/srv/trigger.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 #endif
 
 #include <rviz_common/panel.hpp>
 
 #include <QComboBox>
+#include <QCheckBox>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QSlider>
 #include <QTimer>
 
 #include <map>
@@ -42,6 +45,9 @@ private Q_SLOTS:
   void onExecuteClicked();
   void onExecuteContinuousClicked();
   void onExecuteWaypointMotionClicked();
+  void onPreviewParameterizedClicked();
+  void onPlanParameterizedClicked();
+  void onExecuteParameterizedClicked();
   void onApplyMotionTuningClicked();
   void onShiftOffsetPositiveClicked();
   void onShiftOffsetNegativeClicked();
@@ -68,6 +74,33 @@ private:
   void showAllScoopMarkers();
   void applyMotionTuning();
   void adjustPatternOffset(double delta);
+  void previewParameterizedTemplate();
+  void callParameterizedTemplateService(
+    const QString& action_name,
+    const rclcpp::Client<Trigger>::SharedPtr& client);
+  bool applyParameterizedTemplateParameters();
+  void publishParameterizedPreviewMarkers();
+  void publishManualScoopPreviewMarkers();
+  bool readParameterizedTemplateFields(
+    double& x,
+    double& y,
+    double& z_initial,
+    double& z_final,
+    double& sweep_length,
+    double& pitch_rad,
+    double& hover_height,
+    double& transport_pitch_rad,
+    double& lift_height);
+  std::vector<geometry_msgs::msg::Pose> generateParameterizedTemplatePoses(
+    double x,
+    double y,
+    double z_initial,
+    double z_final,
+    double sweep_length,
+    double pitch_rad,
+    double hover_height,
+    double transport_pitch_rad,
+    double lift_height) const;
   void refreshTargetsFromYaml();
   void loadSelectedTarget();
   bool tryGetTargetsYamlPath(std::string& yaml_path);
@@ -75,6 +108,11 @@ private:
     const rclcpp::AsyncParametersClient::SharedPtr& client,
     std::string& yaml_path);
   bool loadNamedTargetsFromYaml(const std::string& yaml_path, QString& error_message);
+  bool saveNamedTargetToYaml(
+    const std::string& yaml_path,
+    const std::string& target_name,
+    const geometry_msgs::msg::PoseStamped& pose,
+    QString& error_message);
   bool typedPoseToStamped(geometry_msgs::msg::PoseStamped& pose, QString& error_message) const;
   bool typedEditorsToPose(
     QLineEdit* x_edit,
@@ -118,15 +156,45 @@ private:
   QLineEdit* pitch_edit_;
   QLineEdit* yaw_edit_;
   QLineEdit* velocity_scale_edit_;
+  QSlider* velocity_scale_slider_;
   QLineEdit* acceleration_scale_edit_;
+  QSlider* acceleration_scale_slider_;
+  QLineEdit* pattern_offset_x_edit_;
+  QSlider* pattern_offset_x_slider_;
   QLineEdit* pattern_offset_y_edit_;
+  QSlider* pattern_offset_y_slider_;
+  QLineEdit* pattern_offset_z_edit_;
+  QSlider* pattern_offset_z_slider_;
   QLineEdit* offset_step_edit_;
+  QLineEdit* sweep_scale_edit_;
+  QSlider* sweep_scale_slider_;
+  QLineEdit* pitch_offset_edit_;
+  QSlider* pitch_offset_slider_;
+  QLineEdit* lift_offset_z_edit_;
+  QSlider* lift_offset_z_slider_;
+  QCheckBox* post_lift_vibration_enabled_checkbox_;
+  QLineEdit* post_lift_vibration_duration_edit_;
+  QSlider* post_lift_vibration_duration_slider_;
+  QLineEdit* post_lift_vibration_intensity_edit_;
+  QSlider* post_lift_vibration_intensity_slider_;
+  QLineEdit* template_x_edit_;
+  QLineEdit* template_y_edit_;
+  QLineEdit* template_z_initial_edit_;
+  QLineEdit* template_z_final_edit_;
+  QLineEdit* template_sweep_length_edit_;
+  QLineEdit* template_pitch_edit_;
+  QLineEdit* template_hover_height_edit_;
+  QLineEdit* template_transport_pitch_edit_;
+  QLineEdit* template_lift_height_edit_;
   QPushButton* save_button_;
   QPushButton* load_button_;
   QPushButton* plan_button_;
   QPushButton* execute_button_;
   QPushButton* execute_continuous_button_;
   QPushButton* execute_waypoint_motion_button_;
+  QPushButton* preview_parameterized_button_;
+  QPushButton* plan_parameterized_button_;
+  QPushButton* execute_parameterized_button_;
   QPushButton* move_goal_button_;
   QPushButton* apply_typed_pose_button_;
   QPushButton* apply_scoop_pose_button_;
@@ -148,6 +216,8 @@ private:
   rclcpp::Client<Trigger>::SharedPtr execute_client_;
   rclcpp::Client<Trigger>::SharedPtr execute_continuous_client_;
   rclcpp::Client<Trigger>::SharedPtr execute_waypoint_motion_client_;
+  rclcpp::Client<Trigger>::SharedPtr plan_parameterized_client_;
+  rclcpp::Client<Trigger>::SharedPtr execute_parameterized_client_;
   rclcpp::Client<RecordTarget>::SharedPtr record_target_client_;
   rclcpp::AsyncParametersClient::SharedPtr scooping_params_client_;
   rclcpp::AsyncParametersClient::SharedPtr move_to_params_client_;
@@ -156,6 +226,8 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::PoseArray>::SharedPtr scoop_poses_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr target_goal_sub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr scoop_poses_cmd_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr parameterized_preview_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr manual_preview_pub_;
   rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr scoop_marker_focus_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr target_goal_cmd_pub_;
   std::vector<geometry_msgs::msg::Pose> latest_scoop_poses_;

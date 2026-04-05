@@ -19,6 +19,10 @@ def generate_launch_description():
     poses_yaml = LaunchConfiguration("poses_yaml")
     targets_yaml = LaunchConfiguration("targets_yaml")
     pattern_offset_y = LaunchConfiguration("pattern_offset_y")
+    post_lift_vibration_enabled = LaunchConfiguration("post_lift_vibration_enabled")
+    post_lift_vibration_duration_s = LaunchConfiguration("post_lift_vibration_duration_s")
+    post_lift_vibration_intensity = LaunchConfiguration("post_lift_vibration_intensity")
+    post_lift_vibration_publish_rate_hz = LaunchConfiguration("post_lift_vibration_publish_rate_hz")
     container_scene_yaml = LaunchConfiguration("container_scene_yaml")
     drivers_list_file = LaunchConfiguration("drivers_list_file")
     whitelist_params_file = LaunchConfiguration("whitelist_params_file")
@@ -56,6 +60,26 @@ def generate_launch_description():
         "pattern_offset_y",
         default_value="0.0",
         description="Translate all scoop poses along base_link Y before planning",
+    )
+    declare_post_lift_vibration_enabled = DeclareLaunchArgument(
+        "post_lift_vibration_enabled",
+        default_value="true",
+        description="Enable post-lift shake-off by default",
+    )
+    declare_post_lift_vibration_duration_s = DeclareLaunchArgument(
+        "post_lift_vibration_duration_s",
+        default_value="5.0",
+        description="Default post-lift shake-off duration in seconds",
+    )
+    declare_post_lift_vibration_intensity = DeclareLaunchArgument(
+        "post_lift_vibration_intensity",
+        default_value="0.5",
+        description="Default post-lift shake-off intensity in normalized 0..1 units",
+    )
+    declare_post_lift_vibration_publish_rate_hz = DeclareLaunchArgument(
+        "post_lift_vibration_publish_rate_hz",
+        default_value="10.0",
+        description="Keepalive publish rate for post-lift shake-off",
     )
     declare_container_scene_yaml = DeclareLaunchArgument(
         "container_scene_yaml",
@@ -228,6 +252,11 @@ def generate_launch_description():
                 "upright_roll_tolerance_rad": 0.0872665,
                 "upright_pitch_tolerance_rad": 0.0872665,
                 "upright_yaw_tolerance_rad": 3.14159265,
+                "constrain_transport_pitch": False,
+                "transport_pitch_from_horizontal_rad": -0.34906585,
+                "transport_roll_tolerance_rad": 3.14159265,
+                "transport_pitch_tolerance_rad": 0.0872665,
+                "transport_yaw_tolerance_rad": 3.14159265,
                 "targets_yaml": targets_yaml,
                 "trajectory_action_server": "/niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory",
                 "use_sim_time": False,
@@ -265,6 +294,10 @@ def generate_launch_description():
                 "trajectory_controller": "niryo_robot_follow_joint_trajectory_controller",
                 "trajectory_action_server": "/niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory",
                 "pattern_offset_y": pattern_offset_y,
+                "post_lift_vibration_enabled": post_lift_vibration_enabled,
+                "post_lift_vibration_duration_s": post_lift_vibration_duration_s,
+                "post_lift_vibration_intensity": post_lift_vibration_intensity,
+                "post_lift_vibration_publish_rate_hz": post_lift_vibration_publish_rate_hz,
             },
         ],
     )
@@ -293,6 +326,10 @@ def generate_launch_description():
             declare_poses_yaml,
             declare_targets_yaml,
             declare_pattern_offset_y,
+            declare_post_lift_vibration_enabled,
+            declare_post_lift_vibration_duration_s,
+            declare_post_lift_vibration_intensity,
+            declare_post_lift_vibration_publish_rate_hz,
             declare_container_scene_yaml,
             declare_drivers_list_file,
             declare_whitelist_params_file,

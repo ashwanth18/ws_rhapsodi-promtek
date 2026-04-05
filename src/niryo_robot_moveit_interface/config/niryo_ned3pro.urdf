@@ -161,6 +161,7 @@
       </geometry>
     </collision>
     </link>
+  <link name="tcp_link"/>
   <!-- Joints -->
   <joint name="joint_world" type="fixed">
     <parent link="world"/>
@@ -213,6 +214,11 @@
     <parent link="hand_link"/>
     <child link="tool_link"/>
     <origin rpy="0 0 0" xyz="0 0 0.0275"/>
+  </joint>
+  <joint name="tool_tcp_joint" type="fixed">
+    <parent link="tool_link"/>
+    <child link="tcp_link"/>
+    <origin rpy="0 0 0" xyz="0.183 0 -0.072"/>
   </joint>
   <joint name="joint_led_ring" type="fixed">
     <parent link="world"/>

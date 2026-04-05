@@ -12,12 +12,12 @@ ControlCommand PidVibration::update(const ControlContext & ctx)
   const double deriv = (err - prev_err_) / dt;
   prev_err_ = err;
 
-  double u = kp * err + ki * integ_ + kd * deriv;
+  double u = ff_bias + kp * err + ki * integ_ + kd * deriv;
   u = std::clamp(u, min_, max_);
 
   ControlCommand cmd;
   cmd.vibration_duty = u;
-  cmd.valve_open = std::clamp(valve_bias, 0.0, 1.0);
+  cmd.valve_open = 0.0;
   cmd.incline_deg = incline_fixed_deg;
   return cmd;
 }

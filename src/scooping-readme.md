@@ -563,3 +563,192 @@ Use this order on hardware:
 4. Tune `container_scene_real.yaml` until the RViz container markers and collision scene match reality.
 5. Save the five scoop poses to `poses_real.yaml`.
 6. Call `/plan_scoop` first, then execute free-space tests before approaching the real scooping container.
+
+## Manual 5-pose parameterization
+
+The manual 5-pose workflow now supports a small set of shape controls so you can reuse one good
+hand-authored scoop pattern without re-recording every pose.
+
+### Manual tuning parameters
+
+The RViz panel exposes:
+
+* `offset_x`
+* `offset_y`
+* `offset_z`
+* `sweep_scale`
+* `pitch_offset`
+* `lift_offset_z`
+
+The corresponding node parameters are:
+
+* `pattern_offset_x`
+* `pattern_offset_y`
+* `pattern_offset_z`
+* `manual_sweep_scale`
+* `manual_pitch_offset_rad`
+* `manual_lift_offset_z`
+
+### How they affect the 5 poses
+
+The authored poses are still:
+
+1. `Approach`
+2. `Contact`
+3. `Scoop`
+4. `Lift`
+5. `Transport Ready`
+
+The adjustments are applied like this:
+
+* `offset_x`, `offset_y`, `offset_z` translate all five poses together in `base_link`
+* `sweep_scale` rescales the motion from `Contact` onward, so `Scoop`, `Lift`, and
+  `Transport Ready` move farther or shorter relative to `Contact`
+* `pitch_offset` adds a common TCP pitch bias to all five poses
+* `lift_offset_z` raises or lowers `Lift` and `Transport Ready`
+
+This keeps the overall style of the manually tuned scoop while letting you test nearby variants.
+
+### RViz preview
+
+The `Manual Scoop Preview` display now reflects the same manual tuning parameters used by
+`/plan_scoop` and `/execute_scoop`, so the preview line should match the motion the planner sees.
+
+### Post-lift shake-off
+
+The manual scoop executor can now trigger a short vibration burst after `Lift` and before
+`Transport Ready`.
+
+Parameters:
+
+* `post_lift_vibration_enabled`
+* `post_lift_vibration_duration_s`
+* `post_lift_vibration_intensity`
+* `post_lift_vibration_publish_rate_hz`
+* `post_lift_vibration_topic`
+
+Behavior:
+
+* The staged `/execute_scoop` flow pauses after the `Lift` stage and streams the configured
+  normalized intensity on `/vibration/intensity` for the configured duration before publishing
+  `0.0` and continuing to `Transport Ready`
+* The waypoint-style manual execution path does the same pause between its contact/scoop/lift block
+  and the final transport move
+* The continuous manual execution mode now runs continuously through `Lift`, performs the same
+  shake-off pause, then executes the final `Transport Ready` move
+* The keepalive stream defaults to `10 Hz`, which is suitable for a micro-ROS vibration watchdog
+  like the Teensy firmware timeout described in `scoop_microros`
+
+## Parameterized scooping workflow
+
+The scooping panel now includes a second workflow called `Scooping Parameter Workflow`.
+
+This mode does not replace the manual 5-marker editor. It adds a parameterized template that
+generates and executes a scooping motion from a compact set of parameters in `base_link`.
+
+### Template definition
+
+The parameterized sequence is:
+
+1. Hover above `(x, y)` at `hover_height`
+2. Plunge vertically to `(x, y, z_i)`
+3. Sweep forward to `(x + L, y, z_f)`
+4. Tilt upward in place to the retain pitch
+5. Lift vertically to `lift_height`
+
+This is a forward scoop in the robot frame. The sweep is along `+X`, not `+Y`.
+
+The TCP/tool point used by planning is `tcp_link`, but the target coordinates are expressed in
+`base_link`.
+
+The pitch fields are interpreted as the actual `tcp_link` pitch angle used for planning and
+preview. There is no hidden `90 deg` conversion.
+
+### Parameters
+
+The panel exposes:
+
+* `x`, `y`
+* `z_i`
+* `z_f`
+* `L`
+* `tcp_pitch`
+* `hover_height`
+* `retain_tcp_pitch`
+* `lift_height`
+
+Current node parameters in `scooping_mtc_node`:
+
+* `template_x`
+* `template_y`
+* `template_z_initial`
+* `template_z_final`
+* `template_sweep_length`
+* `template_pitch_rad`
+* `template_hover_height`
+* `template_transport_pitch_rad`
+* `template_lift_height`
+
+### RViz preview
+
+The panel publishes a live preview on:
+
+* `/parameterized_scoop_preview`
+
+The default RViz config displays this automatically as `Parameterized Scoop Preview`.
+
+The preview shows:
+
+* the full template path as a line
+* stage points for `Hover`, `Plunge`, `Sweep End`, `Retain`, and `Lift`
+* arrows showing the working and retain orientations
+
+`Preview Template` also pushes the generated poses into the existing 5 scoop markers so the manual
+workflow and parameterized workflow can be compared visually.
+
+### Services
+
+New services on `scooping_mtc_node`:
+
+* `/plan_parameterized_scoop`
+* `/execute_parameterized_scoop`
+
+Existing manual services are unchanged:
+
+* `/plan_scoop`
+* `/execute_scoop`
+* `/execute_scoop_continuous`
+* `/execute_scoop_waypoint_motion`
+
+### Starter parameter set
+
+For the current scooping container placement in simulation, start with:
+
+* `x = 0.300`
+* `y = 0.000`
+* `z_i = 0.060`
+* `z_f = 0.080`
+* `L = 0.100`
+* `tcp_pitch = 25 deg`
+* `hover_height = 0.240`
+* `retain_tcp_pitch = 15 deg`
+* `lift_height = 0.240`
+
+This is intended as a conservative free-space test that scoops straight forward in front of the
+robot.
+
+### Recommended usage
+
+1. Launch the scooping stack and RViz.
+2. Look at the `Parameterized Scoop Preview` display in RViz.
+3. Adjust the template fields in the panel.
+4. Confirm the preview line stays inside the scooping container.
+5. Click `Plan Parameterized Scoop`.
+6. Only then click `Execute Parameterized Scoop`.
+
+If the first hover pose is still reported as `GOAL_STATE_INVALID`, reduce the reach or pitch:
+
+* move `x` closer to the robot
+* reduce `L`
+* reduce `theta`
+* increase `hover_height`

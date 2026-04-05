@@ -34,6 +34,8 @@
 
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <exec_depend>moveit_ros_move_group</exec_depend>
+  <exec_depend>moveit_ros_visualization</exec_depend>
   <exec_depend>niryo_ned_ros2_driver</exec_depend>
   <exec_depend>niryo_ned3pro_moveit_config</exec_depend>
   <exec_depend>niryo_robot_description</exec_depend>
@@ -42,6 +44,7 @@
   <exec_depend>robot_state_publisher</exec_depend>
   <exec_depend>robot_moveit</exec_depend>
   <exec_depend>rviz2</exec_depend>
+  <exec_depend>warehouse_ros_sqlite</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

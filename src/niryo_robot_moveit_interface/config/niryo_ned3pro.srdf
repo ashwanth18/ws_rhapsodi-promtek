@@ -18,6 +18,7 @@
         <joint name="joint_5"/>
         <joint name="joint_6"/>
         <joint name="hand_tool_joint"/>
+        <link name="tcp_link"/>
     </group>
     
     <!--GROUP STATES: Purpose: Define a named state for a group, in terms of joint values that are associated with a set of joints defined by a group-->

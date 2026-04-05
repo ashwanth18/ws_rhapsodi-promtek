@@ -1,6 +1,8 @@
 # pouring_controller
 
-Action server that controls powder pouring using a weight feedback loop, per-phase vibration, and optional tilt via joint trajectory. Works with a load cell publishing weight and a motor driver topic for vibration.
+Action server that controls powder pouring using a weight feedback loop and normalized vibration
+intensity output. It keeps the existing `/pour_to_target` action contract while moving the actuator
+side to `/vibration/intensity`.
 
 ## Node: pour_server_node
 
@@ -9,7 +11,7 @@ Action server that controls powder pouring using a weight feedback loop, per-pha
   - Float64 `weight_topic` (default `/weight`)
   - JointState `joint_state_topic` (default `/joint_states`)
 - Publications:
-  - Int32 `vibration_topic` raw 0..255 (default `/motor_speed`)
+  - Float64 `vibration_topic` normalized 0..1 (default `/vibration/intensity`)
   - Float64 `valve_topic` (default `/valve_control`)
   - Float64 `incline_topic` (default `/incline_control`)
 - Optional: FollowJointTrajectory client to tilt a configured joint
@@ -30,6 +32,10 @@ Feedback
 
 ## Phase logic (percentage bands)
 
+- Initial phase is target-size aware:
+  - start in `TRICKLE` when `target_weight <= start_in_trickle_below_g`
+  - else start in `FINE` when `target_weight <= start_in_fine_below_g`
+  - else start in `COARSE`
 - COARSE → SETTLE when `|target - filtered| ≤ coarse_threshold × target`
 - SETTLE lasts `settle_time_s` seconds
 - SETTLE → FINE after `settle_time_s` elapses
@@ -40,18 +46,49 @@ Feedback
 ## Parameters (key)
 
 - `weight_topic` (string, `/weight`)
-- `vibration_topic` (string, `/motor_speed`) [Int32]
+- `vibration_topic` (string, `/vibration/intensity`) [Float64, 0..1]
 - `valve_topic` (string, `/valve_control`), `incline_topic` (string, `/incline_control`) [Float64]
 - `joint_state_topic` (string, `/joint_states`)
 - `ema_alpha` (double, 0.2), `sample_rate_hz` (double, 12.0), `stale_ms` (double, 500.0)
 - `coarse_threshold` (double, e.g. 0.10), `fine_threshold` (double, e.g. 0.02)
+- `start_in_fine_below_g` (double, default `40.0`): skip coarse and begin in `FINE`
+  for smaller pour targets
+- `start_in_trickle_below_g` (double, default `10.0`): skip straight to `TRICKLE`
+  for very small top-up pours
 - `settle_time_s` (double), `hold_within_tol_count` (int), `final_settle_time_s` (double)
-- Per-phase vibration raw (Int32 0..255):
-  - `coarse_vibration_raw`, `settle_vibration_raw`, `fine_vibration_raw`, `trickle_vibration_raw`
+- `min_progress_g` (double, default `0.5`): minimum increase in net poured mass that counts as progress
+- `no_progress_timeout_s` (double, default `2.0`): abort if progress is below `min_progress_g`
+  for longer than this during `COARSE` or `FINE`
+- Per-phase normalized vibration tuning:
+  - `coarse_vibration_intensity`, `settle_vibration_intensity`, `fine_vibration_intensity`,
+    `trickle_vibration_intensity`
+  - `trickle_pulse_ms`, `trickle_pause_ms`
+- PI tuning when `control_law_type:=pid`:
+  - `pid_kp`, `pid_ki`, `pid_kd`, `pid_feedforward_intensity`, `pid_integral_limit`
 - Optional tilt (FollowJointTrajectory):
   - `tilt_joint_name`, `traj_action_server`, `coarse_tilt_deg`, `fine_tilt_deg`, `trickle_tilt_deg`, `joint_move_time_s`
 
 The runtime server and `/pour_status` UI topic both operate in grams.
+
+### Control behavior
+
+The action goal still uses grams of net mass to add on top of the current baseline. Internally the
+controller now publishes normalized vibration intensity and uses the same live `/weight` stream to
+drive phase transitions and stop conditions:
+
+* `COARSE`: high approach intensity to get flow started quickly on larger pour targets
+* `SETTLE`: low or zero intensity while the scale settles
+* `FINE`: controller output capped by `fine_vibration_intensity`; can also be the starting phase for
+  medium-sized remainder pours
+* `TRICKLE`: controller output capped by `trickle_vibration_intensity` and optionally pulsed using
+  `trickle_pulse_ms` and `trickle_pause_ms`; can also be the starting phase for very small top-ups
+
+When `control_law_type:=bangbang`, the per-phase intensities act as a simple robust default.
+When `control_law_type:=pid`, the controller uses feedforward plus PI on the net poured mass while
+still respecting the phase caps above.
+
+Because the controller publishes every control cycle, it also satisfies a micro-ROS actuator
+watchdog that expects repeated keepalive messages while vibration is active.
 
 ## Run
 
@@ -64,9 +101,10 @@ source install/setup.bash
 Start server (example):
 ```bash
 ros2 run pouring_controller pour_server_node --ros-args \
-  -p weight_topic:=/weight -p vibration_topic:=/motor_speed -p joint_state_topic:=/joint_states \
+  -p weight_topic:=/weight -p vibration_topic:=/vibration/intensity -p joint_state_topic:=/joint_states \
   -p coarse_threshold:=0.10 -p fine_threshold:=0.02 -p settle_time_s:=0.8 -p hold_within_tol_count:=10 -p ema_alpha:=0.2 \
-  -p coarse_vibration_raw:=210 -p settle_vibration_raw:=178 -p fine_vibration_raw:=128 -p trickle_vibration_raw:=90 \
+  -p coarse_vibration_intensity:=0.82 -p settle_vibration_intensity:=0.0 -p fine_vibration_intensity:=0.35 -p trickle_vibration_intensity:=0.12 \
+  -p trickle_pulse_ms:=120 -p trickle_pause_ms:=180 \
   -p tilt_joint_name:=joint_5 -p coarse_tilt_deg:=6 -p fine_tilt_deg:=3 -p trickle_tilt_deg:=1 -p joint_move_time_s:=0.5
 ```
 
@@ -94,9 +132,14 @@ PY
 - Tune:
   - Bands: `coarse_threshold`, `fine_threshold`
   - Stabilization: `settle_time_s`, `hold_within_tol_count`, `final_settle_time_s`
-  - Per-phase vibration and tilt
+  - Stall detection: `min_progress_g`, `no_progress_timeout_s`
+  - Per-phase vibration intensity and trickle pulsing
+  - PI gains and feedforward if you switch to `control_law_type:=pid`
 
 ## Notes
 
 - SETTLE can be disabled with `-p settle_time_s:=0`.
-- On cancel: vibration=0 (Int32), valve=incline=0.0.
+- On cancel, success, abort, and timeout: vibration returns to `0.0`.
+- If net poured mass does not increase enough for `no_progress_timeout_s`, the action exits early with
+  `message="No progress timeout"` and `need_rescoop=true`.
+- `pouring_controller` should be treated as the authoritative vibration owner while a pour is active.

@@ -33,7 +33,7 @@ export default function ControlsPage() {
   const [lastWeight, setLastWeight] = useState<number | null>(null)
   const [lastCamera, setLastCamera] = useState<number | null>(null)
   const [lastVibrationSent, setLastVibrationSent] = useState<number | null>(null)
-  const [vibValue, setVibValue] = useState<number>(30)
+  const [vibValue, setVibValue] = useState<number>(0.3)
   const [scaleLifecycleStatus, setScaleLifecycleStatus] = useState<LifecycleStatus>('disconnected')
   const [scaleLifecycleLabel, setScaleLifecycleLabel] = useState<string>('unknown')
   const [scalePending, setScalePending] = useState<'start' | 'stop' | null>(null)
@@ -366,7 +366,7 @@ export default function ControlsPage() {
   const publishVibration = () => {
     // Simple publisher example. In a real system you might wrap this in a debounced input.
     if (!ros) return
-    const pub = new ROSLIB.Topic({ ros, name: '/motor_speed', messageType: 'std_msgs/Int32' })
+    const pub = new ROSLIB.Topic({ ros, name: '/vibration/intensity', messageType: 'std_msgs/Float64' })
     pub.publish(new ROSLIB.Message({ data: vibValue }))
     setLastVibrationSent(Date.now())
   }
@@ -517,10 +517,10 @@ export default function ControlsPage() {
               <div className="flex flex-col gap-3">
                 <h3 className="text-lg font-semibold">Vibration</h3>
                 <div className="flex items-center gap-2"><span className="text-sm text-[var(--text-secondary)]">Status</span> <StatusBadge status={vibrationPubStatus} /></div>
-                <div className="text-xs text-[var(--text-muted)]">Publisher → /motor_speed (std_msgs/Int32)</div>
+                <div className="text-xs text-[var(--text-muted)]">Publisher → /vibration/intensity (std_msgs/Float64)</div>
                 <div className="flex items-center gap-3">
-                  <input type="range" min={0} max={255} value={vibValue} onChange={(e) => setVibValue(parseInt(e.target.value))} className="w-full" />
-                  <span className="w-10 text-right text-sm">{vibValue}</span>
+                  <input type="range" min={0} max={1} step={0.01} value={vibValue} onChange={(e) => setVibValue(parseFloat(e.target.value))} className="w-full" />
+                  <span className="w-12 text-right text-sm">{vibValue.toFixed(2)}</span>
                   <Button onClick={publishVibration} disabled={!ros}>Publish</Button>
                 </div>
                 {lastVibrationSent && (

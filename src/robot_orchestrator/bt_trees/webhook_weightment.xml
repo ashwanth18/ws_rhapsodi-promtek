@@ -2,64 +2,105 @@
   <BehaviorTree ID="WebhookWeightment">
     <Sequence name="WebhookWeightmentFlow">
       <WaitSeconds seconds="0.5"/>
-
-      <!-- <MoveTo name="MoveToWebhookPickup"
-              target_name="{webhook_pickup_target_name}"
-              use_cartesian="false"
-              velocity_scaling="0.20"
-              acceleration_scaling="0.20" /> -->
-      <PhaseMarker phase="transport_start"/>
+      <WeightFresh max_age_s="2.0"/>
+      <CaptureBaseline/>
+      <RetryIfNeedRescoop num_attempts="-1" flag_key="pour_need_rescoop">
+        <Sequence name="RescoopCycle">
+          <!-- <MoveTo name="MoveToWebhookPickup"
+                  target_name="{webhook_pickup_target_name}"
+                  use_cartesian="false"
+                  velocity_scaling="0.20"
+                  acceleration_scaling="0.20" /> -->
+          <PhaseMarker phase="transport_start"/>
           <MoveTo name="MoveToScoopingContainer"
                   target_name="MoveToScoopingContainer"
                   use_cartesian="false"
                   velocity_scaling="0.20"
-                  acceleration_scaling="0.20" />    
-      <PhaseMarker phase="transport_end"/>
-      <WaitSeconds seconds="1.0"/>
-      <PhaseMarker phase="scoop_start"/>
+                  acceleration_scaling="0.20" />
+          <PhaseMarker phase="transport_end"/>
+          <WaitSeconds seconds="1.0"/>
+          <PhaseMarker phase="scoop_start"/>
+          <ExecuteScoop continuous="true" timeout_s="120.0"/>
+          <PhaseMarker phase="scoop_end"/>
+          <WaitSeconds seconds="1.0"/>
 
-      <ExecuteScoop continuous="true" timeout_s="120.0"/>
-      <PhaseMarker phase="scoop_end"/>
-      <WaitSeconds seconds="1.0"/>
-
-      <PhaseMarker phase="transport_start"/>
-      <!-- <MoveTo name="MoveToWebhookWeigh"
-              target_name="{webhook_weigh_target_name}"
-              constrain_upright="true"
-              use_cartesian="false"
-              velocity_scaling="0.15"
-              acceleration_scaling="0.15" /> -->
-          <MoveTo name="MoveToWeighingContainer"
-                  target_name="MoveToWeighingContainer"
+          <PhaseMarker phase="transport_start"/>
+          <!-- <MoveTo name="MoveToWebhookWeigh"
+                  target_name="{webhook_weigh_target_name}"
                   constrain_upright="true"
                   use_cartesian="false"
                   velocity_scaling="0.15"
+                  acceleration_scaling="0.15" /> -->
+          <MoveTo name="MoveToWeighingContainer"
+                  target_name="MoveToWeighingContainer"
+                  constrain_transport_pitch="true"
+                  use_cartesian="false"
+                  velocity_scaling="0.45"
                   acceleration_scaling="0.15" />
-      <PhaseMarker phase="transport_end"/>
-      <WaitSeconds seconds="2.5"/>
+          <PhaseMarker phase="transport_end"/>
+          <WaitSeconds seconds="2.5"/>
+          <ForceSuccess>
+            <ComputeRemaining batch_target="{webhook_target_weight_g}"
+                              tolerance="{webhook_tolerance_g}"
+                              remaining="{remaining_weight}"/>
+          </ForceSuccess>
+          <LogRemainingWeight remaining_weight="{remaining_weight}"
+                              tolerance="{webhook_tolerance_g}"/>
+          <Fallback name="MaybePourRemaining">
+            <CheckRemaining tolerance="{webhook_tolerance_g}"/>
+            <Sequence name="PourRemainingMass">
+              <MoveTo name="MoveToPourAtWeighingContainer"
+                      target_name="PourAtWeighingContainer"
+                      constrain_upright="false"
+                      use_cartesian="false"
+                      velocity_scaling="0.15"
+                      acceleration_scaling="0.15" />
+              <PhaseMarker phase="pour_start"/>
+              <PourToTarget target_weight="{remaining_weight}"
+                            tolerance="{webhook_tolerance_g}"
+                            max_time_s="30"/>
+              <PhaseMarker phase="pour_end"/>
+              <ForceSuccess>
+                <MoveTo name="RecoverFromPourAtWeighingContainer"
+                        target_name="RecoverFromPourAtWeighingContainer"
+                        constrain_upright="false"
+                        use_cartesian="false"
+                        velocity_scaling="0.15"
+                        acceleration_scaling="0.15" />
+              </ForceSuccess>
+            </Sequence>
+          </Fallback>
+          <WaitSeconds seconds="1.0"/>
+        </Sequence>
+      </RetryIfNeedRescoop>
 
-      <PhaseMarker phase="pour_start"/>
-      <PourToTarget target_weight="{webhook_target_weight_g}"
-                    tolerance="{webhook_tolerance_g}"
-                    max_time_s="30"/>
-      <PhaseMarker phase="pour_end"/>
-      <WaitSeconds seconds="1.0"/>
-            <PhaseMarker phase="transport_start"/>
-
-<!-- 
+      <PhaseMarker phase="transport_start"/>
+      <!-- <MoveTo name="RecoverFromPourBeforeReturnHome"
+              target_name="RecoverFromPourAtWeighingContainer"
+              constrain_upright="false"
+              use_cartesian="false"
+              velocity_scaling="0.20"
+              acceleration_scaling="0.20" />
+      <MoveTo name="RecoverUprightBeforeReturnHome"
+              target_name="MoveToWeighingContainer"
+              constrain_upright="true"
+              use_cartesian="false"
+              velocity_scaling="0.20"
+              acceleration_scaling="0.20" /> -->
+      <!-- 
       <MoveTo name="ReturnWebhookHome"
               target_name="{webhook_return_target_name}"
               constrain_upright="true"
               use_cartesian="false"
               velocity_scaling="0.20"
               acceleration_scaling="0.20" /> -->
-          <MoveTo name="ReturnHome"
-                  target_name="ReturnHome"
-                  constrain_upright="true"
-                  use_cartesian="false"
-                  velocity_scaling="0.20"
-                  acceleration_scaling="0.20" />
-                  <PhaseMarker phase="transport_end"/>
+      <MoveTo name="ReturnToScoopingContainer"
+              target_name="MoveToScoopingContainer"
+              constrain_upright="false"
+              use_cartesian="false"
+              velocity_scaling="0.20"
+              acceleration_scaling="0.20" />
+      <PhaseMarker phase="transport_end"/>
     </Sequence>
   </BehaviorTree>
 </root>

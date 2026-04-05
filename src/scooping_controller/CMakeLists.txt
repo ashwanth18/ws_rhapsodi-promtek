@@ -66,6 +66,7 @@ ament_target_dependencies(
   std_msgs
   std_srvs
   tf2
+  visualization_msgs
 )
 target_link_libraries(scooping_rviz_panel Qt5::Widgets yaml-cpp)
 
@@ -90,6 +91,7 @@ ament_target_dependencies(
   rclcpp_action
   robot_common_msgs
   shape_msgs
+  std_msgs
   std_srvs
 )
 

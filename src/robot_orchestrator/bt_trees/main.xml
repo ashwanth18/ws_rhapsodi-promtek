@@ -42,7 +42,7 @@
               <MoveTo target_name="{container_name}" use_cartesian="false"/>
               <WaitSeconds seconds="1.5"/>
               <!-- <MoveTo name="cleanup_container" target_name="{qr_target_name}" use_cartesian="false"/> -->
-              <Vibrate duration_s="5.0" value="180" vibration_topic="/motor_speed"/>
+              <Vibrate duration_s="5.0" value="0.7" vibration_topic="/vibration/intensity"/>
               <WaitSeconds seconds="1.5"/>
 
               <MoveTo name="finish" target_name="test2" use_cartesian="false"/>

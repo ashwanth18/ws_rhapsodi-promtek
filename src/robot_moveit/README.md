@@ -121,7 +121,7 @@ ros2 service call /record_target robot_common_msgs/srv/RecordTarget \
 ## BT integration
 
 - The orchestrator uses `/move_to` to navigate among named targets (e.g., containers, `scale`, `tap_off`).
-- The post‑pour cleanup uses a `Vibrate` BT node (publishes Int32 to `/motor_speed`), independent of MoveIt.
+- The post‑pour cleanup uses a `Vibrate` BT node (publishes Float64 to `/vibration/intensity` with keepalive republishing), independent of MoveIt.
 
 ## Troubleshooting
 

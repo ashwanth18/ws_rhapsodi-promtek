@@ -19,6 +19,9 @@ using namespace std::chrono_literals;
 namespace robot_moveit {
 namespace
 {
+constexpr double kRadToDeg = 57.29577951308232;
+constexpr double kHorizontalToBasePitchOffsetRad = 1.5707963267948966;  // +90 deg
+
 geometry_msgs::msg::Quaternion make_yaw_only_quaternion(
   const geometry_msgs::msg::Quaternion& input)
 {
@@ -35,6 +38,42 @@ geometry_msgs::msg::Quaternion make_yaw_only_quaternion(
   return tf2::toMsg(yaw_only);
 }
 
+geometry_msgs::msg::Quaternion make_yaw_pitch_quaternion(
+  const geometry_msgs::msg::Quaternion& input,
+  double target_pitch_rad)
+{
+  tf2::Quaternion q;
+  tf2::fromMsg(input, q);
+  double roll = 0.0;
+  double pitch = 0.0;
+  double yaw = 0.0;
+  tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
+
+  tf2::Quaternion constrained;
+  constrained.setRPY(roll, target_pitch_rad, yaw);
+  constrained.normalize();
+  return tf2::toMsg(constrained);
+}
+
+double convert_pitch_from_horizontal_to_base(double pitch_from_horizontal_rad)
+{
+  return pitch_from_horizontal_rad + kHorizontalToBasePitchOffsetRad;
+}
+
+geometry_msgs::msg::Quaternion slerp_quaternion(
+  const geometry_msgs::msg::Quaternion& from,
+  const geometry_msgs::msg::Quaternion& to,
+  double alpha)
+{
+  tf2::Quaternion q_from;
+  tf2::Quaternion q_to;
+  tf2::fromMsg(from, q_from);
+  tf2::fromMsg(to, q_to);
+  tf2::Quaternion q_interp = q_from.slerp(q_to, alpha);
+  q_interp.normalize();
+  return tf2::toMsg(q_interp);
+}
+
 void enforce_upright_pose(geometry_msgs::msg::PoseStamped& pose)
 {
   pose.pose.orientation = make_yaw_only_quaternion(pose.pose.orientation);
@@ -43,6 +82,24 @@ void enforce_upright_pose(geometry_msgs::msg::PoseStamped& pose)
 void enforce_upright_pose(geometry_msgs::msg::Pose& pose)
 {
   pose.orientation = make_yaw_only_quaternion(pose.orientation);
+}
+
+void enforce_transport_pitch_pose(
+  geometry_msgs::msg::PoseStamped& pose,
+  double target_pitch_from_horizontal_rad)
+{
+  pose.pose.orientation = make_yaw_pitch_quaternion(
+    pose.pose.orientation,
+    convert_pitch_from_horizontal_to_base(target_pitch_from_horizontal_rad));
+}
+
+void enforce_transport_pitch_pose(
+  geometry_msgs::msg::Pose& pose,
+  double target_pitch_from_horizontal_rad)
+{
+  pose.orientation = make_yaw_pitch_quaternion(
+    pose.orientation,
+    convert_pitch_from_horizontal_to_base(target_pitch_from_horizontal_rad));
 }
 
 moveit_msgs::msg::Constraints make_upright_constraints(
@@ -96,9 +153,14 @@ MoveToServer::MoveToServer(const rclcpp::NodeOptions & options)
   this->declare_parameter<double>("planning_time", 5.0);
   this->declare_parameter<bool>("cartesian_avoid_collisions", false);
   this->declare_parameter<bool>("constrain_upright", false);
+  this->declare_parameter<bool>("constrain_transport_pitch", false);
   this->declare_parameter<double>("upright_roll_tolerance_rad", 0.0872665);
   this->declare_parameter<double>("upright_pitch_tolerance_rad", 0.0872665);
   this->declare_parameter<double>("upright_yaw_tolerance_rad", 3.14159265);
+  this->declare_parameter<double>("transport_pitch_from_horizontal_rad", -0.34906585);
+  this->declare_parameter<double>("transport_roll_tolerance_rad", 3.14159265);
+  this->declare_parameter<double>("transport_pitch_tolerance_rad", 0.0872665);
+  this->declare_parameter<double>("transport_yaw_tolerance_rad", 3.14159265);
   this->declare_parameter<double>("pose_success_pos_tol_m", 0.01);
   this->declare_parameter<double>("pose_success_ang_tol_rad", 0.05);
   this->declare_parameter<std::string>(
@@ -247,34 +309,74 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
   mgi_->setMaxAccelerationScalingFactor(acc);
   mgi_->setPlanningTime(plan_time);
 
+  const bool constrain_transport_pitch =
+    goal->constrain_transport_pitch || this->get_parameter("constrain_transport_pitch").as_bool();
   const bool constrain_upright =
-    goal->constrain_upright || this->get_parameter("constrain_upright").as_bool();
-  if (constrain_upright) {
-    enforce_upright_pose(target);
-    const double roll_tolerance =
+    !constrain_transport_pitch &&
+    (goal->constrain_upright || this->get_parameter("constrain_upright").as_bool());
+  const bool transport_position_only_goal = constrain_transport_pitch;
+  moveit_msgs::msg::Constraints active_constraints;
+  double active_roll_tolerance = 0.0;
+  double active_pitch_tolerance = 0.0;
+  double active_yaw_tolerance = 0.0;
+
+  if (constrain_transport_pitch || constrain_upright) {
+    active_roll_tolerance =
       goal->upright_roll_tolerance > 0.0f ?
       static_cast<double>(goal->upright_roll_tolerance) :
-      this->get_parameter("upright_roll_tolerance_rad").as_double();
-    const double pitch_tolerance =
+      this->get_parameter(
+        constrain_transport_pitch ? "transport_roll_tolerance_rad" : "upright_roll_tolerance_rad")
+        .as_double();
+    active_pitch_tolerance =
       goal->upright_pitch_tolerance > 0.0f ?
       static_cast<double>(goal->upright_pitch_tolerance) :
-      this->get_parameter("upright_pitch_tolerance_rad").as_double();
-    const double yaw_tolerance =
+      this->get_parameter(
+        constrain_transport_pitch ? "transport_pitch_tolerance_rad" : "upright_pitch_tolerance_rad")
+        .as_double();
+    active_yaw_tolerance =
       goal->upright_yaw_tolerance > 0.0f ?
       static_cast<double>(goal->upright_yaw_tolerance) :
-      this->get_parameter("upright_yaw_tolerance_rad").as_double();
-    const auto constraints = make_upright_constraints(
-      planning_frame,
-      eef_link,
-      target.pose.orientation,
-      roll_tolerance,
-      pitch_tolerance,
-      yaw_tolerance);
-    mgi_->setPathConstraints(constraints);
-    RCLCPP_INFO(
-      this->get_logger(),
-      "Applying upright MoveTo constraint on %s (roll/pitch locked near zero)",
-      eef_link.c_str());
+      this->get_parameter(
+        constrain_transport_pitch ? "transport_yaw_tolerance_rad" : "upright_yaw_tolerance_rad")
+        .as_double();
+
+    if (constrain_transport_pitch) {
+      const double transport_pitch_from_horizontal =
+        this->get_parameter("transport_pitch_from_horizontal_rad").as_double();
+      const double transport_pitch_base =
+        convert_pitch_from_horizontal_to_base(transport_pitch_from_horizontal);
+      const auto current_pose = mgi_->getCurrentPose(eef_link);
+      const auto constraints = make_upright_constraints(
+        planning_frame,
+        eef_link,
+        current_pose.pose.orientation,
+        active_roll_tolerance,
+        active_pitch_tolerance,
+        active_yaw_tolerance);
+      active_constraints = constraints;
+      mgi_->setPathConstraints(active_constraints);
+      RCLCPP_INFO(
+        this->get_logger(),
+        "Applying transport path constraint on %s using current transport_ready orientation (horizontal pitch target=%.1f deg, base pitch target=%.1f deg)",
+        eef_link.c_str(),
+        transport_pitch_from_horizontal * kRadToDeg,
+        transport_pitch_base * kRadToDeg);
+    } else {
+      enforce_upright_pose(target);
+      const auto constraints = make_upright_constraints(
+        planning_frame,
+        eef_link,
+        target.pose.orientation,
+        active_roll_tolerance,
+        active_pitch_tolerance,
+        active_yaw_tolerance);
+      active_constraints = constraints;
+      mgi_->setPathConstraints(active_constraints);
+      RCLCPP_INFO(
+        this->get_logger(),
+        "Applying upright MoveTo constraint on %s (roll/pitch locked near zero)",
+        eef_link.c_str());
+    }
   }
 
   // Decide execution mode based on waypoints + flag
@@ -320,6 +422,16 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
     return (pos_err <= pos_tol) && (ang_err <= ang_tol);
   };
 
+  auto within_position_tolerance = [&](const geometry_msgs::msg::Pose& cur,
+                                       const geometry_msgs::msg::Pose& tgt) -> bool {
+    const double pos_tol = this->get_parameter("pose_success_pos_tol_m").as_double();
+    const double dx = cur.position.x - tgt.position.x;
+    const double dy = cur.position.y - tgt.position.y;
+    const double dz = cur.position.z - tgt.position.z;
+    const double pos_err = std::sqrt(dx * dx + dy * dy + dz * dz);
+    return pos_err <= pos_tol;
+  };
+
   auto wait_and_sync_start_state = [&]() {
     auto current_state = mgi_->getCurrentState(0.5);
     if (!current_state) {
@@ -336,6 +448,46 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
       return false;
     }
     return true;
+  };
+
+  auto plan_and_execute_pose = [&](const geometry_msgs::msg::Pose& pose,
+                                   int retries,
+                                   const std::string& context,
+                                   std::string& failure_message) -> bool {
+    while (retries-- > 0) {
+      wait_and_sync_start_state();
+      if (transport_position_only_goal) {
+        mgi_->setPositionTarget(pose.position.x, pose.position.y, pose.position.z, eef_link);
+      } else {
+        mgi_->setPoseTarget(pose);
+      }
+      moveit::planning_interface::MoveGroupInterface::Plan plan;
+      const bool ok = (mgi_->plan(plan) == moveit_msgs::msg::MoveItErrorCodes::SUCCESS);
+      if (!ok) {
+        RCLCPP_WARN(get_logger(), "%s plan failed; retries remaining: %d", context.c_str(), retries);
+        if (retries <= 0) {
+          failure_message = context + " planning failed";
+          return false;
+        }
+        continue;
+      }
+      if (execute_plan_direct(plan)) {
+        return true;
+      }
+      RCLCPP_WARN(get_logger(), "%s execute aborted; checking pose tolerance. Retries left: %d", context.c_str(), retries);
+      auto cur_pose = mgi_->getCurrentPose(eef_link);
+      if ((transport_position_only_goal && within_position_tolerance(cur_pose.pose, pose)) ||
+          (!transport_position_only_goal && within_pose_tolerance(cur_pose.pose, pose))) {
+        RCLCPP_INFO(get_logger(), "%s reached tolerance despite execute abort; continuing", context.c_str());
+        return true;
+      }
+      if (retries <= 0) {
+        failure_message = context + " execution failed";
+        return false;
+      }
+    }
+    failure_message = context + " failed";
+    return false;
   };
 
   if (have_waypoints) {
@@ -416,7 +568,11 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
           mgi_->setMaxAccelerationScalingFactor(acc);
         }
         wait_and_sync_start_state();
-        mgi_->setPoseTarget(poses[i]);
+        if (transport_position_only_goal) {
+          mgi_->setPositionTarget(poses[i].position.x, poses[i].position.y, poses[i].position.z, eef_link);
+        } else {
+          mgi_->setPoseTarget(poses[i]);
+        }
         moveit::planning_interface::MoveGroupInterface::Plan plan;
         bool ok = (mgi_->plan(plan) == moveit_msgs::msg::MoveItErrorCodes::SUCCESS);
         if (!ok) {
@@ -438,7 +594,8 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
           }
           if (!execute_plan_direct(plan)) {
             auto cur_pose = mgi_->getCurrentPose(eef_link);
-            if (!within_pose_tolerance(cur_pose.pose, poses[i])) {
+            if ((transport_position_only_goal && !within_position_tolerance(cur_pose.pose, poses[i])) ||
+                (!transport_position_only_goal && !within_pose_tolerance(cur_pose.pose, poses[i]))) {
               result->success = false;
               result->message = "Execution failed at segment " + std::to_string(i);
               goal_handle->succeed(result);
@@ -488,7 +645,15 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
     int retries = 3;
     while (retries-- > 0) {
       wait_and_sync_start_state();
-      mgi_->setPoseTarget(target.pose);
+      if (transport_position_only_goal) {
+        mgi_->setPositionTarget(
+          target.pose.position.x,
+          target.pose.position.y,
+          target.pose.position.z,
+          eef_link);
+      } else {
+        mgi_->setPoseTarget(target.pose);
+      }
       moveit::planning_interface::MoveGroupInterface::Plan plan;
       bool ok = (mgi_->plan(plan) == moveit_msgs::msg::MoveItErrorCodes::SUCCESS);
       if (!ok) {
@@ -506,7 +671,8 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
       }
       RCLCPP_WARN(get_logger(), "Execute aborted; checking pose tolerance and retrying. Retries left: %d", retries);
       auto cur_pose = mgi_->getCurrentPose(eef_link);
-      if (within_pose_tolerance(cur_pose.pose, target.pose)) {
+      if ((transport_position_only_goal && within_position_tolerance(cur_pose.pose, target.pose)) ||
+          (!transport_position_only_goal && within_pose_tolerance(cur_pose.pose, target.pose))) {
         RCLCPP_INFO(get_logger(), "Within final pose tolerance despite execute abort; treating as success");
         break;
       }

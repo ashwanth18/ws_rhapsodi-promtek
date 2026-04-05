@@ -1,0 +1,155 @@
+name: rhapsodi-promtek-robot-prod
+
+x-ros-robot-service: &ros-robot-service
+  image: ${ROS_PROD_IMAGE:-iserenity/rhapsodi-promtek:ros-prod}
+  network_mode: host
+  ipc: host
+  environment:
+    ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+    ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+    RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+    ROBOT_IP: ${ROBOT_IP:-169.254.200.200}
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: robot_data
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  backend:
+    image: ${BACKEND_IMAGE:-iserenity/rhapsodi-promtek:backend}
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/robot_data
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000,http://localhost:8080}
+      WEIGHMENT_URL: ${WEIGHMENT_URL:-http://host.docker.internal:5002/batch/weighment}
+      BATCH_END_URL: ${BATCH_END_URL:-http://host.docker.internal:5002/batch/end}
+      ROBOT_START_ADAPTER_URL: http://host.docker.internal:8010/start_webhook_weightment
+      ROBOT_RUNNING_TIMEOUT_SECONDS: ${ROBOT_RUNNING_TIMEOUT_SECONDS:-300}
+      ROSBRIDGE_HOST: host.docker.internal
+      ROSBRIDGE_PORT: 9090
+      ROBOT_LOCATION_TARGETS_JSON: ${ROBOT_LOCATION_TARGETS_JSON:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - db
+
+  processing:
+    image: ${PROCESSING_IMAGE:-iserenity/rhapsodi-promtek:processing}
+    environment:
+      BACKEND_URL: http://backend:8000
+      PATH_MAP_FROM: ${WORKSPACE_ROOT:-/home/ashwanth/ws_rhapsodi-promtek-dev}/data
+      PATH_MAP_TO: /data
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./data:/data
+    depends_on:
+      - db
+
+  webhook_service:
+    image: ${WEBHOOK_IMAGE:-iserenity/rhapsodi-promtek:webhook}
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/robot_data
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/data
+    depends_on:
+      - db
+
+  rosbridge:
+    <<: *ros-robot-service
+    command: ros2 launch niryo_robot_simulation_client rosbridge_websocket_fixed.launch.py address:=0.0.0.0 port:=9090
+
+  robot_start_adapter:
+    <<: *ros-robot-service
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+      ROBOT_IP: ${ROBOT_IP:-169.254.200.200}
+      FASTDDS_BUILTIN_TRANSPORTS: UDPv4
+      ROBOT_START_SERVICE_NAME: /bt_start_webhook_weightment
+      ROBOT_START_SERVICE_WAIT_TIMEOUT_SECONDS: 5
+      ROBOT_START_SERVICE_CALL_TIMEOUT_SECONDS: 15
+    command:
+      [
+        "bash",
+        "-lc",
+        "cd /ws/src/backend/robot_adapter && uvicorn main:app --host 0.0.0.0 --port 8010",
+      ]
+
+  scooping_stack:
+    <<: *ros-robot-service
+    command: >
+      ros2 launch scooping_controller scooping_real.launch.py
+      use_rviz:=false
+      targets_yaml:=${TARGETS_YAML:-/ws/install/share/robot_moveit/config/targets.yaml}
+      container_scene_yaml:=${CONTAINER_SCENE_YAML:-/ws/install/share/scooping_controller/config/container_scene_real.yaml}
+      post_lift_vibration_enabled:=${POST_LIFT_VIBRATION_ENABLED:-true}
+      post_lift_vibration_duration_s:=${POST_LIFT_VIBRATION_DURATION_S:-5.0}
+      post_lift_vibration_intensity:=${POST_LIFT_VIBRATION_INTENSITY:-0.25}
+      post_lift_vibration_publish_rate_hz:=${POST_LIFT_VIBRATION_PUBLISH_RATE_HZ:-10.0}
+
+  scale_launcher:
+    <<: *ros-robot-service
+    privileged: true
+    devices:
+      - ${SCALE_DEVICE:-/dev/ttyUSB0}:${SCALE_DEVICE:-/dev/ttyUSB0}
+    command: >
+      ros2 launch weighing_scale_driver weighing_scale.launch.py
+      port:=${SCALE_DEVICE:-/dev/ttyUSB0}
+      baud:=${SCALE_BAUD:-115200}
+      topic:=/weight
+
+  micro_ros_launcher:
+    <<: *ros-robot-service
+    privileged: true
+    devices:
+      - ${MICRO_ROS_DEVICE:-/dev/ttyACM0}:${MICRO_ROS_DEVICE:-/dev/ttyACM0}
+    command: >
+      ros2 run sensor_lifecycle micro_ros_launcher
+      --ros-args
+      -p agent_args:="${MICRO_ROS_AGENT_ARGS:-serial --dev ${MICRO_ROS_DEVICE:-/dev/ttyACM0}}"
+
+  pouring_controller:
+    <<: *ros-robot-service
+    command: >
+      ros2 run pouring_controller pour_server_node
+      --ros-args
+      -p weight_topic:=/weight
+      -p vibration_topic:=/vibration/intensity
+      -p joint_state_topic:=/joint_states
+
+  data_collection:
+    <<: *ros-robot-service
+    volumes:
+      - ./data:/data
+    command: >
+      ros2 run data_collection_manager data_collection_manager
+      --ros-args
+      -p output_root:=/data/webhook
+      -p processing_url:=http://localhost:8002/process
+    depends_on:
+      - processing
+
+  orchestrator:
+    <<: *ros-robot-service
+    command: >
+      ros2 run robot_orchestrator orchestrator_node
+      --ros-args
+      -p tree_file:=/ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml
+
+volumes:
+  db_data:

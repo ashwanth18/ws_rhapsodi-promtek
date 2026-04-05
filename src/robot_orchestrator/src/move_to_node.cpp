@@ -25,6 +25,7 @@ BT::PortsList MoveToNode::providedPorts()
     BT::InputPort<double>("velocity_scaling", 0.0, "per-goal velocity scaling [0,1] (0=use param)"),
     BT::InputPort<double>("acceleration_scaling", 0.0, "per-goal acceleration scaling [0,1] (0=use param)"),
     BT::InputPort<bool>("constrain_upright", false, "keep roll/pitch upright along path"),
+    BT::InputPort<bool>("constrain_transport_pitch", false, "keep transport pitch from scoop-horizontal convention"),
     BT::InputPort<double>("upright_roll_tolerance", 0.0, "upright roll tolerance in radians (0=use server param)"),
     BT::InputPort<double>("upright_pitch_tolerance", 0.0, "upright pitch tolerance in radians (0=use server param)"),
     BT::InputPort<double>("upright_yaw_tolerance", 0.0, "upright yaw tolerance in radians (0=use server param)"),
@@ -103,6 +104,9 @@ BT::NodeStatus MoveToNode::onStart()
   }
   if (auto upright = getInput<bool>("constrain_upright"); upright) {
     goal.constrain_upright = *upright;
+  }
+  if (auto transport_pitch = getInput<bool>("constrain_transport_pitch"); transport_pitch) {
+    goal.constrain_transport_pitch = *transport_pitch;
   }
   if (auto roll_tol = getInput<double>("upright_roll_tolerance"); roll_tol) {
     goal.upright_roll_tolerance = static_cast<float>(*roll_tol);

@@ -29,6 +29,13 @@ BT::NodeStatus PourToTargetNode::onStart()
   getInput("tolerance", tol);
   getInput("max_time_s", max_time);
 
+  auto bb = config().blackboard;
+  bb->set("pour_achieved", false);
+  bb->set("pour_overshoot", false);
+  bb->set("pour_timeout", false);
+  bb->set("pour_need_rescoop", false);
+  bb->set("pour_proceed_next", false);
+
   RCLCPP_INFO(node_->get_logger(), "PourToTargetNode: waiting for action server /pour_to_target");
   if (!client_->wait_for_action_server(2s)) {
     RCLCPP_WARN(node_->get_logger(), "PourToTargetNode: action server /pour_to_target not available");
@@ -82,6 +89,12 @@ BT::NodeStatus PourToTargetNode::onRunning()
   if (result_future_.valid() && result_future_.wait_for(0s) == std::future_status::ready) {
     auto res = result_future_.get();
     if (res.result) {
+      auto bb = config().blackboard;
+      bb->set("pour_achieved", res.result->achieved);
+      bb->set("pour_overshoot", res.result->overshoot);
+      bb->set("pour_timeout", res.result->timeout);
+      bb->set("pour_need_rescoop", res.result->need_rescoop);
+      bb->set("pour_proceed_next", res.result->proceed_next);
       // Treat overshoot as SUCCESS to terminate the flow, even if achieved=false
       std::string container_name;
       try { container_name = config().blackboard->get<std::string>("container_name"); } catch (...) {}

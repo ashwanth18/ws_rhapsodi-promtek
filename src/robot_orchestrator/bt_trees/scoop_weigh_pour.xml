@@ -21,7 +21,7 @@
           <PhaseMarker phase="transport_start"/>
           <MoveTo name="MoveToWeighingContainer"
                   target_name="MoveToWeighingContainer"
-                  constrain_upright="true"
+                  constrain_transport_pitch="true"
                   use_cartesian="false"
                   velocity_scaling="0.15"
                   acceleration_scaling="0.15" />

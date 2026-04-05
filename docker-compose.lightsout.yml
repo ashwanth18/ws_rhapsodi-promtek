@@ -1,10 +1,7 @@
 name: rhapsodi-promtek-lightsout
 
 x-ros-service: &ros-service
-  # image: iserenity/rhapsodi-promtek:jazzy
-  build:
-    context: .
-    dockerfile: Dockerfile
+  image: ${ROS_PROD_IMAGE:-iserenity/rhapsodi-promtek:ros-prod}
   network_mode: host
   ipc: host
   environment:
@@ -35,9 +32,7 @@ services:
       - ${WORKSPACE_ROOT:-.}/data/db:/var/lib/postgresql/data
 
   backend:
-    # image: iserenity/rhapsodi-promtek:backend
-    build:
-      context: ./src/backend
+    image: ${BACKEND_IMAGE:-iserenity/rhapsodi-promtek:backend}
     network_mode: host
     environment:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/robot_data
@@ -76,9 +71,7 @@ services:
     restart: unless-stopped
 
   processing:
-    # image: iserenity/rhapsodi-promtek:processing
-    build:
-      context: ./src/backend/processing
+    image: ${PROCESSING_IMAGE:-iserenity/rhapsodi-promtek:processing}
     network_mode: host
     environment:
       BACKEND_URL: http://localhost:8000
@@ -90,8 +83,7 @@ services:
       - db
 
   webhook_service:
-    build:
-      context: ./src/backend/webhook_service
+    image: ${WEBHOOK_IMAGE:-iserenity/rhapsodi-promtek:webhook}
     network_mode: host
     environment:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/robot_data

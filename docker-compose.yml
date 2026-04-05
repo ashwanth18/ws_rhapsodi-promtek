@@ -1,28 +1,36 @@
 name: rhapsodi-promtek
 
+x-ros-local-service: &ros-local-service
+  image: ${ROS_LOCAL_IMAGE:-rhapsodi-promtek:ros-prod-local}
+  build:
+    context: .
+    dockerfile: docker/ros/Dockerfile.prod
+    args:
+      COLCON_PARALLEL_WORKERS: ${COLCON_PARALLEL_WORKERS:-8}
+  network_mode: host
+  ipc: host
+  environment:
+    ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+    ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+    RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+
 services:
   # Prebuilt runtime container (uses the baked-in /ws/install overlay)
   runtime:
-    # image: iserenity/rhapsodi-promtek:jazzy
-    build:
-      context: .
-      dockerfile: Dockerfile
-    network_mode: host
-    ipc: host
-    environment:
-      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
-      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
-      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+    <<: *ros-local-service
     tty: true
     stdin_open: true
     command: bash
 
-  # Dev container (mounts your local src/ so you can edit and rebuild in-container)
+  # Dev container (mounts the repo so you can edit locally and rebuild inside the container)
   dev:
-    # image: iserenity/rhapsodi-promtek:jazzy
+    image: ${ROS_DEV_IMAGE:-rhapsodi-promtek:ros-dev-local}
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/ros/Dockerfile.dev
+      target: devshell
+      args:
+        COLCON_PARALLEL_WORKERS: ${COLCON_PARALLEL_WORKERS:-8}
     network_mode: host
     ipc: host
     environment:
@@ -30,64 +38,45 @@ services:
       ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
       RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
     volumes:
-      - ./src:/ws/src:rw
+      - .:/workspace:rw
     tty: true
     stdin_open: true
     command: bash
 
   # React dashboard (static build served via nginx)
   dashboard:
-    # image: iserenity/rhapsodi-promtek:dashboard
+    image: ${DASHBOARD_LOCAL_IMAGE:-rhapsodi-promtek:dashboard-local}
     build:
-      context: ./src/dashboard
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: docker/dashboard.Dockerfile
+      args:
+        VITE_ROSBRIDGE_URL: ${VITE_ROSBRIDGE_URL:-ws://localhost:9090}
+        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:8000}
+        VITE_MICROROS_HEARTBEAT_TOPIC: ${VITE_MICROROS_HEARTBEAT_TOPIC:-/microros/heartbeat}
     ports:
       - "${DASHBOARD_PORT:-8080}:80"
 
   # Rosbridge websocket (exposed to host)
   rosbridge:
-    # image: iserenity/rhapsodi-promtek:jazzy
-    build:
-      context: .
-      dockerfile: Dockerfile
-    environment:
-      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
-      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
-      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+    <<: *ros-local-service
     ports:
       - "9090:9090"
     command: ros2 launch niryo_robot_simulation_client rosbridge_websocket_fixed.launch.py address:=0.0.0.0 port:=9090
 
   # RealSense lifecycle launcher
   realsense_launcher:
-    # image: iserenity/rhapsodi-promtek:jazzy
-    build:
-      context: .
-      dockerfile: Dockerfile
+    <<: *ros-local-service
     ipc: host
     privileged: true
     devices:
       - /dev/bus/usb:/dev/bus/usb
-    environment:
-      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
-      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
-      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
     command: ros2 run realsense_snapshot_analyzer realsense_camera_launcher
     restart: unless-stopped
 
   # Weighing scale lifecycle launcher
   scale_launcher:
-    # image: iserenity/rhapsodi-promtek:jazzy
-    build:
-      context: .
-      dockerfile: Dockerfile
-    network_mode: host
-    ipc: host
+    <<: *ros-local-service
     privileged: true
-    environment:
-      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
-      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
-      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
     command: >
       ros2 run sensor_lifecycle scale_launcher
       --ros-args
@@ -98,19 +87,10 @@ services:
 
   # micro-ROS lifecycle launcher
   micro_ros_launcher:
-    # image: iserenity/rhapsodi-promtek:jazzy
-    build:
-      context: .
-      dockerfile: Dockerfile
-    network_mode: host
-    ipc: host
+    <<: *ros-local-service
     privileged: true
     devices:
       - /dev/ttyACM0:/dev/ttyACM0
-    environment:
-      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
-      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
-      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
     command: >
       ros2 run sensor_lifecycle micro_ros_launcher
       --ros-args
@@ -129,7 +109,7 @@ services:
       - db_data:/var/lib/postgresql/data
 
   backend:
-    # image: iserenity/rhapsodi-promtek:backend
+    image: ${BACKEND_LOCAL_IMAGE:-rhapsodi-promtek:backend-local}
     build:
       context: ./src/backend
     environment:
@@ -152,11 +132,7 @@ services:
       - db
 
   robot_start_adapter:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    network_mode: host
-    ipc: host
+    <<: *ros-local-service
     environment:
       ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
       ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
@@ -174,7 +150,7 @@ services:
     restart: unless-stopped
 
   processing:
-    # image: iserenity/rhapsodi-promtek:processing
+    image: ${PROCESSING_LOCAL_IMAGE:-rhapsodi-promtek:processing-local}
     build:
       context: ./src/backend/processing
     environment:
@@ -189,6 +165,7 @@ services:
       - "8002:8002"
 
   webhook_service:
+    image: ${WEBHOOK_LOCAL_IMAGE:-rhapsodi-promtek:webhook-local}
     build:
       context: ./src/backend/webhook_service
     environment:

@@ -12,7 +12,7 @@ public:
 
   // Gains (public for quick param wiring)
   double kp{0.5}, ki{0.0}, kd{0.0};
-  double valve_bias{0.0};
+  double ff_bias{0.0};
   double incline_fixed_deg{0.0};
   double integ_limit{1.0};
 

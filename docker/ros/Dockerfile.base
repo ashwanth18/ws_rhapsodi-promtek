@@ -1,0 +1,20 @@
+FROM ros:jazzy-ros-base
+
+SHELL ["/bin/bash", "-c"]
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_BREAK_SYSTEM_PACKAGES=1
+
+COPY docker/ros/apt-packages.txt /tmp/apt-packages.txt
+
+RUN apt-get update \
+    && xargs -r apt-get install -y --no-install-recommends < /tmp/apt-packages.txt \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -f /tmp/apt-packages.txt
+
+RUN if [ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]; then rosdep init; fi \
+    && rosdep update
+
+WORKDIR /ws
