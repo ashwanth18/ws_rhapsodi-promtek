@@ -33,7 +33,7 @@ ros2 run data_collection_manager weight_sim --ros-args \
   -p topic:=/weight \
   -p rate_hz:=20.0 \
   -p baseline:=0.0 \
-  -p target:=30.0 \
+  -p target:=400.0 \
   -p gate_on_phase:=true \
   -p phase_topic:=/lightsout_training/phase \
   -p phase_start:=pour_start \

@@ -7,7 +7,9 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <robot_common_msgs/action/move_to.hpp>
+#include <robot_common_msgs/msg/pour_status.hpp>
 #include <robot_common_msgs/srv/record_target.hpp>
+#include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/int32.hpp>
 #include <std_srvs/srv/trigger.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -64,10 +66,14 @@ private:
   void sendRequest(
     const std::string& action_name,
     const rclcpp::Client<Trigger>::SharedPtr& client);
-  void sendMoveGoal();
+  void sendMoveGoal(bool plan_only = false);
   void sendRecordTarget();
   void applyTypedPose();
   void applyTypedScoopPose();
+  bool populateMoveGoal(
+    MoveTo::Goal& goal,
+    bool plan_only,
+    QString& error_message);
   void updatePoseEditorsFromGoal();
   void updateScoopEditorsFromSelection();
   void focusSelectedScoopMarker();
@@ -103,6 +109,13 @@ private:
     double lift_height) const;
   void refreshTargetsFromYaml();
   void loadSelectedTarget();
+  QString selectedPourTargetName() const;
+  bool loadNamedTargetByName(const QString& target_name);
+  void loadSelectedPourTarget();
+  void saveSelectedPourTarget();
+  void sendPourTargetGoal(bool plan_only);
+  void updatePourStatusLabels();
+  void publishPourPreviewMarkers();
   bool tryGetTargetsYamlPath(std::string& yaml_path);
   bool tryGetTargetsYamlPathFromClient(
     const rclcpp::AsyncParametersClient::SharedPtr& client,
@@ -140,9 +153,15 @@ private:
 
   QLabel* service_state_label_;
   QLabel* status_label_;
+  QLabel* preview_hint_label_;
+  QLabel* pour_status_label_;
+  QLabel* pour_metrics_label_;
   QLineEdit* target_name_edit_;
   QComboBox* target_selector_combo_;
   QComboBox* scoop_marker_combo_;
+  QComboBox* constraint_mode_combo_;
+  QComboBox* planner_combo_;
+  QComboBox* pour_pose_combo_;
   QLineEdit* scoop_x_edit_;
   QLineEdit* scoop_y_edit_;
   QLineEdit* scoop_z_edit_;
@@ -155,6 +174,11 @@ private:
   QLineEdit* roll_edit_;
   QLineEdit* pitch_edit_;
   QLineEdit* yaw_edit_;
+  QCheckBox* constraint_test_enabled_checkbox_;
+  QLineEdit* constraint_pitch_edit_;
+  QLineEdit* constraint_pitch_tolerance_edit_;
+  QLineEdit* constraint_roll_tolerance_edit_;
+  QLineEdit* constraint_yaw_tolerance_edit_;
   QLineEdit* velocity_scale_edit_;
   QSlider* velocity_scale_slider_;
   QLineEdit* acceleration_scale_edit_;
@@ -196,6 +220,8 @@ private:
   QPushButton* plan_parameterized_button_;
   QPushButton* execute_parameterized_button_;
   QPushButton* move_goal_button_;
+  QPushButton* plan_move_goal_button_;
+  QPushButton* plan_constrained_goal_button_;
   QPushButton* apply_typed_pose_button_;
   QPushButton* apply_scoop_pose_button_;
   QPushButton* focus_selected_scoop_button_;
@@ -203,6 +229,10 @@ private:
   QPushButton* record_target_button_;
   QPushButton* refresh_targets_button_;
   QPushButton* load_selected_target_button_;
+  QPushButton* load_pour_pose_button_;
+  QPushButton* save_pour_pose_button_;
+  QPushButton* plan_pour_pose_button_;
+  QPushButton* execute_pour_pose_button_;
   QPushButton* apply_motion_tuning_button_;
   QPushButton* shift_offset_positive_button_;
   QPushButton* shift_offset_negative_button_;
@@ -225,9 +255,14 @@ private:
   rclcpp_action::Client<MoveTo>::SharedPtr move_to_client_;
   rclcpp::Subscription<geometry_msgs::msg::PoseArray>::SharedPtr scoop_poses_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr target_goal_sub_;
+  rclcpp::Subscription<robot_common_msgs::msg::PourStatus>::SharedPtr pour_status_sub_;
+  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr weight_sub_;
+  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr vibration_sub_;
+  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr incline_sub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr scoop_poses_cmd_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr parameterized_preview_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr manual_preview_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pour_preview_pub_;
   rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr scoop_marker_focus_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr target_goal_cmd_pub_;
   std::vector<geometry_msgs::msg::Pose> latest_scoop_poses_;
@@ -235,11 +270,16 @@ private:
   std::string latest_scoop_frame_id_;
   std::string targets_yaml_path_;
   geometry_msgs::msg::PoseStamped latest_target_goal_pose_;
+  robot_common_msgs::msg::PourStatus latest_pour_status_;
   bool has_scoop_poses_;
   bool has_target_goal_pose_;
+  bool has_pour_status_;
   bool updating_pose_fields_;
   bool updating_scoop_pose_fields_;
   int current_scoop_focus_index_;
   int spin_tick_count_;
+  double latest_weight_;
+  double latest_vibration_;
+  double latest_incline_;
 };
 }  // namespace scooping_controller

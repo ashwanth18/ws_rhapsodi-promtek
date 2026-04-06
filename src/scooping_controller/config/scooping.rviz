@@ -68,6 +68,51 @@ Visualization Manager:
       Name: PlanningScene
       Planning Scene Topic: /monitored_planning_scene
       Robot Description: robot_description
+    - Class: moveit_rviz_plugin/Trajectory
+      Color Enabled: false
+      Enabled: true
+      Interrupt Display: false
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: Links in Alphabetic Order
+      Loop Animation: false
+      Name: MoveTo Planned Path
+      Robot Alpha: 0.5
+      Robot Color: 150; 50; 150
+      Robot Description: robot_description
+      Show Robot Collision: false
+      Show Robot Visual: true
+      Show Trail: false
+      State Display Time: 0.05 s
+      Trail Step Size: 1
+      Trajectory Topic: /display_planned_path
+      Use Sim Time: false
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MoveTo Plan Preview Line
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /move_to_plan_preview
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Pour Pose Preview
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /pour_pose_preview
     - Class: moveit_task_constructor/Motion Planning Tasks
       Enabled: true
       Interrupt Display: false

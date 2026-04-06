@@ -158,9 +158,10 @@ source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ros2 run data_collection_manager weight_sim --ros-args \
   -p topic:=/weight \
+  -p publish_when_active:=false \
   -p rate_hz:=20.0 \
   -p baseline:=0.0 \
-  -p target:=30.0 \
+  -p target:=400.0 \
   -p gate_on_phase:=true \
   -p phase_topic:=/webhook_run/phase \
   -p phase_start:=pour_start \
@@ -318,6 +319,59 @@ The expected path is:
 6. Start `pour_server_node`.
 7. Start the orchestrator with `webhook_weightment.xml`.
 8. Use the dashboard `Run Robot` button.
+
+## Docker Compose Simulation Option
+
+If you want the webhook flow running on the Pi while keeping RViz and Gazebo on your local PC, use:
+
+```bash
+cd /home/ashwanth/ws_rhapsodi-promtek-dev
+docker compose -f docker-compose.webhook-sim.yml up --build
+```
+
+This compose file starts on the Pi:
+
+- `db`
+- `mes_mock` on `http://localhost:5002`
+- `backend` on `http://localhost:8000`
+- `processing` on `http://localhost:8002`
+- `webhook_service` on `http://localhost:5000`
+- `dashboard` on `http://localhost:8080`
+- `rosbridge` on `ws://localhost:9090`
+- `robot_start_adapter` on `http://localhost:8010`
+- `weight_sim`
+- `data_collection`
+- `pouring_controller`
+- `orchestrator`
+
+It does not start `scooping_simulation.launch.py`. Run that separately on your local PC so Gazebo and
+RViz stay local while the Pi runs the rest of the webhook stack.
+
+Use the same `ROS_DOMAIN_ID` on both machines and keep `ROS_LOCALHOST_ONLY=0` so the local scooping
+simulation, the Pi-side orchestrator, and the adapter can all see the same ROS graph.
+
+On your local PC, start the scooping simulation separately:
+
+```bash
+cd /home/ashwanth/ws_rhapsodi-promtek-dev
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+export ROS_DOMAIN_ID=0
+export ROS_LOCALHOST_ONLY=0
+ros2 launch scooping_controller scooping_simulation.launch.py \
+  targets_yaml:=/home/ashwanth/ws_rhapsodi-promtek-dev/src/robot_moveit/config/targets.yaml
+```
+
+The compose stack on the Pi uses the webhook BT tree, the weight simulator gated on
+`/webhook_run/phase`, and a mock downstream MES endpoint so a full row can complete without an
+external system.
+
+To seed one test batch and start the first robot run automatically:
+
+```bash
+cd /home/ashwanth/ws_rhapsodi-promtek-dev
+./scripts/run_webhook_sim_test.sh
+```
 
 ## Notes
 

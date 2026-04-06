@@ -199,6 +199,10 @@ def generate_launch_description():
         )
         .robot_description(mappings={})
         .trajectory_execution(file_path="config/moveit_controllers.yaml")
+        .planning_pipelines(
+            default_planning_pipeline="stomp",
+            pipelines=["ompl", "chomp", "pilz_industrial_motion_planner", "stomp"]
+        )
         .planning_scene_monitor(
             publish_robot_description=True, publish_robot_description_semantic=True
         )

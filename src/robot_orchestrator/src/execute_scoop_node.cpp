@@ -8,7 +8,7 @@ BT::PortsList ExecuteScoopNode::providedPorts()
 {
   return {
     BT::InputPort<bool>("continuous", true, "Use /execute_scoop_continuous"),
-    BT::InputPort<double>("pattern_offset_y", 0.0, "base_link Y offset applied by scooping_mtc_node"),
+    BT::InputPort<double>("pattern_offset_y", 0.0, "scoop task-frame Y offset applied by scooping_mtc_node"),
     BT::InputPort<double>("timeout_s", 120.0, "timeout while waiting for scoop execution"),
   };
 }

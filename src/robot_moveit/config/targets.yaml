@@ -307,16 +307,38 @@ targets:
       y: -0.34710000000000002
       z: 0.26850000000000002
     orientation:
-      x: 0.092295955641257241
-      y: 0.092295955641257255
-      z: -0.7010573846499778
-      w: 0.70105738464997791
+      x: -0.12278780396897282
+      y: -0.12278780396897285
+      z: -0.69636424032001887
+      w: 0.69636424032001898
+  PrePourTiltbackAtWeighingContainer:
+    frame_id: base_link
+    position:
+      x: -0.0103
+      y: -0.34710000000000002
+      z: 0.26850000000000002
+    orientation:
+      x: -0.12278780396897282
+      y: -0.12278780396897285
+      z: -0.69636424032001887
+      w: 0.69636424032001898
   PourAtWeighingContainer:
     frame_id: base_link
     position:
       x: -0.0103
       y: -0.34710000000000002
       z: 0.26850000000000002
+    orientation:
+      x: 0.030843564597231896
+      y: 0.0308435645972319
+      z: -0.70643377221289205
+      w: 0.70643377221289216
+  PourStartAtWeighingContainer:
+    frame_id: base_link
+    position:
+      x: -0.0103
+      y: -0.34710000000000002
+      z: 0.26329999999999998
     orientation:
       x: 0.030843564597231896
       y: 0.0308435645972319
@@ -333,6 +355,28 @@ targets:
       y: 0.092295955641257255
       z: -0.7010573846499778
       w: 0.70105738464997791
+  PostPourTiltbackAtWeighingContainer:
+    frame_id: base_link
+    position:
+      x: -0.0103
+      y: -0.34710000000000002
+      z: 0.26850000000000002
+    orientation:
+      x: -0.12278780396897282
+      y: -0.12278780396897285
+      z: -0.69636424032001887
+      w: 0.69636424032001898
+  PourDoneAtWeighingContainer:
+    frame_id: base_link
+    position:
+      x: -0.0103
+      y: -0.39040000000000002
+      z: 0.31069999999999998
+    orientation:
+      x: -0.12278780396897282
+      y: -0.12278780396897285
+      z: -0.69636424032001887
+      w: 0.69636424032001898
   MoveToScoopingContainer:
     frame_id: base_link
     position:

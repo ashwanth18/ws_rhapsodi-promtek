@@ -33,7 +33,6 @@
                   acceleration_scaling="0.15" /> -->
           <MoveTo name="MoveToWeighingContainer"
                   target_name="MoveToWeighingContainer"
-                  constrain_transport_pitch="true"
                   use_cartesian="false"
                   velocity_scaling="0.45"
                   acceleration_scaling="0.15" />
@@ -49,10 +48,17 @@
           <Fallback name="MaybePourRemaining">
             <CheckRemaining tolerance="{webhook_tolerance_g}"/>
             <Sequence name="PourRemainingMass">
-              <MoveTo name="MoveToPourAtWeighingContainer"
-                      target_name="PourAtWeighingContainer"
-                      constrain_upright="false"
+              <MoveTo name="MoveToPrePourTiltback"
+                      target_name="PrePourTiltbackAtWeighingContainer"
                       use_cartesian="false"
+                      planning_pipeline="stomp"
+                      velocity_scaling="0.15"
+                      acceleration_scaling="0.15" />
+              <PhaseMarker phase="pre_pour"/>
+              <MoveTo name="MoveToPourStartAtWeighingContainer"
+                      target_name="PourStartAtWeighingContainer"
+                      use_cartesian="false"
+                      planning_pipeline="stomp"
                       velocity_scaling="0.15"
                       acceleration_scaling="0.15" />
               <PhaseMarker phase="pour_start"/>
@@ -61,12 +67,22 @@
                             max_time_s="30"/>
               <PhaseMarker phase="pour_end"/>
               <ForceSuccess>
-                <MoveTo name="RecoverFromPourAtWeighingContainer"
-                        target_name="RecoverFromPourAtWeighingContainer"
-                        constrain_upright="false"
-                        use_cartesian="false"
-                        velocity_scaling="0.15"
-                        acceleration_scaling="0.15" />
+                <Sequence name="RecoverFromPourSequence">
+                  <MoveTo name="MoveToPostPourTiltback"
+                          target_name="PostPourTiltbackAtWeighingContainer"
+                          use_cartesian="false"
+                          planning_pipeline="stomp"
+                          velocity_scaling="0.15"
+                          acceleration_scaling="0.15" />
+                  <PhaseMarker phase="post_pour"/>
+                  <MoveTo name="MoveToPourDone"
+                          target_name="PourDoneAtWeighingContainer"
+                          use_cartesian="false"
+                          planning_pipeline="stomp"
+                          velocity_scaling="0.15"
+                          acceleration_scaling="0.15" />
+                  <PhaseMarker phase="pour_done"/>
+                </Sequence>
               </ForceSuccess>
             </Sequence>
           </Fallback>
@@ -96,7 +112,6 @@
               acceleration_scaling="0.20" /> -->
       <MoveTo name="ReturnToScoopingContainer"
               target_name="MoveToScoopingContainer"
-              constrain_upright="false"
               use_cartesian="false"
               velocity_scaling="0.20"
               acceleration_scaling="0.20" />

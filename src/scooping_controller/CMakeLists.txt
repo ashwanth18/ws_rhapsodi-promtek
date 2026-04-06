@@ -31,18 +31,26 @@ find_package(shape_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
 add_executable(scooping_marker_server src/interactive_marker_server.cpp)
 target_compile_features(scooping_marker_server PUBLIC cxx_std_17)
+target_include_directories(scooping_marker_server PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
 ament_target_dependencies(
   scooping_marker_server
+  geometric_shapes
   geometry_msgs
   interactive_markers
+  moveit_msgs
   rclcpp
+  shape_msgs
   std_msgs
   std_srvs
+  tf2
   visualization_msgs
 )
 target_link_libraries(scooping_marker_server yaml-cpp)
@@ -124,12 +132,28 @@ ament_target_dependencies(
   geometric_shapes
 )
 
+add_executable(scooping_task_frame_publisher src/scooping_task_frame_publisher.cpp)
+target_compile_features(scooping_task_frame_publisher PUBLIC cxx_std_17)
+target_include_directories(scooping_task_frame_publisher PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+ament_target_dependencies(
+  scooping_task_frame_publisher
+  geometric_shapes
+  geometry_msgs
+  moveit_msgs
+  rclcpp
+  shape_msgs
+  tf2_ros
+)
+
 install(
   TARGETS
     scooping_marker_server
     scooping_mtc_node
     container_marker_publisher
     planning_scene_collision_publisher
+    scooping_task_frame_publisher
   DESTINATION lib/${PROJECT_NAME}
 )
 

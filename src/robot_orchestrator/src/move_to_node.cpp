@@ -18,6 +18,9 @@ BT::PortsList MoveToNode::providedPorts()
     BT::InputPort<double>("qw", 1.0, "orientation w"),
     BT::InputPort<std::string>("frame_id", std::string("base_link"), "pose frame"),
     BT::InputPort<bool>("use_cartesian", false, "use Cartesian path"),
+    BT::InputPort<bool>("plan_only", false, "plan but do not execute"),
+    BT::InputPort<std::string>("planning_pipeline", std::string(), "MoveIt planning pipeline"),
+    BT::InputPort<std::string>("planner_id", std::string(), "planner id within selected pipeline"),
     BT::InputPort<double>("eef_step", 0.01, "Cartesian eef step"),
     BT::InputPort<double>("jump_threshold", 0.0, "Cartesian jump threshold"),
     // New optional ports matching updated action:
@@ -75,6 +78,15 @@ BT::NodeStatus MoveToNode::onStart()
   // Optional Cartesian controls
   if (auto cart = getInput<bool>("use_cartesian"); cart) {
     goal.use_cartesian = *cart;
+  }
+  if (auto plan_only = getInput<bool>("plan_only"); plan_only) {
+    goal.plan_only = *plan_only;
+  }
+  if (auto pipeline = getInput<std::string>("planning_pipeline"); pipeline) {
+    goal.planning_pipeline = *pipeline;
+  }
+  if (auto planner = getInput<std::string>("planner_id"); planner) {
+    goal.planner_id = *planner;
   }
   if (auto es = getInput<double>("eef_step"); es) {
     goal.eef_step = static_cast<float>(*es);

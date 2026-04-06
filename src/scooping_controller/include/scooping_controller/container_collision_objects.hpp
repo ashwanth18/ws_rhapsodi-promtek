@@ -53,7 +53,7 @@ inline std::vector<ContainerSceneSpec> default_container_scene_specs()
   scooping.mesh_resource = "package://scooping_controller/models/scooping_container/meshes/container.STL";
   scooping.scale = {0.0004, 0.0004, 0.0003};
   scooping.dimensions = {0.0, 0.0, 0.0};
-  scooping.pose = make_pose({0.10, -0.30, 0.00}, {0.0, 0.0, 0.0, 1.0});
+  scooping.pose = make_pose({0.460, -0.119, 0.00}, {0.0, 0.0, 1.0, 0.0});
   scooping.color = {0.7F, 0.7F, 0.7F};
   specs.push_back(scooping);
 
@@ -63,7 +63,7 @@ inline std::vector<ContainerSceneSpec> default_container_scene_specs()
   weighing.mesh_resource = "package://scooping_controller/models/weighing_container/meshes/container.STL";
   weighing.scale = {0.0001, 0.0001, 0.0001};
   weighing.dimensions = {0.0, 0.0, 0.0};
-  weighing.pose = make_pose({-0.075, -0.40, 0.00}, {0.0, 0.0, -0.70710678, 0.70710678});
+  weighing.pose = make_pose({0.00, -0.4218, 0.07}, {0.0, 0.0, 0.70710678, 0.70710678});
   weighing.color = {0.4F, 0.8F, 0.4F};
   specs.push_back(weighing);
 

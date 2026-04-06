@@ -1,0 +1,26 @@
+{
+  "eventId": "00000000-0000-0000-0000-000000000001",
+  "sentUtc": "2026-03-14T12:00:00Z",
+  "userId": "sim-operator",
+  "siteId": "sim-site",
+  "batch": {
+    "id": 22461,
+    "batchNumber": "SIM-BATCH-22461",
+    "workOrderId": "SIM-WO-001",
+    "targetQuantity": 0.4,
+    "lines": [
+      {
+        "parameters": [
+          {
+            "batchInstructionParameterCode": "Ingredient",
+            "target": "1327"
+          },
+          {
+            "batchInstructionParameterCode": "Quantity",
+            "target": 0.4
+          }
+        ]
+      }
+    ]
+  }
+}

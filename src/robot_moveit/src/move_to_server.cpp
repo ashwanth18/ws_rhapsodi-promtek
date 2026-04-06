@@ -9,10 +9,14 @@
 #include <moveit_msgs/msg/constraints.hpp>
 #include <moveit_msgs/msg/orientation_constraint.hpp>
 #include <moveit/robot_trajectory/robot_trajectory.hpp>
+#include <moveit/robot_state/conversions.hpp>
 #include <moveit/trajectory_processing/time_optimal_trajectory_generation.hpp>
 #include <moveit/trajectory_processing/trajectory_tools.hpp>
+#include <tf2/exceptions.h>
+#include <tf2/time.h>
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
+#include <visualization_msgs/msg/marker.hpp>
 
 using namespace std::chrono_literals;
 
@@ -151,6 +155,8 @@ MoveToServer::MoveToServer(const rclcpp::NodeOptions & options)
   this->declare_parameter<double>("velocity_scaling", 1.0);
   this->declare_parameter<double>("acceleration_scaling", 1.0);
   this->declare_parameter<double>("planning_time", 5.0);
+  this->declare_parameter<std::string>("planning_pipeline", "stomp");
+  this->declare_parameter<std::string>("planner_id", "");
   this->declare_parameter<bool>("cartesian_avoid_collisions", false);
   this->declare_parameter<bool>("constrain_upright", false);
   this->declare_parameter<bool>("constrain_transport_pitch", false);
@@ -175,9 +181,17 @@ void MoveToServer::deferred_init()
   init_timer_->cancel();
   auto group = this->get_parameter("planning_group").as_string();
   mgi_ = std::make_shared<moveit::planning_interface::MoveGroupInterface>(shared_from_this(), group);
+  tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
   trajectory_client_ = rclcpp_action::create_client<FollowJointTrajectory>(
     this,
     this->get_parameter("trajectory_action_server").as_string());
+  display_trajectory_pub_ = this->create_publisher<moveit_msgs::msg::DisplayTrajectory>(
+    "/display_planned_path",
+    rclcpp::QoS(1).transient_local().reliable());
+  plan_preview_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
+    "/move_to_plan_preview",
+    rclcpp::QoS(1).transient_local().reliable());
   // Initial load of named targets from YAML configuration
   load_named_targets();
 
@@ -278,6 +292,11 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
 
   // Common planning context (eef link and reference frame should match robot config)
   std::string planning_frame = mgi_->getPlanningFrame();
+  if (!transform_pose_to_frame(target, planning_frame, target, result->message)) {
+    result->success = false;
+    goal_handle->succeed(result);
+    return;
+  }
   std::string eef_link_param;
   try {
     // Declare lazily if not declared
@@ -302,9 +321,20 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
   double vel = goal->velocity_scaling > 0.0f ? goal->velocity_scaling : this->get_parameter("velocity_scaling").as_double();
   double acc = goal->acceleration_scaling > 0.0f ? goal->acceleration_scaling : this->get_parameter("acceleration_scaling").as_double();
   double plan_time = this->get_parameter("planning_time").as_double();
+  const std::string planning_pipeline =
+    goal->planning_pipeline.empty() ?
+    this->get_parameter("planning_pipeline").as_string() :
+    goal->planning_pipeline;
+  const std::string planner_id =
+    goal->planner_id.empty() ?
+    this->get_parameter("planner_id").as_string() :
+    goal->planner_id;
+  const bool plan_only = goal->plan_only;
   vel = std::max(0.0, std::min(1.0, vel));
   acc = std::max(0.0, std::min(1.0, acc));
   if (plan_time <= 0.0) plan_time = 5.0;
+  mgi_->setPlanningPipelineId(planning_pipeline);
+  mgi_->setPlannerId(planner_id);
   mgi_->setMaxVelocityScalingFactor(vel);
   mgi_->setMaxAccelerationScalingFactor(acc);
   mgi_->setPlanningTime(plan_time);
@@ -346,10 +376,12 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
       const double transport_pitch_base =
         convert_pitch_from_horizontal_to_base(transport_pitch_from_horizontal);
       const auto current_pose = mgi_->getCurrentPose(eef_link);
+      const auto reference_orientation =
+        plan_only ? target.pose.orientation : current_pose.pose.orientation;
       const auto constraints = make_upright_constraints(
         planning_frame,
         eef_link,
-        current_pose.pose.orientation,
+        reference_orientation,
         active_roll_tolerance,
         active_pitch_tolerance,
         active_yaw_tolerance);
@@ -357,10 +389,14 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
       mgi_->setPathConstraints(active_constraints);
       RCLCPP_INFO(
         this->get_logger(),
-        "Applying transport path constraint on %s using current transport_ready orientation (horizontal pitch target=%.1f deg, base pitch target=%.1f deg)",
+        "Applying transport path constraint on %s using %s orientation reference (horizontal pitch target=%.1f deg, base pitch target=%.1f deg, tolerances roll=%.1f pitch=%.1f yaw=%.1f deg)",
         eef_link.c_str(),
+        plan_only ? "typed target" : "current transport_ready",
         transport_pitch_from_horizontal * kRadToDeg,
-        transport_pitch_base * kRadToDeg);
+        transport_pitch_base * kRadToDeg,
+        active_roll_tolerance * kRadToDeg,
+        active_pitch_tolerance * kRadToDeg,
+        active_yaw_tolerance * kRadToDeg);
     } else {
       enforce_upright_pose(target);
       const auto constraints = make_upright_constraints(
@@ -374,10 +410,26 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
       mgi_->setPathConstraints(active_constraints);
       RCLCPP_INFO(
         this->get_logger(),
-        "Applying upright MoveTo constraint on %s (roll/pitch locked near zero)",
-        eef_link.c_str());
+        "Applying upright MoveTo constraint on %s (tolerances roll=%.1f pitch=%.1f yaw=%.1f deg)",
+        eef_link.c_str(),
+        active_roll_tolerance * kRadToDeg,
+        active_pitch_tolerance * kRadToDeg,
+        active_yaw_tolerance * kRadToDeg);
     }
   }
+
+  RCLCPP_INFO(
+    this->get_logger(),
+    "MoveTo request: target=%s plan_only=%s cartesian=%s pipeline=%s planner_id=%s transport_constraint=%s upright_constraint=%s vel=%.2f acc=%.2f",
+    goal->target_name.empty() ? "<pose>" : goal->target_name.c_str(),
+    plan_only ? "true" : "false",
+    goal->use_cartesian ? "true" : "false",
+    planning_pipeline.empty() ? "<default>" : planning_pipeline.c_str(),
+    planner_id.empty() ? "<default>" : planner_id.c_str(),
+    constrain_transport_pitch ? "true" : "false",
+    constrain_upright ? "true" : "false",
+    vel,
+    acc);
 
   // Decide execution mode based on waypoints + flag
   // Resolve waypoint_names (if any) into poses from the named_targets_ map.
@@ -392,10 +444,19 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
         goal_handle->succeed(result);
         return;
       }
-      if (itn->second.header.frame_id != "base_link") {
-        RCLCPP_WARN(this->get_logger(), "Waypoint '%s' frame_id '%s' != 'base_link'", n.c_str(), itn->second.header.frame_id.c_str());
+      geometry_msgs::msg::PoseStamped transformed_waypoint;
+      if (!transform_pose_to_frame(
+            itn->second,
+            planning_frame,
+            transformed_waypoint,
+            result->message))
+      {
+        result->success = false;
+        result->message = "Failed to transform waypoint '" + n + "': " + result->message;
+        goal_handle->succeed(result);
+        return;
       }
-      auto pose = itn->second.pose;
+      auto pose = transformed_waypoint.pose;
       if (constrain_upright) {
         enforce_upright_pose(pose);
       }
@@ -496,10 +557,14 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
     poses.reserve(poses_from_names.size() + goal->waypoints.size());
     poses.insert(poses.end(), poses_from_names.begin(), poses_from_names.end());
     for (const auto & ps : goal->waypoints) {
-      if (ps.header.frame_id != "base_link") {
-        RCLCPP_WARN(this->get_logger(), "Waypoint frame_id '%s' != 'base_link'; ensure transforms are handled upstream", ps.header.frame_id.c_str());
+      geometry_msgs::msg::PoseStamped transformed_waypoint;
+      if (!transform_pose_to_frame(ps, planning_frame, transformed_waypoint, result->message)) {
+        result->success = false;
+        result->message = "Failed to transform literal waypoint: " + result->message;
+        goal_handle->succeed(result);
+        return;
       }
-      auto pose = ps.pose;
+      auto pose = transformed_waypoint.pose;
       if (constrain_upright) {
         enforce_upright_pose(pose);
       }
@@ -538,6 +603,14 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
         RCLCPP_WARN(this->get_logger(), "Time parameterization failed (%s); executing raw trajectory", e.what());
       }
       plan.trajectory = traj;
+      publish_display_trajectory(plan);
+      publish_plan_preview_markers(plan, eef_link, planning_frame);
+      if (plan_only) {
+        result->success = true;
+        result->message = "Plan ready";
+        goal_handle->succeed(result);
+        return;
+      }
       if (!execute_plan_direct(plan)) {
         // Check actual pose; treat near-target as success to avoid false aborts
         auto cur_pose = mgi_->getCurrentPose(eef_link);
@@ -581,6 +654,13 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
           goal_handle->succeed(result);
           return;
         }
+        publish_display_trajectory(plan);
+        publish_plan_preview_markers(plan, eef_link, planning_frame);
+        if (plan_only) {
+          feedback->progress = static_cast<float>((i + 1.0) / static_cast<double>(num_segments));
+          goal_handle->publish_feedback(feedback);
+          continue;
+        }
         if (!execute_plan_direct(plan)) {
           // Retry with sync once
           RCLCPP_WARN(get_logger(), "Execute aborted at segment %zu; retrying after start-state sync", i);
@@ -608,11 +688,14 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
         goal_handle->publish_feedback(feedback);
       }
     }
+    if (plan_only) {
+      result->success = true;
+      result->message = "Plan ready";
+      goal_handle->succeed(result);
+      return;
+    }
   } else if (use_cartesian) {
     // No waypoints provided but Cartesian requested: use single target pose as one waypoint
-    if (target.header.frame_id != "base_link") {
-      RCLCPP_WARN(this->get_logger(), "Target frame_id '%s' != 'base_link'; ensure transforms are handled upstream", target.header.frame_id.c_str());
-    }
     wait_and_sync_start_state();
     std::vector<geometry_msgs::msg::Pose> poses;
     poses.push_back(target.pose);
@@ -629,6 +712,14 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
     }
     moveit::planning_interface::MoveGroupInterface::Plan plan;
     plan.trajectory = traj;
+    publish_display_trajectory(plan);
+    publish_plan_preview_markers(plan, eef_link, planning_frame);
+    if (plan_only) {
+      result->success = true;
+      result->message = "Plan ready";
+      goal_handle->succeed(result);
+      return;
+    }
     if (!execute_plan_direct(plan)) {
       auto cur_pose = mgi_->getCurrentPose(eef_link);
       if (!within_pose_tolerance(cur_pose.pose, poses.back())) {
@@ -666,6 +757,11 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
         }
         continue;
       }
+      publish_display_trajectory(plan);
+      publish_plan_preview_markers(plan, eef_link, planning_frame);
+      if (plan_only) {
+        break;
+      }
       if (execute_plan_direct(plan)) {
         break;
       }
@@ -688,7 +784,7 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
   }
 
   result->success = true;
-  result->message = "Done";
+  result->message = plan_only ? "Plan ready" : "Done";
   goal_handle->succeed(result);
 }
 
@@ -765,6 +861,129 @@ bool MoveToServer::execute_joint_trajectory(
   }
 
   return true;
+}
+
+void MoveToServer::publish_display_trajectory(
+  const moveit::planning_interface::MoveGroupInterface::Plan& plan)
+{
+  if (!display_trajectory_pub_) {
+    return;
+  }
+
+  moveit_msgs::msg::DisplayTrajectory display_msg;
+  display_msg.model_id = mgi_ ? mgi_->getRobotModel()->getName() : std::string();
+  if (mgi_) {
+    auto current_state = mgi_->getCurrentState(0.1);
+    if (current_state) {
+      moveit::core::robotStateToRobotStateMsg(*current_state, display_msg.trajectory_start);
+    }
+  }
+  display_msg.trajectory.push_back(plan.trajectory);
+  display_trajectory_pub_->publish(display_msg);
+}
+
+void MoveToServer::publish_plan_preview_markers(
+  const moveit::planning_interface::MoveGroupInterface::Plan& plan,
+  const std::string& eef_link,
+  const std::string& frame_id)
+{
+  if (!plan_preview_pub_ || !mgi_) {
+    return;
+  }
+
+  visualization_msgs::msg::MarkerArray markers;
+
+  visualization_msgs::msg::Marker line;
+  line.header.frame_id = frame_id;
+  line.header.stamp = this->now();
+  line.ns = "move_to_plan_preview";
+  line.id = 0;
+  line.type = visualization_msgs::msg::Marker::LINE_STRIP;
+  line.action = visualization_msgs::msg::Marker::ADD;
+  line.scale.x = 0.005;
+  line.color.r = 0.20F;
+  line.color.g = 0.75F;
+  line.color.b = 1.00F;
+  line.color.a = 1.00F;
+
+  visualization_msgs::msg::Marker points;
+  points.header = line.header;
+  points.ns = "move_to_plan_preview";
+  points.id = 1;
+  points.type = visualization_msgs::msg::Marker::SPHERE_LIST;
+  points.action = visualization_msgs::msg::Marker::ADD;
+  points.scale.x = 0.012;
+  points.scale.y = 0.012;
+  points.scale.z = 0.012;
+  points.color.r = 1.00F;
+  points.color.g = 0.80F;
+  points.color.b = 0.20F;
+  points.color.a = 1.00F;
+
+  auto state = mgi_->getCurrentState(0.1);
+  if (!state) {
+    return;
+  }
+
+  const auto& joint_trajectory = plan.trajectory.joint_trajectory;
+  for (const auto& point : joint_trajectory.points) {
+    state->setVariablePositions(joint_trajectory.joint_names, point.positions);
+    state->update();
+    const auto& transform = state->getGlobalLinkTransform(eef_link);
+    geometry_msgs::msg::Point p;
+    p.x = transform.translation().x();
+    p.y = transform.translation().y();
+    p.z = transform.translation().z();
+    line.points.push_back(p);
+    points.points.push_back(p);
+  }
+
+  markers.markers.push_back(line);
+  markers.markers.push_back(points);
+  plan_preview_pub_->publish(markers);
+}
+
+bool MoveToServer::transform_pose_to_frame(
+  const geometry_msgs::msg::PoseStamped& input,
+  const std::string& target_frame,
+  geometry_msgs::msg::PoseStamped& output,
+  std::string& error_message)
+{
+  output = input;
+  if (target_frame.empty()) {
+    error_message = "Planning frame is empty";
+    return false;
+  }
+
+  if (output.header.frame_id.empty()) {
+    output.header.frame_id = target_frame;
+    return true;
+  }
+
+  if (output.header.frame_id == target_frame) {
+    return true;
+  }
+
+  if (!tf_buffer_) {
+    error_message = "TF buffer is not initialized";
+    return false;
+  }
+
+  try {
+    const auto transform = tf_buffer_->lookupTransform(
+      target_frame,
+      output.header.frame_id,
+      tf2::TimePointZero,
+      tf2::durationFromSec(0.5));
+    tf2::doTransform(input, output, transform);
+    output.header.frame_id = target_frame;
+    return true;
+  } catch (const tf2::TransformException& ex) {
+    error_message =
+      "Unable to transform pose from '" + output.header.frame_id + "' to '" + target_frame +
+      "': " + ex.what();
+    return false;
+  }
 }
 
 bool MoveToServer::yamlPoseToMsg(const YAML::Node& n, geometry_msgs::msg::PoseStamped& out)

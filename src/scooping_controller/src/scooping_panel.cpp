@@ -1,6 +1,7 @@
 #include "scooping_controller/scooping_panel.hpp"
 
 #include <algorithm>
+#include <array>
 #include <functional>
 
 #include <pluginlib/class_list_macros.hpp>
@@ -31,6 +32,18 @@ namespace scooping_controller
 namespace
 {
 constexpr double kPi = 3.14159265358979323846;
+constexpr const char* kPourWeightTopic = "/weight";
+constexpr const char* kPourVibrationTopic = "/vibration/intensity";
+constexpr const char* kPourInclineTopic = "/incline_control";
+constexpr const char* kPourStatusTopic = "/pour_status";
+constexpr const char* kScoopTaskFrame = "scooping_container_frame";
+constexpr const char* kGoalFrame = "base_link";
+
+const std::array<const char*, 4> kPourTargetNames = {
+  "PrePourTiltbackAtWeighingContainer",
+  "PourStartAtWeighingContainer",
+  "PostPourTiltbackAtWeighingContainer",
+  "PourDoneAtWeighingContainer"};
 
 double radians_to_degrees(double radians)
 {
@@ -40,6 +53,31 @@ double radians_to_degrees(double radians)
 double degrees_to_radians(double degrees)
 {
   return degrees * kPi / 180.0;
+}
+
+struct PlannerSelection
+{
+  std::string pipeline;
+  std::string planner_id;
+  bool use_cartesian{false};
+  QString status_label;
+};
+
+PlannerSelection planner_selection_for_index(int index)
+{
+  switch (index) {
+    case 1:
+      return {"chomp", "", false, "CHOMP"};
+    case 2:
+      return {"stomp", "", false, "STOMP"};
+    case 3:
+      return {"pilz_industrial_motion_planner", "LIN", false, "Pilz LIN"};
+    case 4:
+      return {"", "", true, "Cartesian Path"};
+    case 0:
+    default:
+      return {"ompl", "", false, "OMPL"};
+  }
 }
 
 QSlider* make_slider(QWidget* parent, int min_value, int max_value, int initial_value)
@@ -154,9 +192,15 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
 : rviz_common::Panel(parent)
 , service_state_label_(new QLabel(this))
 , status_label_(new QLabel(this))
+, preview_hint_label_(new QLabel(this))
+, pour_status_label_(new QLabel(this))
+, pour_metrics_label_(new QLabel(this))
 , target_name_edit_(new QLineEdit(this))
 , target_selector_combo_(new QComboBox(this))
 , scoop_marker_combo_(new QComboBox(this))
+, constraint_mode_combo_(new QComboBox(this))
+, planner_combo_(new QComboBox(this))
+, pour_pose_combo_(new QComboBox(this))
 , scoop_x_edit_(new QLineEdit(this))
 , scoop_y_edit_(new QLineEdit(this))
 , scoop_z_edit_(new QLineEdit(this))
@@ -169,6 +213,11 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
 , roll_edit_(new QLineEdit(this))
 , pitch_edit_(new QLineEdit(this))
 , yaw_edit_(new QLineEdit(this))
+, constraint_test_enabled_checkbox_(new QCheckBox("Enable Constraint Test", this))
+, constraint_pitch_edit_(new QLineEdit(this))
+, constraint_pitch_tolerance_edit_(new QLineEdit(this))
+, constraint_roll_tolerance_edit_(new QLineEdit(this))
+, constraint_yaw_tolerance_edit_(new QLineEdit(this))
 , velocity_scale_edit_(new QLineEdit(this))
 , velocity_scale_slider_(make_slider(this, 0, 100, 20))
 , acceleration_scale_edit_(new QLineEdit(this))
@@ -210,6 +259,8 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
 , plan_parameterized_button_(new QPushButton("Plan Parameterized Scoop", this))
 , execute_parameterized_button_(new QPushButton("Execute Parameterized Scoop", this))
 , move_goal_button_(new QPushButton("Move To Goal Marker", this))
+, plan_move_goal_button_(new QPushButton("Plan MoveTo Preview", this))
+, plan_constrained_goal_button_(new QPushButton("Plan Constrained Test", this))
 , apply_typed_pose_button_(new QPushButton("Apply Typed Pose", this))
 , apply_scoop_pose_button_(new QPushButton("Apply To Selected Scoop Marker", this))
 , focus_selected_scoop_button_(new QPushButton("Focus Selected Marker", this))
@@ -217,6 +268,10 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
 , record_target_button_(new QPushButton("Save Target To YAML", this))
 , refresh_targets_button_(new QPushButton("Refresh Targets", this))
 , load_selected_target_button_(new QPushButton("Load Selected Target", this))
+, load_pour_pose_button_(new QPushButton("Load Pour Pose", this))
+, save_pour_pose_button_(new QPushButton("Save Pour Pose", this))
+, plan_pour_pose_button_(new QPushButton("Plan Pour Pose", this))
+, execute_pour_pose_button_(new QPushButton("Move To Pour Pose", this))
 , apply_motion_tuning_button_(new QPushButton("Apply Motion Settings", this))
 , shift_offset_positive_button_(new QPushButton("Shift Left (+Y)", this))
 , shift_offset_negative_button_(new QPushButton("Shift Right (-Y)", this))
@@ -224,10 +279,14 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
 , ros_timer_(new QTimer(this))
 , has_scoop_poses_(false)
 , has_target_goal_pose_(false)
+, has_pour_status_(false)
 , updating_pose_fields_(false)
 , updating_scoop_pose_fields_(false)
 , current_scoop_focus_index_(-1)
 , spin_tick_count_(0)
+, latest_weight_(0.0)
+, latest_vibration_(0.0)
+, latest_incline_(0.0)
 {
   auto* title = new QLabel("Scooping Controls", this);
   auto* hint = new QLabel(
@@ -239,10 +298,34 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   hint->setWordWrap(true);
   service_state_label_->setWordWrap(true);
   status_label_->setWordWrap(true);
+  preview_hint_label_->setWordWrap(true);
+  pour_status_label_->setWordWrap(true);
+  pour_metrics_label_->setWordWrap(true);
+  preview_hint_label_->setText(
+    "Previews: scoop lines use /manual_scoop_preview and /parameterized_scoop_preview. "
+    "MTC plans show on /solution. Normal MoveTo plans publish /display_planned_path and "
+    "/move_to_plan_preview.");
+  pour_status_label_->setText("Pour status: waiting for /pour_status");
+  pour_metrics_label_->setText("Pour telemetry: weight=-- g, vibration=--, incline=--");
   target_name_edit_->setPlaceholderText("target_name in targets.yaml");
   target_name_edit_->setText("new_target");
   target_selector_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
   target_selector_combo_->setMinimumContentsLength(18);
+  constraint_mode_combo_->addItems(
+    QStringList()
+      << "Transport Pitch Constraint"
+      << "Upright Constraint");
+  planner_combo_->addItems(
+    QStringList()
+      << "OMPL"
+      << "CHOMP"
+      << "STOMP"
+      << "Pilz LIN"
+      << "Cartesian Path");
+  planner_combo_->setCurrentIndex(2);
+  for (const char* name : kPourTargetNames) {
+    pour_pose_combo_->addItem(QString::fromUtf8(name));
+  }
   scoop_marker_combo_->addItems(
     QStringList()
       << "Approach"
@@ -269,8 +352,6 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
 
   auto* authoring_row = new QHBoxLayout();
   authoring_row->addWidget(target_name_edit_, 1);
-  authoring_row->addWidget(move_goal_button_);
-  authoring_row->addWidget(record_target_button_);
 
   auto* targets_row = new QHBoxLayout();
   targets_row->addWidget(new QLabel("Saved target", this));
@@ -284,6 +365,14 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   roll_edit_->setPlaceholderText("roll");
   pitch_edit_->setPlaceholderText("pitch");
   yaw_edit_->setPlaceholderText("yaw");
+  constraint_pitch_edit_->setPlaceholderText("deg");
+  constraint_pitch_tolerance_edit_->setPlaceholderText("deg");
+  constraint_roll_tolerance_edit_->setPlaceholderText("deg");
+  constraint_yaw_tolerance_edit_->setPlaceholderText("deg");
+  planner_combo_->setToolTip(
+    "Select the MoveTo planner to compare transport behavior. "
+    "Cartesian Path uses computeCartesianPath instead of a planning pipeline.");
+  pour_pose_combo_->setToolTip("Select a named pour workflow pose to load, save, preview, or execute.");
   velocity_scale_edit_->setPlaceholderText("0..1");
   acceleration_scale_edit_->setPlaceholderText("0..1");
   pattern_offset_x_edit_->setPlaceholderText("meters");
@@ -297,6 +386,11 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   post_lift_vibration_intensity_edit_->setPlaceholderText("0..1");
   velocity_scale_edit_->setText("0.20");
   acceleration_scale_edit_->setText("0.20");
+  constraint_test_enabled_checkbox_->setChecked(false);
+  constraint_pitch_edit_->setText("-20.0");
+  constraint_pitch_tolerance_edit_->setText("5.0");
+  constraint_roll_tolerance_edit_->setText("180.0");
+  constraint_yaw_tolerance_edit_->setText("180.0");
   pattern_offset_x_edit_->setText("0.000");
   pattern_offset_y_edit_->setText("0.000");
   pattern_offset_z_edit_->setText("0.000");
@@ -326,8 +420,8 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   template_hover_height_edit_->setPlaceholderText("hover");
   template_transport_pitch_edit_->setPlaceholderText("retain");
   template_lift_height_edit_->setPlaceholderText("lift");
-  template_x_edit_->setText("0.300");
-  template_y_edit_->setText("0.000");
+  template_x_edit_->setText("-0.160");
+  template_y_edit_->setText("0.119");
   template_z_initial_edit_->setText("0.060");
   template_z_final_edit_->setText("0.080");
   template_sweep_length_edit_->setText("0.100");
@@ -349,6 +443,44 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   pose_grid->addWidget(pitch_edit_, 1, 3);
   pose_grid->addWidget(new QLabel("Yaw (deg)", this), 1, 4);
   pose_grid->addWidget(yaw_edit_, 1, 5);
+
+  auto* constraint_grid = new QGridLayout();
+  constraint_grid->addWidget(constraint_test_enabled_checkbox_, 0, 0, 1, 2);
+  constraint_grid->addWidget(new QLabel("Mode", this), 0, 2);
+  constraint_grid->addWidget(constraint_mode_combo_, 0, 3, 1, 3);
+  constraint_grid->addWidget(new QLabel("Planner", this), 1, 0);
+  constraint_grid->addWidget(planner_combo_, 1, 1, 1, 2);
+  constraint_grid->addWidget(new QLabel("Pitch (deg)", this), 1, 3);
+  constraint_grid->addWidget(constraint_pitch_edit_, 1, 4);
+  constraint_grid->addWidget(new QLabel("Pitch Tol (deg)", this), 1, 5);
+  constraint_grid->addWidget(constraint_pitch_tolerance_edit_, 1, 6);
+  constraint_grid->addWidget(new QLabel("Roll Tol (deg)", this), 2, 0);
+  constraint_grid->addWidget(constraint_roll_tolerance_edit_, 2, 1);
+  constraint_grid->addWidget(new QLabel("Yaw Tol (deg)", this), 2, 2);
+  constraint_grid->addWidget(constraint_yaw_tolerance_edit_, 2, 3);
+
+  auto* constraint_buttons = new QGridLayout();
+  constraint_buttons->addWidget(plan_move_goal_button_, 0, 0);
+  constraint_buttons->addWidget(plan_constrained_goal_button_, 0, 1);
+  constraint_buttons->addWidget(move_goal_button_, 1, 0);
+  constraint_buttons->addWidget(record_target_button_, 1, 1);
+  authoring_row->addLayout(constraint_buttons);
+
+  auto* pour_target_row = new QHBoxLayout();
+  pour_target_row->addWidget(new QLabel("Pour pose", this));
+  pour_target_row->addWidget(pour_pose_combo_, 1);
+  pour_target_row->addWidget(load_pour_pose_button_);
+  pour_target_row->addWidget(save_pour_pose_button_);
+
+  auto* pour_buttons = new QGridLayout();
+  pour_buttons->addWidget(plan_pour_pose_button_, 0, 0);
+  pour_buttons->addWidget(execute_pour_pose_button_, 0, 1);
+
+  auto* pour_hint = new QLabel(
+    "Use the shared move-goal marker to author the selected pour pose, then save it back to targets.yaml. "
+    "Use STOMP in the planner dropdown to compare pre-pour and post-pour motion segments.",
+    this);
+  pour_hint->setWordWrap(true);
 
   auto* scoop_pose_grid = new QGridLayout();
   scoop_pose_grid->addWidget(new QLabel("Marker", this), 0, 0);
@@ -462,9 +594,20 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   auto* authoring_layout = new QVBoxLayout(authoring_box);
   authoring_layout->addLayout(targets_row);
   authoring_layout->addLayout(pose_grid);
+  authoring_layout->addLayout(constraint_grid);
   authoring_layout->addWidget(apply_typed_pose_button_);
   authoring_layout->addLayout(authoring_row);
+  authoring_layout->addWidget(preview_hint_label_);
   authoring_box->setLayout(authoring_layout);
+
+  auto* pour_box = make_group_box("Pour Workflow");
+  auto* pour_layout = new QVBoxLayout(pour_box);
+  pour_layout->addLayout(pour_target_row);
+  pour_layout->addLayout(pour_buttons);
+  pour_layout->addWidget(pour_hint);
+  pour_layout->addWidget(pour_status_label_);
+  pour_layout->addWidget(pour_metrics_label_);
+  pour_box->setLayout(pour_layout);
 
   auto* parameterized_box = make_group_box("Scooping Parameter Workflow");
   auto* parameterized_layout = new QVBoxLayout(parameterized_box);
@@ -483,6 +626,7 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   content_layout->addWidget(motion_box);
   content_layout->addWidget(scoop_box);
   content_layout->addWidget(authoring_box);
+  content_layout->addWidget(pour_box);
   content_layout->addWidget(parameterized_box);
   content_layout->addSpacing(4);
   content_layout->addWidget(status_label_);
@@ -537,7 +681,12 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
         publishScoopMarkerFocus(selectedScoopMarkerIndex());
       }
     });
-  connect(move_goal_button_, &QPushButton::clicked, this, [this]() { sendMoveGoal(); });
+  connect(plan_move_goal_button_, &QPushButton::clicked, this, [this]() { sendMoveGoal(true); });
+  connect(plan_constrained_goal_button_, &QPushButton::clicked, this, [this]() {
+    constraint_test_enabled_checkbox_->setChecked(true);
+    sendMoveGoal(true);
+  });
+  connect(move_goal_button_, &QPushButton::clicked, this, [this]() { sendMoveGoal(false); });
   connect(apply_typed_pose_button_, &QPushButton::clicked, this, [this]() { applyTypedPose(); });
   connect(apply_scoop_pose_button_, &QPushButton::clicked, this, [this]() { applyTypedScoopPose(); });
   connect(focus_selected_scoop_button_, &QPushButton::clicked, this, [this]() { focusSelectedScoopMarker(); });
@@ -545,6 +694,10 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   connect(record_target_button_, &QPushButton::clicked, this, [this]() { sendRecordTarget(); });
   connect(refresh_targets_button_, &QPushButton::clicked, this, &ScoopingPanel::onRefreshTargetsClicked);
   connect(load_selected_target_button_, &QPushButton::clicked, this, &ScoopingPanel::onLoadSelectedTargetClicked);
+  connect(load_pour_pose_button_, &QPushButton::clicked, this, [this]() { loadSelectedPourTarget(); });
+  connect(save_pour_pose_button_, &QPushButton::clicked, this, [this]() { saveSelectedPourTarget(); });
+  connect(plan_pour_pose_button_, &QPushButton::clicked, this, [this]() { sendPourTargetGoal(true); });
+  connect(execute_pour_pose_button_, &QPushButton::clicked, this, [this]() { sendPourTargetGoal(false); });
   connect(
     target_selector_combo_,
     &QComboBox::currentTextChanged,
@@ -654,6 +807,10 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   record_target_button_->setEnabled(false);
   refresh_targets_button_->setEnabled(false);
   load_selected_target_button_->setEnabled(false);
+  load_pour_pose_button_->setEnabled(false);
+  save_pour_pose_button_->setEnabled(false);
+  plan_pour_pose_button_->setEnabled(false);
+  execute_pour_pose_button_->setEnabled(false);
   apply_motion_tuning_button_->setEnabled(false);
   shift_offset_positive_button_->setEnabled(false);
   shift_offset_negative_button_->setEnabled(false);
@@ -693,6 +850,9 @@ void ScoopingPanel::onInitialize()
   manual_preview_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
     "/manual_scoop_preview",
     rclcpp::QoS(1).transient_local().reliable());
+  pour_preview_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
+    "/pour_pose_preview",
+    rclcpp::QoS(1).transient_local().reliable());
   scoop_poses_sub_ = node_->create_subscription<geometry_msgs::msg::PoseArray>(
     "/scoop_poses",
     rclcpp::QoS(1).transient_local(),
@@ -710,9 +870,39 @@ void ScoopingPanel::onInitialize()
       has_target_goal_pose_ = true;
       updatePoseEditorsFromGoal();
     });
+  pour_status_sub_ = node_->create_subscription<robot_common_msgs::msg::PourStatus>(
+    kPourStatusTopic,
+    rclcpp::QoS(10),
+    [this](const robot_common_msgs::msg::PourStatus::SharedPtr msg) {
+      latest_pour_status_ = *msg;
+      has_pour_status_ = true;
+      updatePourStatusLabels();
+    });
+  weight_sub_ = node_->create_subscription<std_msgs::msg::Float64>(
+    kPourWeightTopic,
+    rclcpp::QoS(10),
+    [this](const std_msgs::msg::Float64::SharedPtr msg) {
+      latest_weight_ = msg->data;
+      updatePourStatusLabels();
+    });
+  vibration_sub_ = node_->create_subscription<std_msgs::msg::Float64>(
+    kPourVibrationTopic,
+    rclcpp::QoS(10),
+    [this](const std_msgs::msg::Float64::SharedPtr msg) {
+      latest_vibration_ = msg->data;
+      updatePourStatusLabels();
+    });
+  incline_sub_ = node_->create_subscription<std_msgs::msg::Float64>(
+    kPourInclineTopic,
+    rclcpp::QoS(10),
+    [this](const std_msgs::msg::Float64::SharedPtr msg) {
+      latest_incline_ = msg->data;
+      updatePourStatusLabels();
+    });
 
   ros_timer_->start(150);
   updateStatus("Panel ready.");
+  updatePourStatusLabels();
   refreshServiceState();
   refreshTargetsFromYaml();
 }
@@ -824,6 +1014,7 @@ void ScoopingPanel::onRosTimer()
     rclcpp::spin_some(node_);
     publishParameterizedPreviewMarkers();
     publishManualScoopPreviewMarkers();
+    publishPourPreviewMarkers();
     ++spin_tick_count_;
     if (spin_tick_count_ % 5 == 0) {
       refreshServiceState();
@@ -858,12 +1049,70 @@ void ScoopingPanel::sendRequest(
     });
 }
 
-void ScoopingPanel::sendMoveGoal()
+bool ScoopingPanel::populateMoveGoal(
+  MoveTo::Goal& goal,
+  bool plan_only,
+  QString& error_message)
 {
-  if (!has_target_goal_pose_) {
-    updateStatus("Move goal marker pose not available yet.", "#fca5a5");
-    return;
+  geometry_msgs::msg::PoseStamped pose;
+  if (!typedPoseToStamped(pose, error_message)) {
+    return false;
   }
+  goal.target_pose = pose;
+  goal.plan_only = plan_only;
+  const PlannerSelection planner_selection =
+    planner_selection_for_index(planner_combo_->currentIndex());
+  goal.use_cartesian = planner_selection.use_cartesian;
+  goal.planning_pipeline = planner_selection.pipeline;
+  goal.planner_id = planner_selection.planner_id;
+  double velocity_scale = 0.2;
+  double acceleration_scale = 0.2;
+  (void)readDoubleField(velocity_scale_edit_, "Velocity scale", velocity_scale);
+  (void)readDoubleField(acceleration_scale_edit_, "Acceleration scale", acceleration_scale);
+  goal.velocity_scaling = static_cast<float>(velocity_scale);
+  goal.acceleration_scaling = static_cast<float>(acceleration_scale);
+  if (constraint_test_enabled_checkbox_->isChecked()) {
+    double pitch_deg = 0.0;
+    double pitch_tol_deg = 5.0;
+    double roll_tol_deg = 180.0;
+    double yaw_tol_deg = 180.0;
+    if (!readDoubleField(constraint_pitch_edit_, "Constraint pitch", pitch_deg) ||
+        !readDoubleField(constraint_pitch_tolerance_edit_, "Pitch tolerance", pitch_tol_deg) ||
+        !readDoubleField(constraint_roll_tolerance_edit_, "Roll tolerance", roll_tol_deg) ||
+        !readDoubleField(constraint_yaw_tolerance_edit_, "Yaw tolerance", yaw_tol_deg)) {
+      error_message = "Constraint tolerances must be valid numbers.";
+      return false;
+    }
+    goal.upright_roll_tolerance = static_cast<float>(degrees_to_radians(roll_tol_deg));
+    goal.upright_pitch_tolerance = static_cast<float>(degrees_to_radians(pitch_tol_deg));
+    goal.upright_yaw_tolerance = static_cast<float>(degrees_to_radians(yaw_tol_deg));
+    if (constraint_mode_combo_->currentIndex() == 0) {
+      goal.constrain_transport_pitch = true;
+      tf2::Quaternion q_current;
+      q_current.setX(goal.target_pose.pose.orientation.x);
+      q_current.setY(goal.target_pose.pose.orientation.y);
+      q_current.setZ(goal.target_pose.pose.orientation.z);
+      q_current.setW(goal.target_pose.pose.orientation.w);
+      double roll = 0.0;
+      double pitch = 0.0;
+      double yaw = 0.0;
+      tf2::Matrix3x3(q_current).getRPY(roll, pitch, yaw);
+      tf2::Quaternion q_target;
+      q_target.setRPY(roll, degrees_to_radians(pitch_deg) + kPi / 2.0, yaw);
+      q_target.normalize();
+      goal.target_pose.pose.orientation.x = q_target.x();
+      goal.target_pose.pose.orientation.y = q_target.y();
+      goal.target_pose.pose.orientation.z = q_target.z();
+      goal.target_pose.pose.orientation.w = q_target.w();
+    } else {
+      goal.constrain_upright = true;
+    }
+  }
+  return true;
+}
+
+void ScoopingPanel::sendMoveGoal(bool plan_only)
+{
   if (!move_to_client_ || !move_to_client_->wait_for_action_server(std::chrono::seconds(1))) {
     updateStatus("MoveTo action server is not available.", "#fca5a5");
     refreshServiceState();
@@ -871,35 +1120,42 @@ void ScoopingPanel::sendMoveGoal()
   }
 
   MoveTo::Goal goal;
-  goal.target_pose = latest_target_goal_pose_;
-  goal.use_cartesian = false;
-  double velocity_scale = 0.2;
-  double acceleration_scale = 0.2;
-  (void)readDoubleField(velocity_scale_edit_, "Velocity scale", velocity_scale);
-  (void)readDoubleField(acceleration_scale_edit_, "Acceleration scale", acceleration_scale);
-  goal.velocity_scaling = static_cast<float>(velocity_scale);
-  goal.acceleration_scaling = static_cast<float>(acceleration_scale);
+  QString error_message;
+  if (!populateMoveGoal(goal, plan_only, error_message)) {
+    updateStatus(error_message, "#fca5a5");
+    return;
+  }
 
-  updateStatus("Sending MoveTo goal from target marker...", "#93c5fd");
+  const PlannerSelection planner_selection =
+    planner_selection_for_index(planner_combo_->currentIndex());
+  updateStatus(
+    QString("%1 with %2 from target authoring...")
+      .arg(plan_only ? "Planning MoveTo preview" : "Sending MoveTo goal")
+      .arg(planner_selection.status_label),
+    "#93c5fd");
   rclcpp_action::Client<MoveTo>::SendGoalOptions options;
   options.goal_response_callback =
-    [this](const rclcpp_action::ClientGoalHandle<MoveTo>::SharedPtr& goal_handle) {
+    [this, plan_only](const rclcpp_action::ClientGoalHandle<MoveTo>::SharedPtr& goal_handle) {
       if (!goal_handle) {
-        updateStatus("MoveTo goal was rejected.", "#fca5a5");
+        updateStatus(plan_only ? "MoveTo plan request was rejected." : "MoveTo goal was rejected.", "#fca5a5");
       } else {
-        updateStatus("MoveTo goal accepted.", "#93c5fd");
+        updateStatus(plan_only ? "MoveTo plan request accepted." : "MoveTo goal accepted.", "#93c5fd");
       }
     };
   options.result_callback =
-    [this](const rclcpp_action::ClientGoalHandle<MoveTo>::WrappedResult& result) {
+    [this, plan_only](const rclcpp_action::ClientGoalHandle<MoveTo>::WrappedResult& result) {
       if (result.code == rclcpp_action::ResultCode::SUCCEEDED && result.result && result.result->success) {
         updateStatus(
           QString::fromStdString(
-            result.result->message.empty() ? "MoveTo goal executed." : result.result->message),
+            result.result->message.empty() ?
+              (plan_only ? "MoveTo plan preview ready." : "MoveTo goal executed.") :
+              result.result->message),
           "#86efac");
       } else {
         const std::string message =
-          (result.result && !result.result->message.empty()) ? result.result->message : "MoveTo execution failed.";
+          (result.result && !result.result->message.empty()) ?
+            result.result->message :
+            (plan_only ? "MoveTo planning failed." : "MoveTo execution failed.");
         updateStatus(QString::fromStdString(message), "#fca5a5");
       }
       refreshServiceState();
@@ -998,7 +1254,7 @@ void ScoopingPanel::applyTypedScoopPose()
 
   latest_scoop_poses_[static_cast<std::size_t>(index)] = pose;
   geometry_msgs::msg::PoseArray msg;
-  msg.header.frame_id = latest_scoop_frame_id_.empty() ? "base_link" : latest_scoop_frame_id_;
+  msg.header.frame_id = latest_scoop_frame_id_.empty() ? kScoopTaskFrame : latest_scoop_frame_id_;
   msg.header.stamp = node_ ? node_->now() : rclcpp::Time(0, 0, RCL_ROS_TIME);
   msg.poses = latest_scoop_poses_;
   scoop_poses_cmd_pub_->publish(msg);
@@ -1272,7 +1528,7 @@ void ScoopingPanel::previewParameterizedTemplate()
   }
 
   geometry_msgs::msg::PoseArray msg;
-  msg.header.frame_id = "base_link";
+  msg.header.frame_id = latest_scoop_frame_id_.empty() ? kScoopTaskFrame : latest_scoop_frame_id_;
   msg.header.stamp = node_ ? node_->now() : rclcpp::Time(0, 0, RCL_ROS_TIME);
   msg.poses = generateParameterizedTemplatePoses(
     x,
@@ -1449,7 +1705,7 @@ void ScoopingPanel::publishParameterizedPreviewMarkers()
   visualization_msgs::msg::MarkerArray markers;
 
   visualization_msgs::msg::Marker line;
-  line.header.frame_id = "base_link";
+  line.header.frame_id = latest_scoop_frame_id_.empty() ? kScoopTaskFrame : latest_scoop_frame_id_;
   line.header.stamp = stamp;
   line.ns = "parameterized_scoop_preview";
   line.id = 0;
@@ -1540,7 +1796,7 @@ void ScoopingPanel::publishManualScoopPreviewMarkers()
   visualization_msgs::msg::MarkerArray markers;
 
   visualization_msgs::msg::Marker clear;
-  clear.header.frame_id = latest_scoop_frame_id_.empty() ? "base_link" : latest_scoop_frame_id_;
+  clear.header.frame_id = latest_scoop_frame_id_.empty() ? kScoopTaskFrame : latest_scoop_frame_id_;
   clear.header.stamp = node_ ? node_->now() : rclcpp::Time(0, 0, RCL_ROS_TIME);
   clear.ns = "manual_scoop_preview";
   clear.id = 0;
@@ -1553,7 +1809,7 @@ void ScoopingPanel::publishManualScoopPreviewMarkers()
   }
 
   const auto stamp = node_->now();
-  const std::string frame_id = latest_scoop_frame_id_.empty() ? "base_link" : latest_scoop_frame_id_;
+  const std::string frame_id = latest_scoop_frame_id_.empty() ? kScoopTaskFrame : latest_scoop_frame_id_;
   auto parse_or_default = [](QLineEdit* edit, double fallback) {
     bool ok = false;
     const double value = edit->text().trimmed().toDouble(&ok);
@@ -1819,6 +2075,246 @@ void ScoopingPanel::loadSelectedTarget()
   updateStatus(QString("Loaded target '%1' into the move goal marker.").arg(selected), "#86efac");
 }
 
+QString ScoopingPanel::selectedPourTargetName() const
+{
+  return pour_pose_combo_ ? pour_pose_combo_->currentText().trimmed() : QString();
+}
+
+bool ScoopingPanel::loadNamedTargetByName(const QString& target_name)
+{
+  const QString selected = target_name.trimmed();
+  if (selected.isEmpty()) {
+    updateStatus("Select a saved target first.", "#fca5a5");
+    return false;
+  }
+
+  const auto it = named_targets_.find(selected.toStdString());
+  if (it == named_targets_.end()) {
+    updateStatus(QString("Target '%1' is not loaded in the panel.").arg(selected), "#fca5a5");
+    return false;
+  }
+
+  latest_target_goal_pose_ = it->second;
+  has_target_goal_pose_ = true;
+  target_name_edit_->setText(selected);
+  if (target_selector_combo_) {
+    const int index = target_selector_combo_->findText(selected);
+    if (index >= 0) {
+      target_selector_combo_->setCurrentIndex(index);
+    }
+  }
+  updatePoseEditorsFromGoal();
+  if (target_goal_cmd_pub_) {
+    auto pose = latest_target_goal_pose_;
+    pose.header.stamp = node_ ? node_->now() : rclcpp::Time(0, 0, RCL_ROS_TIME);
+    target_goal_cmd_pub_->publish(pose);
+  }
+  return true;
+}
+
+void ScoopingPanel::loadSelectedPourTarget()
+{
+  const QString selected = selectedPourTargetName();
+  if (loadNamedTargetByName(selected)) {
+    updateStatus(QString("Loaded pour pose '%1' into the move goal marker.").arg(selected), "#86efac");
+  }
+}
+
+void ScoopingPanel::saveSelectedPourTarget()
+{
+  const QString target_name = selectedPourTargetName();
+  if (target_name.isEmpty()) {
+    updateStatus("Select a pour pose name before saving.", "#fca5a5");
+    return;
+  }
+
+  std::string yaml_path;
+  if (!tryGetTargetsYamlPath(yaml_path)) {
+    updateStatus("Could not query targets.yaml path.", "#fca5a5");
+    refreshServiceState();
+    return;
+  }
+
+  geometry_msgs::msg::PoseStamped pose;
+  QString error_message;
+  if (!typedPoseToStamped(pose, error_message)) {
+    updateStatus(error_message, "#fca5a5");
+    return;
+  }
+
+  latest_target_goal_pose_ = pose;
+  has_target_goal_pose_ = true;
+  target_name_edit_->setText(target_name);
+
+  updateStatus(QString("Saving pour pose '%1' to YAML...").arg(target_name), "#93c5fd");
+  if (!saveNamedTargetToYaml(yaml_path, target_name.toStdString(), pose, error_message)) {
+    updateStatus(error_message, "#fca5a5");
+    refreshServiceState();
+    return;
+  }
+
+  QTimer::singleShot(0, this, [this, target_name]() {
+    refreshTargetsFromYaml();
+    if (target_selector_combo_) {
+      const int index = target_selector_combo_->findText(target_name);
+      if (index >= 0) {
+        target_selector_combo_->setCurrentIndex(index);
+      }
+    }
+  });
+  updateStatus(
+    QString("Saved pour pose '%1' to %2").arg(target_name, QString::fromStdString(yaml_path)),
+    "#86efac");
+  refreshServiceState();
+}
+
+void ScoopingPanel::sendPourTargetGoal(bool plan_only)
+{
+  if (!move_to_client_ || !move_to_client_->wait_for_action_server(std::chrono::seconds(1))) {
+    updateStatus("MoveTo action server is not available.", "#fca5a5");
+    refreshServiceState();
+    return;
+  }
+
+  const QString target_name = selectedPourTargetName();
+  if (target_name.isEmpty()) {
+    updateStatus("Select a pour pose first.", "#fca5a5");
+    return;
+  }
+
+  MoveTo::Goal goal;
+  goal.target_name = target_name.toStdString();
+  goal.plan_only = plan_only;
+  const PlannerSelection planner_selection =
+    planner_selection_for_index(planner_combo_->currentIndex());
+  goal.use_cartesian = planner_selection.use_cartesian;
+  goal.planning_pipeline = planner_selection.pipeline;
+  goal.planner_id = planner_selection.planner_id;
+  double velocity_scale = 0.2;
+  double acceleration_scale = 0.2;
+  (void)readDoubleField(velocity_scale_edit_, "Velocity scale", velocity_scale);
+  (void)readDoubleField(acceleration_scale_edit_, "Acceleration scale", acceleration_scale);
+  goal.velocity_scaling = static_cast<float>(velocity_scale);
+  goal.acceleration_scaling = static_cast<float>(acceleration_scale);
+
+  updateStatus(
+    QString("%1 pour pose '%2' with %3...")
+      .arg(plan_only ? "Planning" : "Sending")
+      .arg(target_name, planner_selection.status_label),
+    "#93c5fd");
+  rclcpp_action::Client<MoveTo>::SendGoalOptions options;
+  options.goal_response_callback =
+    [this, plan_only](const rclcpp_action::ClientGoalHandle<MoveTo>::SharedPtr& goal_handle) {
+      if (!goal_handle) {
+        updateStatus(plan_only ? "Pour pose plan request was rejected." : "Pour pose goal was rejected.", "#fca5a5");
+      } else {
+        updateStatus(plan_only ? "Pour pose plan request accepted." : "Pour pose goal accepted.", "#93c5fd");
+      }
+    };
+  options.result_callback =
+    [this, plan_only](const rclcpp_action::ClientGoalHandle<MoveTo>::WrappedResult& result) {
+      if (result.code == rclcpp_action::ResultCode::SUCCEEDED && result.result && result.result->success) {
+        updateStatus(
+          QString::fromStdString(
+            result.result->message.empty() ?
+              (plan_only ? "Pour pose plan preview ready." : "Pour pose goal executed.") :
+              result.result->message),
+          "#86efac");
+      } else {
+        const std::string message =
+          (result.result && !result.result->message.empty()) ?
+            result.result->message :
+            (plan_only ? "Pour pose planning failed." : "Pour pose execution failed.");
+        updateStatus(QString::fromStdString(message), "#fca5a5");
+      }
+      refreshServiceState();
+    };
+  move_to_client_->async_send_goal(goal, options);
+}
+
+void ScoopingPanel::updatePourStatusLabels()
+{
+  if (!has_pour_status_) {
+    pour_status_label_->setText("Pour status: waiting for /pour_status");
+  } else {
+    pour_status_label_->setText(
+      QString("Pour status: %1 | phase=%2 | target=%3 g | band=%4 g | remaining=%5 g")
+        .arg(latest_pour_status_.active ? "active" : "idle")
+        .arg(QString::fromStdString(latest_pour_status_.phase))
+        .arg(latest_pour_status_.target_g, 0, 'f', 2)
+        .arg(latest_pour_status_.band_threshold_g, 0, 'f', 2)
+        .arg(latest_pour_status_.remaining_to_band_g, 0, 'f', 2));
+  }
+
+  pour_metrics_label_->setText(
+    QString("Pour telemetry: weight=%1 g | vibration=%2 | incline=%3")
+      .arg(latest_weight_, 0, 'f', 2)
+      .arg(latest_vibration_, 0, 'f', 2)
+      .arg(latest_incline_, 0, 'f', 2));
+}
+
+void ScoopingPanel::publishPourPreviewMarkers()
+{
+  if (!pour_preview_pub_) {
+    return;
+  }
+
+  visualization_msgs::msg::MarkerArray markers;
+
+  visualization_msgs::msg::Marker clear;
+  clear.action = visualization_msgs::msg::Marker::DELETEALL;
+  markers.markers.push_back(clear);
+
+  const QString selected_name = selectedPourTargetName();
+  for (std::size_t i = 0; i < kPourTargetNames.size(); ++i) {
+    const auto it = named_targets_.find(std::string(kPourTargetNames[i]));
+    if (it == named_targets_.end()) {
+      continue;
+    }
+
+    const bool selected = selected_name == QString::fromUtf8(kPourTargetNames[i]);
+    const auto& pose = it->second;
+
+    visualization_msgs::msg::Marker arrow;
+    arrow.header.frame_id = pose.header.frame_id.empty() ? kGoalFrame : pose.header.frame_id;
+    arrow.header.stamp = node_ ? node_->now() : rclcpp::Time(0, 0, RCL_ROS_TIME);
+    arrow.ns = "pour_pose_preview";
+    arrow.id = static_cast<int>(i * 2);
+    arrow.type = visualization_msgs::msg::Marker::ARROW;
+    arrow.action = visualization_msgs::msg::Marker::ADD;
+    arrow.pose = pose.pose;
+    arrow.scale.x = 0.09;
+    arrow.scale.y = 0.012;
+    arrow.scale.z = 0.012;
+    arrow.color.a = selected ? 1.0F : 0.55F;
+    switch (i) {
+      case 0: arrow.color.b = 1.0F; break;
+      case 1: arrow.color.r = 1.0F; break;
+      case 2: arrow.color.r = 1.0F; arrow.color.g = 0.8F; break;
+      default: arrow.color.g = 1.0F; break;
+    }
+    markers.markers.push_back(arrow);
+
+    visualization_msgs::msg::Marker text;
+    text.header = arrow.header;
+    text.ns = "pour_pose_preview_text";
+    text.id = static_cast<int>(i * 2 + 1);
+    text.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    text.action = visualization_msgs::msg::Marker::ADD;
+    text.pose = pose.pose;
+    text.pose.position.z += 0.04;
+    text.scale.z = 0.025;
+    text.color.r = 1.0F;
+    text.color.g = 1.0F;
+    text.color.b = 1.0F;
+    text.color.a = selected ? 1.0F : 0.7F;
+    text.text = kPourTargetNames[i];
+    markers.markers.push_back(text);
+  }
+
+  pour_preview_pub_->publish(markers);
+}
+
 bool ScoopingPanel::tryGetTargetsYamlPath(std::string& yaml_path)
 {
   return tryGetTargetsYamlPathFromClient(move_to_params_client_, yaml_path) ||
@@ -1981,7 +2477,7 @@ bool ScoopingPanel::typedPoseToStamped(
   }
 
   pose.header.frame_id =
-    latest_target_goal_pose_.header.frame_id.empty() ? "base_link" : latest_target_goal_pose_.header.frame_id;
+    latest_target_goal_pose_.header.frame_id.empty() ? kGoalFrame : latest_target_goal_pose_.header.frame_id;
   pose.header.stamp = node_ ? node_->now() : rclcpp::Time(0, 0, RCL_ROS_TIME);
   return true;
 }
@@ -2135,14 +2631,20 @@ void ScoopingPanel::refreshServiceState()
   execute_continuous_button_->setEnabled(execute_continuous_ready);
   execute_waypoint_motion_button_->setEnabled(execute_waypoint_motion_ready);
   preview_parameterized_button_->setEnabled(scoop_poses_cmd_pub_ != nullptr);
-  move_goal_button_->setEnabled(move_ready && has_target_goal_pose_);
-  apply_typed_pose_button_->setEnabled(has_target_goal_pose_);
+  plan_move_goal_button_->setEnabled(move_ready);
+  plan_constrained_goal_button_->setEnabled(move_ready);
+  move_goal_button_->setEnabled(move_ready);
+  apply_typed_pose_button_->setEnabled(target_goal_cmd_pub_ != nullptr);
   apply_scoop_pose_button_->setEnabled(scoop_edit_ready);
   focus_selected_scoop_button_->setEnabled(scoop_edit_ready);
   show_all_scoops_button_->setEnabled(scoop_edit_ready);
   record_target_button_->setEnabled(targets_ready);
   refresh_targets_button_->setEnabled(targets_ready);
   load_selected_target_button_->setEnabled(targets_ready && target_selector_combo_->count() > 0);
+  load_pour_pose_button_->setEnabled(targets_ready && !selectedPourTargetName().isEmpty());
+  save_pour_pose_button_->setEnabled(targets_ready && !selectedPourTargetName().isEmpty());
+  plan_pour_pose_button_->setEnabled(move_ready && !selectedPourTargetName().isEmpty());
+  execute_pour_pose_button_->setEnabled(move_ready && !selectedPourTargetName().isEmpty());
   apply_motion_tuning_button_->setEnabled(tuning_ready);
   shift_offset_positive_button_->setEnabled(tuning_ready);
   shift_offset_negative_button_->setEnabled(tuning_ready);

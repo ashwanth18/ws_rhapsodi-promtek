@@ -1,8 +1,12 @@
+#include "scooping_controller/container_collision_objects.hpp"
+
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -13,6 +17,7 @@
 #include <rosidl_runtime_cpp/message_initialization.hpp>
 #include <std_msgs/msg/int32.hpp>
 #include <std_srvs/srv/trigger.hpp>
+#include <tf2/LinearMath/Transform.h>
 #include <visualization_msgs/msg/interactive_marker.hpp>
 #include <visualization_msgs/msg/interactive_marker_control.hpp>
 #include <visualization_msgs/msg/interactive_marker_feedback.hpp>
@@ -31,6 +36,9 @@ using MarkerArray = visualization_msgs::msg::MarkerArray;
 constexpr double kTcpOffsetX = 0.183;
 constexpr double kTcpOffsetY = 0.0;
 constexpr double kTcpOffsetZ = -0.072;
+constexpr char kDefaultGoalFrame[] = "base_link";
+constexpr char kDefaultScoopFrame[] = "scooping_container_frame";
+constexpr char kDefaultTaskContainerId[] = "scooping_container";
 
 struct MarkerSeed
 {
@@ -108,6 +116,36 @@ std::string expand_user_path(const std::string& path)
     }
   }
   return path;
+}
+
+tf2::Transform tf_from_pose(const geometry_msgs::msg::Pose& pose)
+{
+  tf2::Quaternion q(
+    pose.orientation.x,
+    pose.orientation.y,
+    pose.orientation.z,
+    pose.orientation.w);
+  return tf2::Transform(q, tf2::Vector3(pose.position.x, pose.position.y, pose.position.z));
+}
+
+geometry_msgs::msg::Pose pose_from_tf(const tf2::Transform& transform)
+{
+  geometry_msgs::msg::Pose pose;
+  pose.position.x = transform.getOrigin().x();
+  pose.position.y = transform.getOrigin().y();
+  pose.position.z = transform.getOrigin().z();
+  pose.orientation.x = transform.getRotation().x();
+  pose.orientation.y = transform.getRotation().y();
+  pose.orientation.z = transform.getRotation().z();
+  pose.orientation.w = transform.getRotation().w();
+  return pose;
+}
+
+geometry_msgs::msg::Pose transform_pose(
+  const geometry_msgs::msg::Pose& pose,
+  const tf2::Transform& frame_transform)
+{
+  return pose_from_tf(frame_transform * tf_from_pose(pose));
 }
 
 Marker make_cube_marker(
@@ -207,17 +245,25 @@ public:
   ScoopingMarkerServer()
   : Node("scooping_marker_server")
   {
-    this->declare_parameter<std::string>("frame_id", "base_link");
+    this->declare_parameter<std::string>("scoop_frame_id", kDefaultScoopFrame);
+    this->declare_parameter<std::string>("goal_frame_id", kDefaultGoalFrame);
+    this->declare_parameter<std::string>("task_container_id", kDefaultTaskContainerId);
     this->declare_parameter<std::string>("poses_yaml", "~/.ros/scooping_controller/poses.yaml");
     this->declare_parameter<std::string>(
       "tool_mesh_resource",
-      "package://niryo_robot_description/meshes/ned3pro/stl/niryo_scoop-ros.STL");
-    frame_id_ = this->get_parameter("frame_id").as_string();
+      "package://niryo_robot_description/meshes/ned3pro/stl/niryo_scoop_v4-ros.STL");
+    scooping_controller::declare_container_scene_parameters(*this);
+    scoop_frame_id_ = this->get_parameter("scoop_frame_id").as_string();
+    goal_frame_id_ = this->get_parameter("goal_frame_id").as_string();
     poses_yaml_path_ = expand_user_path(this->get_parameter("poses_yaml").as_string());
     tool_mesh_resource_ = this->get_parameter("tool_mesh_resource").as_string();
     seeds_ = default_marker_seeds();
     goal_seed_ = default_goal_marker_seed();
     goal_pose_ = goal_seed_.pose;
+    initialize_scoop_frame_transform();
+    for (auto& seed : seeds_) {
+      seed.pose = transform_pose_to_scoop_frame(seed.pose);
+    }
 
     pose_pub_ = this->create_publisher<geometry_msgs::msg::PoseArray>(
       "/scoop_poses", rclcpp::QoS(1).transient_local());
@@ -278,7 +324,7 @@ private:
   {
     const auto& seed = seeds_[index];
     InteractiveMarker int_marker;
-    int_marker.header.frame_id = frame_id_;
+    int_marker.header.frame_id = scoop_frame_id_;
     int_marker.name = seed.marker_name;
     int_marker.description = seed.label;
     int_marker.scale = 0.18;
@@ -310,7 +356,7 @@ private:
   void insert_goal_marker()
   {
     InteractiveMarker int_marker;
-    int_marker.header.frame_id = frame_id_;
+    int_marker.header.frame_id = goal_frame_id_;
     int_marker.name = goal_seed_.marker_name;
     int_marker.description = goal_seed_.label;
     int_marker.scale = 0.20;
@@ -376,7 +422,7 @@ private:
   {
     geometry_msgs::msg::PoseArray msg;
     msg.header.stamp = this->now();
-    msg.header.frame_id = frame_id_;
+    msg.header.frame_id = scoop_frame_id_;
     msg.poses = poses_;
     pose_pub_->publish(msg);
   }
@@ -385,7 +431,7 @@ private:
   {
     geometry_msgs::msg::PoseStamped msg;
     msg.header.stamp = this->now();
-    msg.header.frame_id = frame_id_;
+    msg.header.frame_id = goal_frame_id_;
     msg.pose = goal_pose_;
     goal_pose_pub_->publish(msg);
   }
@@ -413,12 +459,12 @@ private:
       RCLCPP_WARN(this->get_logger(), "Ignoring target goal command with empty frame_id");
       return;
     }
-    if (msg->header.frame_id != frame_id_) {
+    if (msg->header.frame_id != goal_frame_id_) {
       RCLCPP_WARN(
         this->get_logger(),
         "Ignoring target goal command in frame '%s'; expected '%s'",
         msg->header.frame_id.c_str(),
-        frame_id_.c_str());
+        goal_frame_id_.c_str());
       return;
     }
 
@@ -441,12 +487,12 @@ private:
         seeds_.size());
       return;
     }
-    if (!msg->header.frame_id.empty() && msg->header.frame_id != frame_id_) {
+    if (!msg->header.frame_id.empty() && msg->header.frame_id != scoop_frame_id_) {
       RCLCPP_WARN(
         this->get_logger(),
         "Ignoring scoop pose command in frame '%s'; expected '%s'",
         msg->header.frame_id.c_str(),
-        frame_id_.c_str());
+        scoop_frame_id_.c_str());
       return;
     }
 
@@ -520,7 +566,7 @@ private:
       0.032));
 
     for (auto& marker : legend.markers) {
-      marker.header.frame_id = frame_id_;
+      marker.header.frame_id = scoop_frame_id_;
       marker.header.stamp = stamp;
       marker.ns = "scooping_legend";
       marker.action = Marker::ADD;
@@ -588,7 +634,7 @@ private:
       }
 
       YAML::Node root;
-      root["frame_id"] = frame_id_;
+      root["frame_id"] = scoop_frame_id_;
       YAML::Node markers(YAML::NodeType::Sequence);
       for (std::size_t i = 0; i < seeds_.size(); ++i) {
         YAML::Node entry;
@@ -629,6 +675,8 @@ private:
       }
 
       const YAML::Node root = YAML::LoadFile(poses_yaml_path_);
+      const std::string source_frame =
+        root["frame_id"] ? root["frame_id"].as<std::string>() : scoop_frame_id_;
       const auto markers = root["markers"];
       if (!markers || !markers.IsSequence()) {
         message = "Pose YAML is missing a markers sequence";
@@ -658,7 +706,7 @@ private:
         pose.orientation.z = pose_node["orientation"]["z"].as<double>();
         pose.orientation.w = pose_node["orientation"]["w"].as<double>();
 
-        poses_[static_cast<std::size_t>(index)] = pose;
+        poses_[static_cast<std::size_t>(index)] = convert_loaded_scoop_pose(pose, source_frame);
         ++updated;
       }
 
@@ -670,6 +718,56 @@ private:
       message = std::string("Failed to load scoop poses: ") + ex.what();
       return false;
     }
+  }
+
+  void initialize_scoop_frame_transform()
+  {
+    if (scoop_frame_id_ == goal_frame_id_) {
+      has_scoop_frame_transform_ = false;
+      return;
+    }
+
+    const auto scene_specs = scooping_controller::load_container_scene_specs(*this);
+    const auto task_container_id = this->get_parameter("task_container_id").as_string();
+    const auto it = std::find_if(
+      scene_specs.begin(),
+      scene_specs.end(),
+      [&task_container_id](const scooping_controller::ContainerSceneSpec& spec) {
+        return spec.id == task_container_id;
+      });
+    if (it == scene_specs.end()) {
+      throw std::runtime_error("Missing scooping container scene spec for scoop frame transform");
+    }
+
+    geometry_msgs::msg::Pose task_frame_pose = it->pose;
+    task_frame_pose.orientation.x = 0.0;
+    task_frame_pose.orientation.y = 0.0;
+    task_frame_pose.orientation.z = 0.0;
+    task_frame_pose.orientation.w = 1.0;
+    scoop_frame_from_goal_ = tf_from_pose(task_frame_pose);
+    has_scoop_frame_transform_ = true;
+  }
+
+  geometry_msgs::msg::Pose transform_pose_to_scoop_frame(const geometry_msgs::msg::Pose& pose) const
+  {
+    if (!has_scoop_frame_transform_) {
+      return pose;
+    }
+    return transform_pose(pose, scoop_frame_from_goal_.inverse());
+  }
+
+  geometry_msgs::msg::Pose convert_loaded_scoop_pose(
+    const geometry_msgs::msg::Pose& pose,
+    const std::string& source_frame) const
+  {
+    if (source_frame.empty() || source_frame == scoop_frame_id_) {
+      return pose;
+    }
+    if (source_frame == goal_frame_id_) {
+      return transform_pose_to_scoop_frame(pose);
+    }
+    throw std::runtime_error(
+      "Unsupported scoop pose frame '" + source_frame + "' in " + poses_yaml_path_);
   }
 
   int find_pose_index(const std::string& marker_name) const
@@ -691,9 +789,12 @@ private:
     publish_legend();
   }
 
-  std::string frame_id_;
+  std::string scoop_frame_id_;
+  std::string goal_frame_id_;
   std::string poses_yaml_path_;
   std::string tool_mesh_resource_;
+  tf2::Transform scoop_frame_from_goal_;
+  bool has_scoop_frame_transform_{false};
   std::array<MarkerSeed, 5> seeds_{};
   MarkerSeed goal_seed_{};
   geometry_msgs::msg::Pose goal_pose_{};

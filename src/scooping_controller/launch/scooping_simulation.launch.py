@@ -32,6 +32,7 @@ def generate_launch_description():
     rviz_config = LaunchConfiguration("rviz_config")
     poses_yaml = LaunchConfiguration("poses_yaml")
     targets_yaml = LaunchConfiguration("targets_yaml")
+    scoop_frame_id = LaunchConfiguration("scoop_frame_id")
     pattern_offset_y = LaunchConfiguration("pattern_offset_y")
     post_lift_vibration_enabled = LaunchConfiguration("post_lift_vibration_enabled")
     post_lift_vibration_duration_s = LaunchConfiguration("post_lift_vibration_duration_s")
@@ -69,7 +70,7 @@ def generate_launch_description():
     declare_poses_yaml = DeclareLaunchArgument(
         "poses_yaml",
         default_value=os.path.expanduser(
-            "~/.ros/scooping_controller/poses.yaml"
+            "~/.ros/scooping_controller/poses_real.yaml"
         ),
         description="YAML file used by RViz Save/Load scoop pose buttons",
     )
@@ -83,11 +84,16 @@ def generate_launch_description():
         ),
         description="YAML file used by MoveTo and RecordTarget named poses",
     )
+    declare_scoop_frame_id = DeclareLaunchArgument(
+        "scoop_frame_id",
+        default_value="scooping_container_frame",
+        description="Task frame used for scoop pose authoring and planning",
+    )
     declare_pattern_offset_y = DeclareLaunchArgument(
         "pattern_offset_y",
         default_value="0.0",
         description=(
-            "Translate all scoop poses along base_link Y before planning"
+            "Translate all scoop poses along scoop task-frame Y before planning"
         ),
     )
     declare_post_lift_vibration_enabled = DeclareLaunchArgument(
@@ -176,6 +182,10 @@ def generate_launch_description():
         )
         .robot_description(mappings={})
         .trajectory_execution(file_path="config/moveit_controllers.yaml")
+        .planning_pipelines(
+            default_planning_pipeline="stomp",
+            pipelines=["ompl", "chomp", "pilz_industrial_motion_planner", "stomp"]
+        )
         .planning_scene_monitor(
             publish_robot_description=True,
             publish_robot_description_semantic=True,
@@ -311,13 +321,30 @@ def generate_launch_description():
         arguments=["--frame-id", "world", "--child-frame-id", "base_link"],
     )
 
+    scooping_task_frame = Node(
+        package="scooping_controller",
+        executable="scooping_task_frame_publisher",
+        output="screen",
+        parameters=[
+            container_scene_yaml,
+            {
+                "parent_frame_id": "base_link",
+                "child_frame_id": scoop_frame_id,
+                "task_container_id": "scooping_container",
+                "use_sim_time": use_sim_time,
+            }
+        ],
+    )
+
     marker_server = Node(
         package="scooping_controller",
         executable="scooping_marker_server",
         output="screen",
         parameters=[
+            container_scene_yaml,
             {
-                "frame_id": "base_link",
+                "scoop_frame_id": scoop_frame_id,
+                "goal_frame_id": "base_link",
                 "poses_yaml": poses_yaml,
             }
         ],
@@ -397,7 +424,7 @@ def generate_launch_description():
                 "use_sim_time": use_sim_time,
                 "group": "arm",
                 "ik_frame": "tcp_link",
-                "frame_id": "base_link",
+                "frame_id": scoop_frame_id,
                 "pattern_offset_y": pattern_offset_y,
                 "post_lift_vibration_enabled": post_lift_vibration_enabled,
                 "post_lift_vibration_duration_s": post_lift_vibration_duration_s,
@@ -444,6 +471,7 @@ def generate_launch_description():
                 TimerAction(period=2.0, actions=[move_group_node]),
                 TimerAction(period=4.0, actions=[move_to_server]),
                 TimerAction(period=4.2, actions=[target_recorder]),
+                TimerAction(period=4.8, actions=[scooping_task_frame]),
                 TimerAction(period=5.0, actions=[marker_server]),
                 TimerAction(period=5.5, actions=[container_marker]),
                 TimerAction(period=5.7, actions=[planning_scene_collisions]),
@@ -461,6 +489,7 @@ def generate_launch_description():
             declare_rviz_config,
             declare_poses_yaml,
             declare_targets_yaml,
+            declare_scoop_frame_id,
             declare_pattern_offset_y,
             declare_post_lift_vibration_enabled,
             declare_post_lift_vibration_duration_s,

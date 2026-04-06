@@ -694,8 +694,16 @@ Current node parameters in `scooping_mtc_node`:
 The panel publishes a live preview on:
 
 * `/parameterized_scoop_preview`
+* `/manual_scoop_preview`
+* `/display_planned_path`
+* `/solution`
 
-The default RViz config displays this automatically as `Parameterized Scoop Preview`.
+The default RViz config displays these automatically as:
+
+* `Parameterized Scoop Preview` for parameterized template preview lines
+* `Manual Scoop Preview` for manual 5-pose preview lines
+* `MoveTo Planned Path` for normal `MoveTo` plan previews
+* `Motion Planning Tasks` for MTC task solutions on `/solution`
 
 The preview shows:
 
@@ -705,6 +713,10 @@ The preview shows:
 
 `Preview Template` also pushes the generated poses into the existing 5 scoop markers so the manual
 workflow and parameterized workflow can be compared visually.
+
+In `Target Authoring`, `Plan MoveTo Preview` requests a normal `MoveTo` plan without execution, while
+`Plan Constrained Test` applies the panel's constraint test settings first so transport/upright
+constraint failures can be debugged visually in RViz.
 
 ### Services
 

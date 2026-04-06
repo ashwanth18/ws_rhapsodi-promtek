@@ -20,7 +20,10 @@ bool constrain_transport_pitch
 float32 upright_roll_tolerance
 float32 upright_pitch_tolerance
 float32 upright_yaw_tolerance
+string planning_pipeline
+string planner_id
 bool use_cartesian
+bool plan_only
 float32 eef_step
 float32 jump_threshold
 ---

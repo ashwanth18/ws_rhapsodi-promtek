@@ -48,7 +48,8 @@ public:
   {
     this->declare_parameter<std::string>("group", "arm");
     this->declare_parameter<std::string>("ik_frame", "tcp_link");
-    this->declare_parameter<std::string>("frame_id", "base_link");
+    this->declare_parameter<std::string>("frame_id", "scooping_container_frame");
+    this->declare_parameter<std::string>("planning_scene_frame_id", "base_link");
     this->declare_parameter<std::string>(
       "trajectory_controller",
       "niryo_robot_follow_joint_trajectory_controller");
@@ -57,6 +58,8 @@ public:
       "/niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory");
     this->declare_parameter<double>("planning_time", 5.0);
     this->declare_parameter<double>("current_state_timeout", 20.0);
+    this->declare_parameter<std::string>("planning_pipeline", "ompl");
+    this->declare_parameter<std::string>("planner_id", "");
     this->declare_parameter<double>("velocity_scaling", 0.2);
     this->declare_parameter<double>("acceleration_scaling", 0.2);
     this->declare_parameter<double>("pattern_offset_x", 0.0);
@@ -75,8 +78,8 @@ public:
     this->declare_parameter<double>("cartesian_step", 0.005);
     this->declare_parameter<bool>("cartesian_avoid_collisions", false);
     this->declare_parameter<double>("orientation_constraint_tolerance", 0.12);
-    this->declare_parameter<double>("template_x", 0.30);
-    this->declare_parameter<double>("template_y", 0.00);
+    this->declare_parameter<double>("template_x", -0.160);
+    this->declare_parameter<double>("template_y", 0.119);
     this->declare_parameter<double>("template_z_initial", 0.06);
     this->declare_parameter<double>("template_z_final", 0.08);
     this->declare_parameter<double>("template_sweep_length", 0.10);
@@ -528,7 +531,10 @@ private:
     task.setProperty("group", group());
     task.setProperty("ik_frame", ik_frame());
 
-    auto pipeline = std::make_shared<mtc::solvers::PipelinePlanner>(shared_from_this());
+    auto pipeline = std::make_shared<mtc::solvers::PipelinePlanner>(
+      shared_from_this(),
+      this->get_parameter("planning_pipeline").as_string(),
+      this->get_parameter("planner_id").as_string());
     pipeline->setTimeout(this->get_parameter("planning_time").as_double());
     pipeline->setMaxVelocityScalingFactor(this->get_parameter("velocity_scaling").as_double());
     pipeline->setMaxAccelerationScalingFactor(this->get_parameter("acceleration_scaling").as_double());
@@ -557,7 +563,10 @@ private:
     task.setProperty("group", group());
     task.setProperty("ik_frame", ik_frame());
 
-    auto pipeline = std::make_shared<mtc::solvers::PipelinePlanner>(shared_from_this());
+    auto pipeline = std::make_shared<mtc::solvers::PipelinePlanner>(
+      shared_from_this(),
+      this->get_parameter("planning_pipeline").as_string(),
+      this->get_parameter("planner_id").as_string());
     pipeline->setTimeout(this->get_parameter("planning_time").as_double());
     pipeline->setMaxVelocityScalingFactor(this->get_parameter("velocity_scaling").as_double());
     pipeline->setMaxAccelerationScalingFactor(this->get_parameter("acceleration_scaling").as_double());
@@ -576,7 +585,10 @@ private:
 
   mtc::solvers::PlannerInterfacePtr make_pipeline_planner()
   {
-    auto pipeline = std::make_shared<mtc::solvers::PipelinePlanner>(shared_from_this());
+    auto pipeline = std::make_shared<mtc::solvers::PipelinePlanner>(
+      shared_from_this(),
+      this->get_parameter("planning_pipeline").as_string(),
+      this->get_parameter("planner_id").as_string());
     pipeline->setTimeout(this->get_parameter("planning_time").as_double());
     pipeline->setMaxVelocityScalingFactor(this->get_parameter("velocity_scaling").as_double());
     pipeline->setMaxAccelerationScalingFactor(this->get_parameter("acceleration_scaling").as_double());
@@ -609,7 +621,7 @@ private:
   {
     auto stage = std::make_unique<mtc::stages::ModifyPlanningScene>("add container collisions");
     for (const auto& object : scooping_controller::make_container_collision_objects(
-           frame_id(), container_scene_specs_))
+           planning_scene_frame_id(), container_scene_specs_))
     {
       stage->addObject(object);
     }
@@ -656,6 +668,11 @@ private:
   std::string frame_id() const
   {
     return this->get_parameter("frame_id").as_string();
+  }
+
+  std::string planning_scene_frame_id() const
+  {
+    return this->get_parameter("planning_scene_frame_id").as_string();
   }
 
   std::string trajectory_action_server() const
