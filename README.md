@@ -533,3 +533,17 @@ See `docker/README.md` for additional notes.
 See `GIT_WORKFLOW.md` for the commands to push to GitHub and pull/update on the laptop/Pi.
 
 
+
+
+
+
+source /opt/ros/jazzy/setup.bash
+export ROS_DOMAIN_ID=0
+export ROS_LOCALHOST_ONLY=0
+export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+export FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
+export ROS_STATIC_PEERS=169.254.200.201
+ros2 daemon stop
+sleep 2
+ros2 topic list

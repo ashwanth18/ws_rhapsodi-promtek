@@ -1,0 +1,860 @@
+2026-03-13T00:00:19.8917751+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:00:39.8946945+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:00:59.8962908+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:01:20.2739518+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:01:39.8939380+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:01:59.8950508+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:02:19.8922847+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:02:39.8964991+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:02:59.8956831+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:03:19.8933734+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:03:39.8951653+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:03:59.9005762+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:04:19.8993204+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:04:39.8978224+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:04:59.8971757+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:05:19.8966489+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:05:40.5653971+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:05:59.8997380+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:06:19.8985603+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:06:39.9012745+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:06:59.9004711+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:07:19.8980068+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:07:39.9020339+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:07:59.9021585+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:08:19.8985697+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:08:39.9146195+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:08:59.9018873+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:09:19.9009290+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:09:39.9024041+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:09:59.9036054+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:10:19.9013313+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:10:39.9049428+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:10:59.9050697+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:11:19.9017902+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:11:39.9108293+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:11:59.9047007+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:12:19.9013055+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:12:39.9053508+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:12:59.9069334+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:13:20.4219997+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:13:39.9070445+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:13:59.9083787+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:14:19.9105701+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:14:39.9098215+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:14:59.9101718+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:15:19.9060329+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:15:39.9165381+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:15:59.9098904+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:16:19.9078178+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:16:39.9111714+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:16:59.9104490+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:17:19.9076017+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:17:39.9150055+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:17:59.9122890+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:18:19.9078035+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:18:39.9126825+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:19:00.0396234+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:19:19.9092760+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:19:40.3771132+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:19:59.9146020+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:20:19.9126705+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:20:39.9169842+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:20:59.9141515+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:21:19.9140946+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:21:39.9168640+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:21:59.9170350+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:22:19.9150422+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:22:39.9234388+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:22:59.9156429+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:23:19.9141833+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:23:39.9201258+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:23:59.9203957+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:24:19.9177526+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:24:39.9300687+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:24:59.9201573+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:25:19.9252979+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:25:39.9255142+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:25:59.9206439+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:26:19.9188558+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:26:39.9221637+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:26:59.9233699+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:27:19.9223461+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:27:39.9260867+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:27:59.9292226+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:28:19.9204810+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:28:39.9255187+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:28:59.9248891+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:29:20.5560649+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:29:39.9261715+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:29:59.9272641+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:30:19.9254789+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:30:39.9279558+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:30:59.9271566+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:31:19.9252942+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:31:39.9286667+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:31:59.9287043+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:32:20.4536430+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:32:39.9313693+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:32:59.9306106+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:33:19.9282769+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:33:39.9320711+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:34:00.0431904+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:34:19.9328475+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:34:39.9337773+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:34:59.9409417+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:35:19.9298643+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:35:39.9414728+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:35:59.9347470+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:36:19.9331727+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:36:39.9340908+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:36:59.9352593+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:37:19.9332224+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:37:39.9348330+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:37:59.9360484+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:38:19.9331567+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:38:39.9376401+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:38:59.9509995+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:39:19.9447263+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:39:39.9451540+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:39:59.9395676+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:40:19.9361871+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:40:39.9398150+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:40:59.9403399+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:41:19.9387506+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:41:39.9387348+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:41:59.9407848+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:42:19.9434801+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:42:39.9401853+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:42:59.9384130+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:43:19.9365488+00:00: WebSocket:Waiting for messages ...
+2026-03-13T00:43:39.9549674+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:37:20.2714635+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-13T19:37:20.2717231+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-13T19:37:20.2717452+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-13T19:37:20.2717521+00:00: Config locations:
+2026-03-13T19:37:20.2717650+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-13T19:37:20.2958156+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-13T19:37:20.3044387+00:00: Config:Verifying configuration ...
+2026-03-13T19:37:20.3060442+00:00: Config:Configuration OK
+2026-03-13T19:37:20.3069386+00:00: Register:Not required (already registered)
+2026-03-13T19:37:20.3071843+00:00: Startup:tasks completed
+2026-03-13T19:37:21.3032458+00:00: WebServer:Listening on http://+:5002
+2026-03-13T19:37:21.3957168+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T19:37:22.5068785+00:00: Active:(200 OK)
+2026-03-13T19:37:22.5454722+00:00: WebSocket:Connected OK
+2026-03-13T19:37:22.5474280+00:00: Ping:Started sending 'ping' message
+2026-03-13T19:37:22.5487680+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:37:22.5660488+00:00: WebSocket:WebSocket connection established.
+2026-03-13T19:37:22.5660863+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:37:23.4981373+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:37:42.5680936+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:38:02.5694723+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:38:22.5713908+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:38:42.5688864+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:39:02.5677671+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:39:22.5680148+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:41:31.5261629+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-13T19:41:31.5265551+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-13T19:41:31.5265813+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-13T19:41:31.5265891+00:00: Config locations:
+2026-03-13T19:41:31.5265987+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-13T19:41:31.5447127+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-13T19:41:31.5503423+00:00: There is another version of this application already running. It may already be running as a Service or standalone Application.
+2026-03-13T19:41:31.5503643+00:00: THIS APPLICATION WILL NOW EXIT
+2026-03-13T19:41:52.0599566+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-13T19:41:52.0601408+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-13T19:41:52.0601626+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-13T19:41:52.0601710+00:00: Config locations:
+2026-03-13T19:41:52.0601827+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-13T19:41:52.0791582+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-13T19:41:52.0849999+00:00: There is another version of this application already running. It may already be running as a Service or standalone Application.
+2026-03-13T19:41:52.0850230+00:00: THIS APPLICATION WILL NOW EXIT
+2026-03-13T19:42:07.6831372+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-13T19:42:07.6833428+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-13T19:42:07.6833683+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-13T19:42:07.6833785+00:00: Config locations:
+2026-03-13T19:42:07.6833927+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-13T19:42:07.7016269+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-13T19:42:07.7075196+00:00: There is another version of this application already running. It may already be running as a Service or standalone Application.
+2026-03-13T19:42:07.7075427+00:00: THIS APPLICATION WILL NOW EXIT
+2026-03-13T19:42:18.0584546+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-13T19:42:18.0588604+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-13T19:42:18.0589143+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-13T19:42:18.0589321+00:00: Config locations:
+2026-03-13T19:42:18.0589583+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-13T19:42:18.0779169+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-13T19:42:18.0847287+00:00: Config:Verifying configuration ...
+2026-03-13T19:42:18.0863996+00:00: Config:Configuration OK
+2026-03-13T19:42:18.0872487+00:00: Register:Not required (already registered)
+2026-03-13T19:42:18.0874876+00:00: Startup:tasks completed
+2026-03-13T19:42:19.0790572+00:00: WebServer:Listening on http://+:5002
+2026-03-13T19:42:19.1588677+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T19:42:19.4255857+00:00: WebSocket:Connected OK
+2026-03-13T19:42:19.4269282+00:00: Ping:Started sending 'ping' message
+2026-03-13T19:42:19.4278643+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:42:19.4296931+00:00: WebSocket:WebSocket connection established.
+2026-03-13T19:42:19.4297197+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:42:19.4408583+00:00: Active:(200 OK)
+2026-03-13T19:42:20.1237238+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:42:39.4524644+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:42:59.4471460+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:43:19.4462234+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:43:24.3523826+00:00: WebSocket:7caa6668-f45f-4be5-99db-174347a149fa Promtek.Service.Bip.Event.Contracts:BatchReleasedEvent api/BatchReleasedEvent
+2026-03-13T19:43:24.3771220+00:00: WebSocket:ERROR:UNKNOWN_ERROR: Exception while calling API: Error while copying content to a stream.
+2026-03-13T19:43:24.3827157+00:00: WebSocket:ERROR:System.Net.Http.HttpRequestException: Error while copying content to a stream.
+ ---> System.IO.IOException: Unable to write data to the transport connection: Broken pipe.
+ ---> System.Net.Sockets.SocketException (32): Broken pipe
+   at System.Net.Sockets.NetworkStream.Write(ReadOnlySpan`1 buffer)
+   --- End of inner exception stack trace ---
+   at System.Net.Sockets.NetworkStream.Write(ReadOnlySpan`1 buffer)
+   at System.Net.Http.HttpConnection.WriteToStream(ReadOnlySpan`1 source)
+   at System.Net.Http.HttpConnection.Flush()
+   at System.IO.StreamWriter.Flush(Boolean flushStream, Boolean flushEncoder)
+   at Newtonsoft.Json.JsonTextWriter.Flush()
+   at System.Net.Http.Formatting.BaseJsonMediaTypeFormatter.WriteToStream(Type type, Object value, Stream writeStream, Encoding effectiveEncoding)
+   at System.Net.Http.Formatting.JsonMediaTypeFormatter.WriteToStream(Type type, Object value, Stream writeStream, Encoding effectiveEncoding)
+   at System.Net.Http.Formatting.BaseJsonMediaTypeFormatter.WriteToStream(Type type, Object value, Stream writeStream, HttpContent content)
+   at System.Net.Http.Formatting.BaseJsonMediaTypeFormatter.WriteToStreamAsync(Type type, Object value, Stream writeStream, HttpContent content, TransportContext transportContext, CancellationToken cancellationToken)
+--- End of stack trace from previous location ---
+   at System.Net.Http.HttpContent.<CopyToAsync>g__WaitAsync|56_0(ValueTask copyTask)
+   --- End of inner exception stack trace ---
+   at System.Net.Http.HttpContent.<CopyToAsync>g__WaitAsync|56_0(ValueTask copyTask)
+   at System.Net.Http.HttpConnection.SendRequestContentAsync(HttpRequestMessage request, HttpContentWriteStream stream, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnection.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnection.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.SendWithVersionDetectionAndRetryAsync(HttpRequestMessage request, Boolean async, Boolean doRequestAuth, CancellationToken cancellationToken)
+   at System.Net.Http.RedirectHandler.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+   at Promtek.Condor.Rhapsodi.Agent.BackgroundServices.WebSocketBackgroundService.CallApi(String endpoint, Guid correlationId, Object payload)
+   at Promtek.Condor.Rhapsodi.Agent.BackgroundServices.WebSocketBackgroundService.ReceiveLoop(ClientWebSocket webSocket, CancellationToken token)
+2026-03-13T19:43:24.3861678+00:00: WebSocket:ACK promtek-gwy-storaweigh_76454da2-683c-4706-a88e-4e2fc6773685_ROBOT-TEST-AGENT_Promtek.Service.Bip.Event.Contracts.BatchReleasedEvent_7caa6668-f45f-4be5-99db-174347a149fa
+2026-03-13T19:43:24.3861900+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:43:29.4788024+00:00: WebSocket:7caa6668-f45f-4be5-99db-174347a149fa Promtek.Service.Bip.Event.Contracts:BatchReleasedEvent api/BatchReleasedEvent
+2026-03-13T19:43:29.4811398+00:00: WebSocket:ERROR:UNKNOWN_ERROR: Exception while calling API: Error while copying content to a stream.
+2026-03-13T19:43:29.4815190+00:00: WebSocket:ERROR:System.Net.Http.HttpRequestException: Error while copying content to a stream.
+ ---> System.IO.IOException: Unable to write data to the transport connection: Broken pipe.
+ ---> System.Net.Sockets.SocketException (32): Broken pipe
+   at System.Net.Sockets.NetworkStream.Write(ReadOnlySpan`1 buffer)
+   --- End of inner exception stack trace ---
+   at System.Net.Sockets.NetworkStream.Write(ReadOnlySpan`1 buffer)
+   at System.Net.Http.HttpConnection.WriteToStream(ReadOnlySpan`1 source)
+   at System.Net.Http.HttpConnection.Flush()
+   at System.IO.StreamWriter.Flush(Boolean flushStream, Boolean flushEncoder)
+   at Newtonsoft.Json.JsonTextWriter.Flush()
+   at System.Net.Http.Formatting.BaseJsonMediaTypeFormatter.WriteToStream(Type type, Object value, Stream writeStream, Encoding effectiveEncoding)
+   at System.Net.Http.Formatting.JsonMediaTypeFormatter.WriteToStream(Type type, Object value, Stream writeStream, Encoding effectiveEncoding)
+   at System.Net.Http.Formatting.BaseJsonMediaTypeFormatter.WriteToStream(Type type, Object value, Stream writeStream, HttpContent content)
+   at System.Net.Http.Formatting.BaseJsonMediaTypeFormatter.WriteToStreamAsync(Type type, Object value, Stream writeStream, HttpContent content, TransportContext transportContext, CancellationToken cancellationToken)
+--- End of stack trace from previous location ---
+   at System.Net.Http.HttpContent.<CopyToAsync>g__WaitAsync|56_0(ValueTask copyTask)
+   --- End of inner exception stack trace ---
+   at System.Net.Http.HttpContent.<CopyToAsync>g__WaitAsync|56_0(ValueTask copyTask)
+   at System.Net.Http.HttpConnection.SendRequestContentAsync(HttpRequestMessage request, HttpContentWriteStream stream, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnection.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnection.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.SendWithVersionDetectionAndRetryAsync(HttpRequestMessage request, Boolean async, Boolean doRequestAuth, CancellationToken cancellationToken)
+   at System.Net.Http.RedirectHandler.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+   at Promtek.Condor.Rhapsodi.Agent.BackgroundServices.WebSocketBackgroundService.CallApi(String endpoint, Guid correlationId, Object payload)
+   at Promtek.Condor.Rhapsodi.Agent.BackgroundServices.WebSocketBackgroundService.ReceiveLoop(ClientWebSocket webSocket, CancellationToken token)
+2026-03-13T19:43:29.4820341+00:00: WebSocket:ACK promtek-gwy-storaweigh_76454da2-683c-4706-a88e-4e2fc6773685_ROBOT-TEST-AGENT_Promtek.Service.Bip.Event.Contracts.BatchReleasedEvent_7caa6668-f45f-4be5-99db-174347a149fa
+2026-03-13T19:43:29.4820606+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:43:34.6273452+00:00: WebSocket:7caa6668-f45f-4be5-99db-174347a149fa Promtek.Service.Bip.Event.Contracts:BatchReleasedEvent api/BatchReleasedEvent
+2026-03-13T19:43:34.6295856+00:00: WebSocket:ERROR:UNKNOWN_ERROR: Exception while calling API: Error while copying content to a stream.
+2026-03-13T19:43:34.6305358+00:00: WebSocket:ERROR:System.Net.Http.HttpRequestException: Error while copying content to a stream.
+ ---> System.IO.IOException: Unable to write data to the transport connection: Broken pipe.
+ ---> System.Net.Sockets.SocketException (32): Broken pipe
+   at System.Net.Sockets.NetworkStream.Write(ReadOnlySpan`1 buffer)
+   --- End of inner exception stack trace ---
+   at System.Net.Sockets.NetworkStream.Write(ReadOnlySpan`1 buffer)
+   at System.Net.Http.HttpConnection.WriteToStream(ReadOnlySpan`1 source)
+   at System.Net.Http.HttpConnection.Flush()
+   at System.IO.StreamWriter.Flush(Boolean flushStream, Boolean flushEncoder)
+   at Newtonsoft.Json.JsonTextWriter.Flush()
+   at System.Net.Http.Formatting.BaseJsonMediaTypeFormatter.WriteToStream(Type type, Object value, Stream writeStream, Encoding effectiveEncoding)
+   at System.Net.Http.Formatting.JsonMediaTypeFormatter.WriteToStream(Type type, Object value, Stream writeStream, Encoding effectiveEncoding)
+   at System.Net.Http.Formatting.BaseJsonMediaTypeFormatter.WriteToStream(Type type, Object value, Stream writeStream, HttpContent content)
+   at System.Net.Http.Formatting.BaseJsonMediaTypeFormatter.WriteToStreamAsync(Type type, Object value, Stream writeStream, HttpContent content, TransportContext transportContext, CancellationToken cancellationToken)
+--- End of stack trace from previous location ---
+   at System.Net.Http.HttpContent.<CopyToAsync>g__WaitAsync|56_0(ValueTask copyTask)
+   --- End of inner exception stack trace ---
+   at System.Net.Http.HttpContent.<CopyToAsync>g__WaitAsync|56_0(ValueTask copyTask)
+   at System.Net.Http.HttpConnection.SendRequestContentAsync(HttpRequestMessage request, HttpContentWriteStream stream, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnection.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnection.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.SendWithVersionDetectionAndRetryAsync(HttpRequestMessage request, Boolean async, Boolean doRequestAuth, CancellationToken cancellationToken)
+   at System.Net.Http.RedirectHandler.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+   at Promtek.Condor.Rhapsodi.Agent.BackgroundServices.WebSocketBackgroundService.CallApi(String endpoint, Guid correlationId, Object payload)
+   at Promtek.Condor.Rhapsodi.Agent.BackgroundServices.WebSocketBackgroundService.ReceiveLoop(ClientWebSocket webSocket, CancellationToken token)
+2026-03-13T19:43:34.6311606+00:00: WebSocket:ACK promtek-gwy-storaweigh_76454da2-683c-4706-a88e-4e2fc6773685_ROBOT-TEST-AGENT_Promtek.Service.Bip.Event.Contracts.BatchReleasedEvent_7caa6668-f45f-4be5-99db-174347a149fa
+2026-03-13T19:43:34.6311746+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:43:39.4475552+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:43:39.6866764+00:00: WebSocket:7caa6668-f45f-4be5-99db-174347a149fa Promtek.Service.Bip.Event.Contracts:BatchReleasedEvent api/BatchReleasedEvent
+2026-03-13T19:43:39.6881738+00:00: WebSocket:ERROR:UNKNOWN_ERROR: Exception while calling API: Error while copying content to a stream.
+2026-03-13T19:43:39.6885844+00:00: WebSocket:ERROR:System.Net.Http.HttpRequestException: Error while copying content to a stream.
+ ---> System.IO.IOException: Unable to write data to the transport connection: Broken pipe.
+ ---> System.Net.Sockets.SocketException (32): Broken pipe
+   at System.Net.Sockets.NetworkStream.Write(ReadOnlySpan`1 buffer)
+   --- End of inner exception stack trace ---
+   at System.Net.Sockets.NetworkStream.Write(ReadOnlySpan`1 buffer)
+   at System.Net.Http.HttpConnection.WriteToStream(ReadOnlySpan`1 source)
+   at System.Net.Http.HttpConnection.Flush()
+   at System.IO.StreamWriter.Flush(Boolean flushStream, Boolean flushEncoder)
+   at Newtonsoft.Json.JsonTextWriter.Flush()
+   at System.Net.Http.Formatting.BaseJsonMediaTypeFormatter.WriteToStream(Type type, Object value, Stream writeStream, Encoding effectiveEncoding)
+   at System.Net.Http.Formatting.JsonMediaTypeFormatter.WriteToStream(Type type, Object value, Stream writeStream, Encoding effectiveEncoding)
+   at System.Net.Http.Formatting.BaseJsonMediaTypeFormatter.WriteToStream(Type type, Object value, Stream writeStream, HttpContent content)
+   at System.Net.Http.Formatting.BaseJsonMediaTypeFormatter.WriteToStreamAsync(Type type, Object value, Stream writeStream, HttpContent content, TransportContext transportContext, CancellationToken cancellationToken)
+--- End of stack trace from previous location ---
+   at System.Net.Http.HttpContent.<CopyToAsync>g__WaitAsync|56_0(ValueTask copyTask)
+   --- End of inner exception stack trace ---
+   at System.Net.Http.HttpContent.<CopyToAsync>g__WaitAsync|56_0(ValueTask copyTask)
+   at System.Net.Http.HttpConnection.SendRequestContentAsync(HttpRequestMessage request, HttpContentWriteStream stream, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnection.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnection.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.SendWithVersionDetectionAndRetryAsync(HttpRequestMessage request, Boolean async, Boolean doRequestAuth, CancellationToken cancellationToken)
+   at System.Net.Http.RedirectHandler.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+   at Promtek.Condor.Rhapsodi.Agent.BackgroundServices.WebSocketBackgroundService.CallApi(String endpoint, Guid correlationId, Object payload)
+   at Promtek.Condor.Rhapsodi.Agent.BackgroundServices.WebSocketBackgroundService.ReceiveLoop(ClientWebSocket webSocket, CancellationToken token)
+2026-03-13T19:43:39.6888450+00:00: WebSocket:ACK promtek-gwy-storaweigh_76454da2-683c-4706-a88e-4e2fc6773685_ROBOT-TEST-AGENT_Promtek.Service.Bip.Event.Contracts.BatchReleasedEvent_7caa6668-f45f-4be5-99db-174347a149fa
+2026-03-13T19:43:39.6888544+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:43:45.4721343+00:00: WebSocket:7caa6668-f45f-4be5-99db-174347a149fa Promtek.Service.Bip.Event.Contracts:BatchReleasedEvent api/BatchReleasedEvent
+2026-03-13T19:43:45.4740945+00:00: WebSocket:ERROR:UNKNOWN_ERROR: Exception while calling API: Error while copying content to a stream.
+2026-03-13T19:43:45.4749698+00:00: WebSocket:ERROR:System.Net.Http.HttpRequestException: Error while copying content to a stream.
+ ---> System.IO.IOException: Unable to write data to the transport connection: Broken pipe.
+ ---> System.Net.Sockets.SocketException (32): Broken pipe
+   at System.Net.Sockets.NetworkStream.Write(ReadOnlySpan`1 buffer)
+   --- End of inner exception stack trace ---
+   at System.Net.Sockets.NetworkStream.Write(ReadOnlySpan`1 buffer)
+   at System.Net.Http.HttpConnection.WriteToStream(ReadOnlySpan`1 source)
+   at System.Net.Http.HttpConnection.Flush()
+   at System.IO.StreamWriter.Flush(Boolean flushStream, Boolean flushEncoder)
+   at Newtonsoft.Json.JsonTextWriter.Flush()
+   at System.Net.Http.Formatting.BaseJsonMediaTypeFormatter.WriteToStream(Type type, Object value, Stream writeStream, Encoding effectiveEncoding)
+   at System.Net.Http.Formatting.JsonMediaTypeFormatter.WriteToStream(Type type, Object value, Stream writeStream, Encoding effectiveEncoding)
+   at System.Net.Http.Formatting.BaseJsonMediaTypeFormatter.WriteToStream(Type type, Object value, Stream writeStream, HttpContent content)
+   at System.Net.Http.Formatting.BaseJsonMediaTypeFormatter.WriteToStreamAsync(Type type, Object value, Stream writeStream, HttpContent content, TransportContext transportContext, CancellationToken cancellationToken)
+--- End of stack trace from previous location ---
+   at System.Net.Http.HttpContent.<CopyToAsync>g__WaitAsync|56_0(ValueTask copyTask)
+   --- End of inner exception stack trace ---
+   at System.Net.Http.HttpContent.<CopyToAsync>g__WaitAsync|56_0(ValueTask copyTask)
+   at System.Net.Http.HttpConnection.SendRequestContentAsync(HttpRequestMessage request, HttpContentWriteStream stream, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnection.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnection.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.SendWithVersionDetectionAndRetryAsync(HttpRequestMessage request, Boolean async, Boolean doRequestAuth, CancellationToken cancellationToken)
+   at System.Net.Http.RedirectHandler.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+   at Promtek.Condor.Rhapsodi.Agent.BackgroundServices.WebSocketBackgroundService.CallApi(String endpoint, Guid correlationId, Object payload)
+   at Promtek.Condor.Rhapsodi.Agent.BackgroundServices.WebSocketBackgroundService.ReceiveLoop(ClientWebSocket webSocket, CancellationToken token)
+2026-03-13T19:43:45.4756752+00:00: WebSocket:ACK promtek-gwy-storaweigh_76454da2-683c-4706-a88e-4e2fc6773685_ROBOT-TEST-AGENT_Promtek.Service.Bip.Event.Contracts.BatchReleasedEvent_7caa6668-f45f-4be5-99db-174347a149fa
+2026-03-13T19:43:45.4756907+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:43:50.4930480+00:00: WebSocket:7caa6668-f45f-4be5-99db-174347a149fa Promtek.Service.Bip.Event.Contracts:BatchReleasedEvent api/BatchReleasedEvent
+2026-03-13T19:43:50.4943674+00:00: WebSocket:ERROR:UNKNOWN_ERROR: Exception while calling API: Error while copying content to a stream.
+2026-03-13T19:43:50.4947575+00:00: WebSocket:ERROR:System.Net.Http.HttpRequestException: Error while copying content to a stream.
+ ---> System.IO.IOException: Unable to write data to the transport connection: Broken pipe.
+ ---> System.Net.Sockets.SocketException (32): Broken pipe
+   at System.Net.Sockets.NetworkStream.Write(ReadOnlySpan`1 buffer)
+   --- End of inner exception stack trace ---
+   at System.Net.Sockets.NetworkStream.Write(ReadOnlySpan`1 buffer)
+   at System.Net.Http.HttpConnection.WriteToStream(ReadOnlySpan`1 source)
+   at System.Net.Http.HttpConnection.Flush()
+   at System.IO.StreamWriter.Flush(Boolean flushStream, Boolean flushEncoder)
+   at Newtonsoft.Json.JsonTextWriter.Flush()
+   at System.Net.Http.Formatting.BaseJsonMediaTypeFormatter.WriteToStream(Type type, Object value, Stream writeStream, Encoding effectiveEncoding)
+   at System.Net.Http.Formatting.JsonMediaTypeFormatter.WriteToStream(Type type, Object value, Stream writeStream, Encoding effectiveEncoding)
+   at System.Net.Http.Formatting.BaseJsonMediaTypeFormatter.WriteToStream(Type type, Object value, Stream writeStream, HttpContent content)
+   at System.Net.Http.Formatting.BaseJsonMediaTypeFormatter.WriteToStreamAsync(Type type, Object value, Stream writeStream, HttpContent content, TransportContext transportContext, CancellationToken cancellationToken)
+--- End of stack trace from previous location ---
+   at System.Net.Http.HttpContent.<CopyToAsync>g__WaitAsync|56_0(ValueTask copyTask)
+   --- End of inner exception stack trace ---
+   at System.Net.Http.HttpContent.<CopyToAsync>g__WaitAsync|56_0(ValueTask copyTask)
+   at System.Net.Http.HttpConnection.SendRequestContentAsync(HttpRequestMessage request, HttpContentWriteStream stream, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnection.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnection.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.SendWithVersionDetectionAndRetryAsync(HttpRequestMessage request, Boolean async, Boolean doRequestAuth, CancellationToken cancellationToken)
+   at System.Net.Http.RedirectHandler.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+   at Promtek.Condor.Rhapsodi.Agent.BackgroundServices.WebSocketBackgroundService.CallApi(String endpoint, Guid correlationId, Object payload)
+   at Promtek.Condor.Rhapsodi.Agent.BackgroundServices.WebSocketBackgroundService.ReceiveLoop(ClientWebSocket webSocket, CancellationToken token)
+2026-03-13T19:43:50.4950393+00:00: WebSocket:ACK promtek-gwy-storaweigh_76454da2-683c-4706-a88e-4e2fc6773685_ROBOT-TEST-AGENT_Promtek.Service.Bip.Event.Contracts.BatchReleasedEvent_7caa6668-f45f-4be5-99db-174347a149fa
+2026-03-13T19:43:50.4950470+00:00: WebSocket:Waiting for messages ...
+2026-03-13T19:53:43.5365158+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-13T19:53:43.5367296+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-13T19:53:43.5367583+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-13T19:53:43.5367677+00:00: Config locations:
+2026-03-13T19:53:43.5367810+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-13T19:53:43.5562849+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-13T19:53:43.5622589+00:00: There is another version of this application already running. It may already be running as a Service or standalone Application.
+2026-03-13T19:53:43.5622794+00:00: THIS APPLICATION WILL NOW EXIT
+2026-03-13T19:53:50.5634938+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-13T19:53:50.5636698+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-13T19:53:50.5636925+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-13T19:53:50.5637013+00:00: Config locations:
+2026-03-13T19:53:50.5637137+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-13T19:53:50.5837139+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-13T19:53:50.5903181+00:00: There is another version of this application already running. It may already be running as a Service or standalone Application.
+2026-03-13T19:53:50.5903419+00:00: THIS APPLICATION WILL NOW EXIT
+2026-03-13T19:54:03.0680960+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-13T19:54:03.0683164+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-13T19:54:03.0683598+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-13T19:54:03.0683737+00:00: Config locations:
+2026-03-13T19:54:03.0683834+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-13T19:54:03.0883153+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-13T19:54:03.0949032+00:00: Config:Verifying configuration ...
+2026-03-13T19:54:03.0963013+00:00: Config:Configuration OK
+2026-03-13T19:54:03.0970796+00:00: Register:Not required (already registered)
+2026-03-13T19:54:03.0973181+00:00: Startup:tasks completed
+2026-03-13T19:54:04.0878632+00:00: WebServer:Listening on http://+:5002
+2026-03-13T19:54:04.1720550+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T19:54:04.5195327+00:00: WebSocket:ERROR:The server returned status code '409' when status code '101' was expected.
+2026-03-13T19:54:04.5202660+00:00: WebSocket:Waiting 6 seconds before reconnecting
+2026-03-13T19:54:05.5932421+00:00: Active:(200 OK)
+2026-03-13T19:54:10.5784787+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T19:54:10.7291444+00:00: WebSocket:ERROR:The server returned status code '409' when status code '101' was expected.
+2026-03-13T19:54:10.7292452+00:00: WebSocket:Waiting 10 seconds before reconnecting
+2026-03-13T19:54:20.7842366+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T19:54:20.9959402+00:00: WebSocket:ERROR:The server returned status code '409' when status code '101' was expected.
+2026-03-13T19:54:20.9959813+00:00: WebSocket:Waiting 22 seconds before reconnecting
+2026-03-13T19:54:43.0415783+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T19:54:43.1760916+00:00: WebSocket:ERROR:The server returned status code '409' when status code '101' was expected.
+2026-03-13T19:54:43.1761238+00:00: WebSocket:Waiting 38 seconds before reconnecting
+2026-03-13T19:54:53.3647953+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-13T19:54:53.3650213+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-13T19:54:53.3650418+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-13T19:54:53.3650560+00:00: Config locations:
+2026-03-13T19:54:53.3650664+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-13T19:54:53.3837658+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-13T19:54:53.3904153+00:00: Config:Verifying configuration ...
+2026-03-13T19:54:53.3920171+00:00: Config:Configuration OK
+2026-03-13T19:54:53.3928545+00:00: Register:Not required (already registered)
+2026-03-13T19:54:53.3930979+00:00: Startup:tasks completed
+2026-03-13T19:54:54.3864052+00:00: WebServer:Listening on http://+:5002
+2026-03-13T19:54:54.4707986+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T19:54:54.7605012+00:00: Active:(200 OK)
+2026-03-13T19:54:54.7606630+00:00: WebSocket:ERROR:The server returned status code '409' when status code '101' was expected.
+2026-03-13T19:54:54.7612539+00:00: WebSocket:Waiting 4 seconds before reconnecting
+2026-03-13T19:54:58.8232084+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T19:54:58.9393382+00:00: WebSocket:ERROR:The server returned status code '409' when status code '101' was expected.
+2026-03-13T19:54:58.9394635+00:00: WebSocket:Waiting 9 seconds before reconnecting
+2026-03-13T19:55:07.9949947+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T19:55:08.1596671+00:00: WebSocket:ERROR:The server returned status code '409' when status code '101' was expected.
+2026-03-13T19:55:08.1597016+00:00: WebSocket:Waiting 23 seconds before reconnecting
+2026-03-13T19:55:30.8681004+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-13T19:55:30.8682800+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-13T19:55:30.8683018+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-13T19:55:30.8683094+00:00: Config locations:
+2026-03-13T19:55:30.8683205+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-13T19:55:30.8866704+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-13T19:55:30.8926899+00:00: There is another version of this application already running. It may already be running as a Service or standalone Application.
+2026-03-13T19:55:30.8927083+00:00: THIS APPLICATION WILL NOW EXIT
+2026-03-13T19:55:36.5172481+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-13T19:55:36.5174334+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-13T19:55:36.5175005+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-13T19:55:36.5175083+00:00: Config locations:
+2026-03-13T19:55:36.5175191+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-13T19:55:36.5361190+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-13T19:55:36.5418763+00:00: There is another version of this application already running. It may already be running as a Service or standalone Application.
+2026-03-13T19:55:36.5418958+00:00: THIS APPLICATION WILL NOW EXIT
+2026-03-13T19:55:53.8161010+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-13T19:55:53.8163085+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-13T19:55:53.8163328+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-13T19:55:53.8163427+00:00: Config locations:
+2026-03-13T19:55:53.8163541+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-13T19:55:53.8350756+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-13T19:55:53.8415501+00:00: Config:Verifying configuration ...
+2026-03-13T19:55:53.8430401+00:00: Config:Configuration OK
+2026-03-13T19:55:53.8437569+00:00: Register:Not required (already registered)
+2026-03-13T19:55:53.8439625+00:00: Startup:tasks completed
+2026-03-13T19:55:54.8353211+00:00: WebServer:Listening on http://+:5002
+2026-03-13T19:55:54.9267107+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T19:55:55.1694513+00:00: WebSocket:ERROR:The server returned status code '409' when status code '101' was expected.
+2026-03-13T19:55:55.1701788+00:00: WebSocket:Waiting 5 seconds before reconnecting
+2026-03-13T19:55:55.2369962+00:00: Active:(200 OK)
+2026-03-13T19:56:00.2301798+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T19:56:00.3457122+00:00: WebSocket:ERROR:The server returned status code '409' when status code '101' was expected.
+2026-03-13T19:56:00.3457760+00:00: WebSocket:Waiting 9 seconds before reconnecting
+2026-03-13T19:56:09.3997078+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T19:56:09.5918482+00:00: WebSocket:ERROR:The server returned status code '409' when status code '101' was expected.
+2026-03-13T19:56:09.5922040+00:00: WebSocket:Waiting 23 seconds before reconnecting
+2026-03-13T19:56:32.6445531+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T19:56:32.8504091+00:00: WebSocket:ERROR:The server returned status code '409' when status code '101' was expected.
+2026-03-13T19:56:32.8504635+00:00: WebSocket:Waiting 34 seconds before reconnecting
+2026-03-13T19:57:06.8921896+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T19:57:07.0392888+00:00: WebSocket:ERROR:The server returned status code '409' when status code '101' was expected.
+2026-03-13T19:57:07.0393412+00:00: WebSocket:Waiting 94 seconds before reconnecting
+2026-03-13T19:58:07.4852941+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-13T19:58:07.4854907+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-13T19:58:07.4855139+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-13T19:58:07.4855223+00:00: Config locations:
+2026-03-13T19:58:07.4855343+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-13T19:58:07.5044577+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-13T19:58:07.5110037+00:00: Config:Verifying configuration ...
+2026-03-13T19:58:07.5125856+00:00: Config:Configuration OK
+2026-03-13T19:58:07.5133588+00:00: Register:Not required (already registered)
+2026-03-13T19:58:07.5135867+00:00: Startup:tasks completed
+2026-03-13T19:58:08.5075131+00:00: WebServer:Listening on http://+:5002
+2026-03-13T19:58:08.5940873+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T19:58:08.8616360+00:00: WebSocket:ERROR:The server returned status code '409' when status code '101' was expected.
+2026-03-13T19:58:08.8624413+00:00: WebSocket:Waiting 5 seconds before reconnecting
+2026-03-13T19:58:08.8791535+00:00: Active:(200 OK)
+2026-03-13T19:58:13.9192257+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T19:58:14.0311332+00:00: WebSocket:ERROR:The server returned status code '409' when status code '101' was expected.
+2026-03-13T19:58:14.0312233+00:00: WebSocket:Waiting 11 seconds before reconnecting
+2026-03-13T19:58:57.6347326+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-13T19:58:57.6351534+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-13T19:58:57.6351847+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-13T19:58:57.6351955+00:00: Config locations:
+2026-03-13T19:58:57.6352101+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-13T19:58:57.6545731+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-13T19:58:57.6606381+00:00: There is another version of this application already running. It may already be running as a Service or standalone Application.
+2026-03-13T19:58:57.6606626+00:00: THIS APPLICATION WILL NOW EXIT
+2026-03-13T20:00:42.4529075+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-13T20:00:42.4531128+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-13T20:00:42.4531379+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-13T20:00:42.4531469+00:00: Config locations:
+2026-03-13T20:00:42.4531606+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-13T20:00:42.4714405+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-13T20:00:42.4770968+00:00: There is another version of this application already running. It may already be running as a Service or standalone Application.
+2026-03-13T20:00:42.4771144+00:00: THIS APPLICATION WILL NOW EXIT
+2026-03-13T20:00:52.2048986+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T20:00:52.2086763+00:00: WebSocket:ERROR:System.Threading.Tasks.TaskCanceledException: A task was canceled.
+   at System.Net.WebSockets.WebSocketHandle.ConnectAsync(Uri uri, HttpMessageInvoker invoker, CancellationToken cancellationToken, ClientWebSocketOptions options)
+   at System.Net.WebSockets.ClientWebSocket.ConnectAsyncCore(Uri uri, HttpMessageInvoker invoker, CancellationToken cancellationToken)
+   at Promtek.Condor.Rhapsodi.Agent.BackgroundServices.WebSocketBackgroundService.ExecuteAsync(CancellationToken stoppingToken)
+2026-03-13T20:00:52.2087121+00:00: WebSocket:Waiting 19 seconds before reconnecting
+2026-03-13T20:00:52.2106198+00:00: Active:ERROR:System.Threading.Tasks.TaskCanceledException: A task was canceled.
+ ---> System.Threading.Tasks.TaskCanceledException: A task was canceled.
+   at System.Threading.Tasks.TaskCompletionSourceWithCancellation`1.WaitWithCancellationAsync(CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.SendWithVersionDetectionAndRetryAsync(HttpRequestMessage request, Boolean async, Boolean doRequestAuth, CancellationToken cancellationToken)
+   at System.Net.Http.RedirectHandler.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+   --- End of inner exception stack trace ---
+   at System.Net.Http.HttpClient.HandleFailure(Exception e, Boolean telemetryStarted, HttpResponseMessage response, CancellationTokenSource cts, CancellationToken cancellationToken, CancellationTokenSource pendingRequestsCts)
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+   at Promtek.Rest.Client.ServiceHttpClient`1.ExecuteAsync[T](HttpMethod httpMethod, String endpoint, T payload, HttpHeaders headers, Nullable`1 cancellationToken, String contentType)
+   at Promtek.Rest.Client.ServiceHttpClient`1.ExecuteAsync[T](HttpMethod httpMethod, String endpoint, T payload, HttpHeaders headers, Nullable`1 cancellationToken)
+   at Promtek.Condor.Agents.Rest.Client.ImporterGatewayHttpClient.ActiveAsync(IHeaderProvider headerProvider, AgentAliveRequest request, CancellationToken cancellationToken)
+   at Promtek.Condor.Agents.Rest.Client.Commands.AgentActiveCommandHandler.ExecuteAsync(AgentActiveCommand args, CancellationToken cancellationToken)
+   at CallSite.Target(Closure, CallSite, Object)
+   at Promtek.Cqrs.CommandPattern.AsyncCommandExecutor.ExecuteAsync[TResult](ICommandArgs`1 args, CancellationToken ct)
+   at Promtek.Condor.Rhapsodi.Agent.BackgroundServices.ActiveAgentBackgroundService.ExecuteAsync(CancellationToken stoppingToken)
+2026-03-13T20:01:34.6132188+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-13T20:01:34.6136487+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-13T20:01:34.6136758+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-13T20:01:34.6136836+00:00: Config locations:
+2026-03-13T20:01:34.6136949+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-13T20:01:34.6327858+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-13T20:01:34.6390083+00:00: There is another version of this application already running. It may already be running as a Service or standalone Application.
+2026-03-13T20:01:34.6390298+00:00: THIS APPLICATION WILL NOW EXIT
+2026-03-13T20:02:23.2278089+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-13T20:02:23.2283248+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-13T20:02:23.2283567+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-13T20:02:23.2283652+00:00: Config locations:
+2026-03-13T20:02:23.2283777+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-13T20:02:23.2474070+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-13T20:02:23.2538238+00:00: Config:Verifying configuration ...
+2026-03-13T20:02:23.2554227+00:00: Config:Configuration OK
+2026-03-13T20:02:23.2561722+00:00: Register:Not required (already registered)
+2026-03-13T20:02:23.2564041+00:00: Startup:tasks completed
+2026-03-13T20:02:24.2483218+00:00: WebServer:Listening on http://+:5002
+2026-03-13T20:02:24.3234631+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T20:02:25.5963086+00:00: WebSocket:ERROR:The server returned status code '409' when status code '101' was expected.
+2026-03-13T20:02:25.5970299+00:00: WebSocket:Waiting 5 seconds before reconnecting
+2026-03-13T20:02:25.6423141+00:00: Active:(200 OK)
+2026-03-13T20:02:30.6545754+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T20:02:30.7791082+00:00: WebSocket:ERROR:The server returned status code '409' when status code '101' was expected.
+2026-03-13T20:02:30.7792090+00:00: WebSocket:Waiting 9 seconds before reconnecting
+2026-03-13T20:02:39.8350309+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T20:02:40.0288813+00:00: WebSocket:ERROR:The server returned status code '409' when status code '101' was expected.
+2026-03-13T20:02:40.0289161+00:00: WebSocket:Waiting 24 seconds before reconnecting
+2026-03-13T20:03:38.3396124+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-13T20:03:38.3398282+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-13T20:03:38.3398597+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-13T20:03:38.3398696+00:00: Config locations:
+2026-03-13T20:03:38.3398852+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-13T20:03:38.3584733+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-13T20:03:38.3648841+00:00: Config:Verifying configuration ...
+2026-03-13T20:03:38.3662442+00:00: Config:Configuration OK
+2026-03-13T20:03:38.3669245+00:00: Register:Not required (already registered)
+2026-03-13T20:03:38.3671279+00:00: Startup:tasks completed
+2026-03-13T20:03:39.3547285+00:00: WebServer:Listening on http://+:5002
+2026-03-13T20:03:39.4374676+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T20:03:40.6181448+00:00: WebSocket:ERROR:The server returned status code '409' when status code '101' was expected.
+2026-03-13T20:03:40.6187058+00:00: WebSocket:Waiting 4 seconds before reconnecting
+2026-03-13T20:03:40.6339980+00:00: Active:(200 OK)
+2026-03-13T20:03:44.6695072+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-13T20:03:44.8211624+00:00: WebSocket:ERROR:The server returned status code '409' when status code '101' was expected.
+2026-03-13T20:03:44.8212373+00:00: WebSocket:Waiting 9 seconds before reconnecting
