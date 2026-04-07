@@ -134,8 +134,7 @@ services:
       [
         "serial",
         "--dev",
-        "${MICRO_ROS_DEVICE:-/dev/ttyACM0}",
-        "-v6"
+        "${MICRO_ROS_DEVICE:-/dev/ttyACM0}"
       ]
     restart: unless-stopped
 
