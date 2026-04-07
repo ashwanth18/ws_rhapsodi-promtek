@@ -9,6 +9,9 @@ x-ros-robot-service: &ros-robot-service
     ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
     RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
     ROBOT_IP: ${ROBOT_IP:-169.254.200.200}
+  volumes:
+    - ./data:/data
+    - ./data/ros_home:/root/.ros
   restart: unless-stopped
 
 services:
@@ -68,6 +71,13 @@ services:
     depends_on:
       - db
 
+  dashboard:
+    image: ${DASHBOARD_IMAGE:-iserenity/rhapsodi-promtek:dashboard}
+    ports:
+      - "${DASHBOARD_PORT:-8080}:80"
+    depends_on:
+      - backend
+
   rosbridge:
     <<: *ros-robot-service
     command: ros2 launch niryo_robot_simulation_client rosbridge_websocket_fixed.launch.py address:=0.0.0.0 port:=9090
@@ -95,6 +105,7 @@ services:
     command: >
       ros2 launch scooping_controller scooping_real.launch.py
       use_rviz:=false
+      poses_yaml:=${POSES_YAML:-/root/.ros/scooping_controller/poses_real.yaml}
       targets_yaml:=${TARGETS_YAML:-/ws/install/share/robot_moveit/config/targets.yaml}
       container_scene_yaml:=${CONTAINER_SCENE_YAML:-/ws/install/share/scooping_controller/config/container_scene_real.yaml}
       post_lift_vibration_enabled:=${POST_LIFT_VIBRATION_ENABLED:-true}
@@ -113,15 +124,20 @@ services:
       baud:=${SCALE_BAUD:-115200}
       topic:=/weight
 
-  micro_ros_launcher:
-    <<: *ros-robot-service
+  micro_ros_agent:
+    image: ${MICRO_ROS_AGENT_IMAGE:-microros/micro-ros-agent:jazzy}
+    network_mode: host
     privileged: true
-    devices:
-      - ${MICRO_ROS_DEVICE:-/dev/ttyACM0}:${MICRO_ROS_DEVICE:-/dev/ttyACM0}
-    command: >
-      ros2 run sensor_lifecycle micro_ros_launcher
-      --ros-args
-      -p agent_args:="${MICRO_ROS_AGENT_ARGS:-serial --dev ${MICRO_ROS_DEVICE:-/dev/ttyACM0}}"
+    volumes:
+      - /dev:/dev
+    command:
+      [
+        "serial",
+        "--dev",
+        "${MICRO_ROS_DEVICE:-/dev/ttyACM0}",
+        "-v6"
+      ]
+    restart: unless-stopped
 
   pouring_controller:
     <<: *ros-robot-service
@@ -134,8 +150,6 @@ services:
 
   data_collection:
     <<: *ros-robot-service
-    volumes:
-      - ./data:/data
     command: >
       ros2 run data_collection_manager data_collection_manager
       --ros-args

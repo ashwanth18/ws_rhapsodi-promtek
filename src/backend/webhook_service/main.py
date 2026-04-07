@@ -88,6 +88,7 @@ def build_weightments(payload: dict[str, Any]) -> list[WebhookWeightment]:
                 else None,
                 target_weight_kg=target_weight_kg,
                 weightment_completed=False,
+                batch_auto_run_enabled=False,
             )
         )
     return weightments

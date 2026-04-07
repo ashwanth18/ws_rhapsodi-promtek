@@ -325,11 +325,12 @@ This stack includes the Pi-side app and robot runtime services:
 - `backend`
 - `processing`
 - `webhook_service`
+- `dashboard`
 - `rosbridge`
 - `robot_start_adapter`
 - `scooping_stack`
 - `scale_launcher`
-- `micro_ros_launcher`
+- `micro_ros_agent`
 - `pouring_controller`
 - `data_collection`
 - `orchestrator`

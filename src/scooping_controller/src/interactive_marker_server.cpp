@@ -249,6 +249,7 @@ public:
     this->declare_parameter<std::string>("goal_frame_id", kDefaultGoalFrame);
     this->declare_parameter<std::string>("task_container_id", kDefaultTaskContainerId);
     this->declare_parameter<std::string>("poses_yaml", "~/.ros/scooping_controller/poses.yaml");
+    this->declare_parameter<bool>("auto_load_poses_on_startup", true);
     this->declare_parameter<std::string>(
       "tool_mesh_resource",
       "package://niryo_robot_description/meshes/ned3pro/stl/niryo_scoop_v4-ros.STL");
@@ -308,7 +309,23 @@ private:
     for (const auto& seed : seeds_) {
       poses_.push_back(seed.pose);
     }
-    rebuild_scoop_markers();
+
+    bool loaded_saved_poses = false;
+    if (this->get_parameter("auto_load_poses_on_startup").as_bool() &&
+        std::filesystem::exists(poses_yaml_path_))
+    {
+      std::string load_message;
+      loaded_saved_poses = load_poses_from_yaml(load_message);
+      if (loaded_saved_poses) {
+        update_status(load_message, {0.75f, 0.95f, 0.75f});
+        RCLCPP_INFO(this->get_logger(), "%s", load_message.c_str());
+      } else {
+        RCLCPP_WARN(this->get_logger(), "Auto-load scoop poses failed: %s", load_message.c_str());
+      }
+    }
+    if (!loaded_saved_poses) {
+      rebuild_scoop_markers();
+    }
     insert_goal_marker();
 
     scoop_server_->applyChanges();
@@ -316,7 +333,9 @@ private:
     publish_pose_array();
     publish_goal_pose();
     publish_legend();
-    update_status("RViz panel ready. Drag markers and use the Scooping Controls panel.");
+    if (!loaded_saved_poses) {
+      update_status("RViz panel ready. Drag markers and use the Scooping Controls panel.");
+    }
     RCLCPP_INFO(this->get_logger(), "Scooping marker server ready with %zu markers", poses_.size());
   }
 
