@@ -107,7 +107,7 @@ services:
       ros2 launch scooping_controller scooping_real.launch.py
       use_rviz:=false
       poses_yaml:=${POSES_YAML:-/root/.ros/scooping_controller/poses_real.yaml}
-      targets_yaml:=${TARGETS_YAML:-/ws/install/share/robot_moveit/config/targets.yaml}
+      targets_yaml:=${TARGETS_YAML:-/ws/install/share/robot_moveit/targets.yaml}
       container_scene_yaml:=${CONTAINER_SCENE_YAML:-/ws/install/share/scooping_controller/config/container_scene_real.yaml}
       post_lift_vibration_enabled:=${POST_LIFT_VIBRATION_ENABLED:-true}
       post_lift_vibration_duration_s:=${POST_LIFT_VIBRATION_DURATION_S:-5.0}
