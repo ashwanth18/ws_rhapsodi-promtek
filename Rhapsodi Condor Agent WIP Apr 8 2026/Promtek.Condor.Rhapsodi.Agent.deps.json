@@ -1,0 +1,820 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v8.0/linux-arm64",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v8.0": {},
+    ".NETCoreApp,Version=v8.0/linux-arm64": {
+      "Promtek.Condor.Rhapsodi.Agent/2026.4.8.11": {
+        "dependencies": {
+          "BouncyCastle.Cryptography": "2.6.2",
+          "FluentCommandLineParser.NETStandard": "1.5.0.31-commands",
+          "Microsoft.Extensions.Hosting": "8.0.1",
+          "Microsoft.Extensions.Hosting.WindowsServices": "8.0.1",
+          "Promtek.Client": "2025.6.19.24-release-cascade",
+          "Promtek.Condor.Rhapsodi.Gateway.Contracts": "2026.4.8.11",
+          "Promtek.Logger.Configuration.AppSettings": "2025.7.11.160-release-doom",
+          "Promtek.Logger.NETStandard": "2025.7.11.160-release-doom",
+          "Promtek.Rest.Client.HttpClient.Standard": "2025.7.11.229-release-doom",
+          "Promtek.Service.Importer.Gateway.DependencyInjection": "2025.4.9.109-blanc",
+          "System.Security.Cryptography.ProtectedData": "9.0.4"
+        },
+        "runtime": {
+          "Promtek.Condor.Rhapsodi.Agent.dll": {}
+        }
+      },
+      "BouncyCastle.Cryptography/2.6.2": {
+        "runtime": {
+          "lib/net6.0/BouncyCastle.Cryptography.dll": {
+            "assemblyVersion": "2.0.0.0",
+            "fileVersion": "2.6.2.46322"
+          }
+        }
+      },
+      "FluentCommandLineParser.NETStandard/1.5.0.31-commands": {
+        "runtime": {
+          "lib/netstandard2.0/FluentCommandLineParser.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "Microsoft.AspNet.WebApi.Client/6.0.0": {
+        "dependencies": {
+          "Newtonsoft.Json": "13.0.1",
+          "Newtonsoft.Json.Bson": "1.0.2"
+        },
+        "runtime": {
+          "lib/netstandard2.0/System.Net.Http.Formatting.dll": {
+            "assemblyVersion": "6.0.0.0",
+            "fileVersion": "6.0.61130.707"
+          }
+        }
+      },
+      "Microsoft.Extensions.Configuration.Binder/8.0.2": {
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Configuration.Binder.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.724.31311"
+          }
+        }
+      },
+      "Microsoft.Extensions.Configuration.FileExtensions/8.0.1": {
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Configuration.FileExtensions.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.724.31311"
+          }
+        }
+      },
+      "Microsoft.Extensions.Configuration.Json/8.0.1": {
+        "dependencies": {
+          "Microsoft.Extensions.Configuration.FileExtensions": "8.0.1"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Configuration.Json.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Microsoft.Extensions.Configuration.UserSecrets/8.0.1": {
+        "dependencies": {
+          "Microsoft.Extensions.Configuration.Json": "8.0.1"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Configuration.UserSecrets.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Microsoft.Extensions.DependencyInjection/8.0.1": {
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.DependencyInjection.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Microsoft.Extensions.DependencyInjection.Abstractions/8.0.2": {
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.DependencyInjection.Abstractions.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Microsoft.Extensions.DependencyModel/8.0.2": {
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.DependencyModel.dll": {
+            "assemblyVersion": "8.0.0.2",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Microsoft.Extensions.Diagnostics/8.0.1": {
+        "dependencies": {
+          "Microsoft.Extensions.Diagnostics.Abstractions": "8.0.1"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Diagnostics.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Microsoft.Extensions.Diagnostics.Abstractions/8.0.1": {
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Options": "8.0.2"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Diagnostics.Abstractions.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Microsoft.Extensions.Hosting/8.0.1": {
+        "dependencies": {
+          "Microsoft.Extensions.Configuration.Binder": "8.0.2",
+          "Microsoft.Extensions.Configuration.FileExtensions": "8.0.1",
+          "Microsoft.Extensions.Configuration.Json": "8.0.1",
+          "Microsoft.Extensions.Configuration.UserSecrets": "8.0.1",
+          "Microsoft.Extensions.DependencyInjection": "8.0.1",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Diagnostics": "8.0.1",
+          "Microsoft.Extensions.Hosting.Abstractions": "8.0.1",
+          "Microsoft.Extensions.Logging": "8.0.1",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Logging.Configuration": "8.0.1",
+          "Microsoft.Extensions.Logging.Console": "8.0.1",
+          "Microsoft.Extensions.Logging.Debug": "8.0.1",
+          "Microsoft.Extensions.Logging.EventLog": "8.0.1",
+          "Microsoft.Extensions.Logging.EventSource": "8.0.1",
+          "Microsoft.Extensions.Options": "8.0.2"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Hosting.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Microsoft.Extensions.Hosting.Abstractions/8.0.1": {
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Diagnostics.Abstractions": "8.0.1",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.2"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Hosting.Abstractions.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Microsoft.Extensions.Hosting.WindowsServices/8.0.1": {
+        "dependencies": {
+          "Microsoft.Extensions.Hosting": "8.0.1",
+          "Microsoft.Extensions.Logging.EventLog": "8.0.1",
+          "System.ServiceProcess.ServiceController": "8.0.1"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Hosting.WindowsServices.dll": {
+            "assemblyVersion": "8.0.0.1",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Microsoft.Extensions.Logging/8.0.1": {
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection": "8.0.1",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Options": "8.0.2"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Logging.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Microsoft.Extensions.Logging.Abstractions/8.0.2": {
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Logging.Abstractions.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Microsoft.Extensions.Logging.Configuration/8.0.1": {
+        "dependencies": {
+          "Microsoft.Extensions.Configuration.Binder": "8.0.2",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Logging": "8.0.1",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Options": "8.0.2"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Logging.Configuration.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Microsoft.Extensions.Logging.Console/8.0.1": {
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Logging": "8.0.1",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Logging.Configuration": "8.0.1",
+          "Microsoft.Extensions.Options": "8.0.2"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Logging.Console.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Microsoft.Extensions.Logging.Debug/8.0.1": {
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Logging": "8.0.1",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.2"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Logging.Debug.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Microsoft.Extensions.Logging.EventLog/8.0.1": {
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Logging": "8.0.1",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Options": "8.0.2",
+          "System.Diagnostics.EventLog": "8.0.1"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Logging.EventLog.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Microsoft.Extensions.Logging.EventSource/8.0.1": {
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Logging": "8.0.1",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Options": "8.0.2"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Logging.EventSource.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Microsoft.Extensions.Options/8.0.2": {
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2"
+        },
+        "runtime": {
+          "lib/net8.0/Microsoft.Extensions.Options.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.224.6711"
+          }
+        }
+      },
+      "Newtonsoft.Json/13.0.1": {
+        "runtime": {
+          "lib/netstandard2.0/Newtonsoft.Json.dll": {
+            "assemblyVersion": "13.0.0.0",
+            "fileVersion": "13.0.1.25517"
+          }
+        }
+      },
+      "Newtonsoft.Json.Bson/1.0.2": {
+        "dependencies": {
+          "Newtonsoft.Json": "13.0.1"
+        },
+        "runtime": {
+          "lib/netstandard2.0/Newtonsoft.Json.Bson.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.2.22727"
+          }
+        }
+      },
+      "Promtek.Client/2025.6.19.24-release-cascade": {
+        "runtime": {
+          "lib/net7.0/Promtek.Client.dll": {
+            "assemblyVersion": "2025.6.19.24",
+            "fileVersion": "2025.6.19.24"
+          }
+        }
+      },
+      "Promtek.Cqrs/2023.9.18.72": {
+        "runtime": {
+          "lib/netstandard2.0/Promtek.Cqrs.dll": {
+            "assemblyVersion": "2023.9.18.72",
+            "fileVersion": "2023.9.18.72"
+          }
+        }
+      },
+      "Promtek.Logger.Configuration.AppSettings/2025.7.11.160-release-doom": {
+        "dependencies": {
+          "Microsoft.Extensions.Options": "8.0.2",
+          "Promtek.Client": "2025.6.19.24-release-cascade",
+          "Promtek.Logger.NETStandard": "2025.7.11.160-release-doom"
+        },
+        "runtime": {
+          "lib/netstandard2.0/Promtek.Logger.Configuration.AppSettings.dll": {
+            "assemblyVersion": "2025.7.11.160",
+            "fileVersion": "2025.7.11.160"
+          }
+        }
+      },
+      "Promtek.Logger.NETStandard/2025.7.11.160-release-doom": {
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2"
+        },
+        "runtime": {
+          "lib/netstandard2.0/Promtek.Logger.NETStandard.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "Promtek.Rest.Client.Core/2025.7.11.229-release-doom": {
+        "dependencies": {
+          "Microsoft.AspNet.WebApi.Client": "6.0.0",
+          "Promtek.Client": "2025.6.19.24-release-cascade"
+        },
+        "runtime": {
+          "lib/net8.0/Promtek.Rest.Client.Core.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "Promtek.Rest.Client.Core.Extensions/2024.4.9.204": {
+        "dependencies": {
+          "Microsoft.AspNet.WebApi.Client": "6.0.0",
+          "Promtek.Rest.Client.Core": "2025.7.11.229-release-doom",
+          "Promtek.Rest.QueryString.Cqrs": "2024.3.19.31"
+        },
+        "runtime": {
+          "lib/netstandard2.0/Promtek.Rest.Client.Core.Extensions.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "Promtek.Rest.Client.HttpClient.Standard/2025.7.11.229-release-doom": {
+        "dependencies": {
+          "Promtek.Client": "2025.6.19.24-release-cascade",
+          "Promtek.Rest.Client.Core": "2025.7.11.229-release-doom",
+          "Scrutor": "5.0.2"
+        },
+        "runtime": {
+          "lib/net8.0/Promtek.Rest.Client.HttpClient.Standard.dll": {
+            "assemblyVersion": "2025.7.11.229",
+            "fileVersion": "2025.7.11.229"
+          }
+        }
+      },
+      "Promtek.Rest.QueryString/2024.3.19.31": {
+        "runtime": {
+          "lib/net7.0/Promtek.Rest.QueryString.dll": {
+            "assemblyVersion": "2024.3.19.31",
+            "fileVersion": "2024.3.19.31"
+          }
+        }
+      },
+      "Promtek.Rest.QueryString.Cqrs/2024.3.19.31": {
+        "dependencies": {
+          "Promtek.Cqrs": "2023.9.18.72",
+          "Promtek.Rest.QueryString": "2024.3.19.31"
+        },
+        "runtime": {
+          "lib/net7.0/Promtek.Rest.QueryString.Cqrs.dll": {
+            "assemblyVersion": "2024.3.19.31",
+            "fileVersion": "2024.3.19.31"
+          }
+        }
+      },
+      "Promtek.Service.Importer.Gateway.Client/2025.4.9.109-blanc": {
+        "dependencies": {
+          "Microsoft.AspNet.WebApi.Client": "6.0.0",
+          "Promtek.Cqrs": "2023.9.18.72",
+          "Promtek.Rest.Client.Core.Extensions": "2024.4.9.204",
+          "Promtek.Rest.QueryString.Cqrs": "2024.3.19.31",
+          "Promtek.Service.Importer.Gateway.Contracts": "2025.4.9.109-blanc",
+          "Promtek.Validation.Rest.Contracts": "2024.3.21.19"
+        },
+        "runtime": {
+          "lib/net8.0/Promtek.Service.Importer.Gateway.Client.dll": {
+            "assemblyVersion": "2025.4.9.109",
+            "fileVersion": "2025.4.9.109"
+          }
+        }
+      },
+      "Promtek.Service.Importer.Gateway.Contracts/2025.4.9.109-blanc": {
+        "runtime": {
+          "lib/net8.0/Promtek.Service.Importer.Gateway.Contracts.dll": {
+            "assemblyVersion": "2025.4.9.109",
+            "fileVersion": "2025.4.9.109"
+          }
+        }
+      },
+      "Promtek.Service.Importer.Gateway.DependencyInjection/2025.4.9.109-blanc": {
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection": "8.0.1",
+          "Promtek.Service.Importer.Gateway.Client": "2025.4.9.109-blanc",
+          "Promtek.Service.Importer.Gateway.Contracts": "2025.4.9.109-blanc"
+        },
+        "runtime": {
+          "lib/net8.0/Promtek.Service.Importer.Gateway.DependencyInjection.dll": {
+            "assemblyVersion": "2025.4.9.109",
+            "fileVersion": "2025.4.9.109"
+          }
+        }
+      },
+      "Promtek.Validation.Rest.Contracts/2024.3.21.19": {
+        "runtime": {
+          "lib/net7.0/Promtek.Validation.Rest.Contracts.dll": {
+            "assemblyVersion": "2024.3.21.19",
+            "fileVersion": "2024.3.21.19"
+          }
+        }
+      },
+      "Scrutor/5.0.2": {
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2",
+          "Microsoft.Extensions.DependencyModel": "8.0.2"
+        },
+        "runtime": {
+          "lib/net8.0/Scrutor.dll": {
+            "assemblyVersion": "5.0.0.0",
+            "fileVersion": "5.0.0.0"
+          }
+        }
+      },
+      "System.Diagnostics.EventLog/8.0.1": {
+        "runtime": {
+          "lib/net8.0/System.Diagnostics.EventLog.dll": {
+            "assemblyVersion": "8.0.0.0",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "System.Security.Cryptography.ProtectedData/9.0.4": {
+        "runtime": {
+          "lib/net8.0/System.Security.Cryptography.ProtectedData.dll": {
+            "assemblyVersion": "9.0.0.0",
+            "fileVersion": "9.0.425.16305"
+          }
+        }
+      },
+      "System.ServiceProcess.ServiceController/8.0.1": {
+        "dependencies": {
+          "System.Diagnostics.EventLog": "8.0.1"
+        },
+        "runtime": {
+          "lib/net8.0/System.ServiceProcess.ServiceController.dll": {
+            "assemblyVersion": "8.0.0.1",
+            "fileVersion": "8.0.1024.46610"
+          }
+        }
+      },
+      "Promtek.Condor.Rhapsodi.Gateway.Contracts/2026.4.8.11": {
+        "runtime": {
+          "Promtek.Condor.Rhapsodi.Gateway.Contracts.dll": {
+            "assemblyVersion": "2026.4.8.11",
+            "fileVersion": "2026.4.8.11"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "Promtek.Condor.Rhapsodi.Agent/2026.4.8.11": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "BouncyCastle.Cryptography/2.6.2": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-7oWOcvnntmMKNzDLsdxAYqApt+AjpRpP2CShjMfIa3umZ42UQMvH0tl1qAliYPNYO6vTdcGMqnRrCPmsfzTI1w==",
+      "path": "bouncycastle.cryptography/2.6.2",
+      "hashPath": "bouncycastle.cryptography.2.6.2.nupkg.sha512"
+    },
+    "FluentCommandLineParser.NETStandard/1.5.0.31-commands": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-1mT3KyFR2iObU6emzw/8ExNvWGgbswpEcQt8xmvgNjkFExCUKPAMpolCdEgU4mhxPDed+hCpDc/kh7noIBcCXg==",
+      "path": "fluentcommandlineparser.netstandard/1.5.0.31-commands",
+      "hashPath": "fluentcommandlineparser.netstandard.1.5.0.31-commands.nupkg.sha512"
+    },
+    "Microsoft.AspNet.WebApi.Client/6.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-zXeWP03dTo67AoDHUzR+/urck0KFssdCKOC+dq7Nv1V2YbFh/nIg09L0/3wSvyRONEdwxGB/ssEGmPNIIhAcAw==",
+      "path": "microsoft.aspnet.webapi.client/6.0.0",
+      "hashPath": "microsoft.aspnet.webapi.client.6.0.0.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Configuration.Binder/8.0.2": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-7IQhGK+wjyGrNsPBjJcZwWAr+Wf6D4+TwOptUt77bWtgNkiV8tDEbhFS+dDamtQFZ2X7kWG9m71iZQRj2x3zgQ==",
+      "path": "microsoft.extensions.configuration.binder/8.0.2",
+      "hashPath": "microsoft.extensions.configuration.binder.8.0.2.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Configuration.FileExtensions/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-EJzSNO9oaAXnTdtdNO6npPRsIIeZCBSNmdQ091VDO7fBiOtJAAeEq6dtrVXIi3ZyjC5XRSAtVvF8SzcneRHqKQ==",
+      "path": "microsoft.extensions.configuration.fileextensions/8.0.1",
+      "hashPath": "microsoft.extensions.configuration.fileextensions.8.0.1.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Configuration.Json/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-L89DLNuimOghjV3tLx0ArFDwVEJD6+uGB3BMCMX01kaLzXkaXHb2021xOMl2QOxUxbdePKUZsUY7n2UUkycjRg==",
+      "path": "microsoft.extensions.configuration.json/8.0.1",
+      "hashPath": "microsoft.extensions.configuration.json.8.0.1.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Configuration.UserSecrets/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-7tYqdPPpAK+3jO9d5LTuCK2VxrEdf85Ol4trUr6ds4jclBecadWZ/RyPCbNjfbN5iGTfUnD/h65TOQuqQv2c+A==",
+      "path": "microsoft.extensions.configuration.usersecrets/8.0.1",
+      "hashPath": "microsoft.extensions.configuration.usersecrets.8.0.1.nupkg.sha512"
+    },
+    "Microsoft.Extensions.DependencyInjection/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-BmANAnR5Xd4Oqw7yQ75xOAYODybZQRzdeNucg7kS5wWKd2PNnMdYtJ2Vciy0QLylRmv42DGl5+AFL9izA6F1Rw==",
+      "path": "microsoft.extensions.dependencyinjection/8.0.1",
+      "hashPath": "microsoft.extensions.dependencyinjection.8.0.1.nupkg.sha512"
+    },
+    "Microsoft.Extensions.DependencyInjection.Abstractions/8.0.2": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-3iE7UF7MQkCv1cxzCahz+Y/guQbTqieyxyaWKhrRO91itI9cOKO76OHeQDahqG4MmW5umr3CcCvGmK92lWNlbg==",
+      "path": "microsoft.extensions.dependencyinjection.abstractions/8.0.2",
+      "hashPath": "microsoft.extensions.dependencyinjection.abstractions.8.0.2.nupkg.sha512"
+    },
+    "Microsoft.Extensions.DependencyModel/8.0.2": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-mUBDZZRgZrSyFOsJ2qJJ9fXfqd/kXJwf3AiDoqLD9m6TjY5OO/vLNOb9fb4juC0487eq4hcGN/M2Rh/CKS7QYw==",
+      "path": "microsoft.extensions.dependencymodel/8.0.2",
+      "hashPath": "microsoft.extensions.dependencymodel.8.0.2.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Diagnostics/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-doVPCUUCY7c6LhBsEfiy3W1bvS7Mi6LkfQMS8nlC22jZWNxBv8VO8bdfeyvpYFst6Kxqk7HBC6lytmEoBssvSQ==",
+      "path": "microsoft.extensions.diagnostics/8.0.1",
+      "hashPath": "microsoft.extensions.diagnostics.8.0.1.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Diagnostics.Abstractions/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-elH2vmwNmsXuKmUeMQ4YW9ldXiF+gSGDgg1vORksob5POnpaI6caj1Hu8zaYbEuibhqCoWg0YRWDazBY3zjBfg==",
+      "path": "microsoft.extensions.diagnostics.abstractions/8.0.1",
+      "hashPath": "microsoft.extensions.diagnostics.abstractions.8.0.1.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Hosting/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-bP9EEkHBEfjgYiG8nUaXqMk/ujwJrffOkNPP7onpRMO8R+OUSESSP4xHkCAXgYZ1COP2Q9lXlU5gkMFh20gRuw==",
+      "path": "microsoft.extensions.hosting/8.0.1",
+      "hashPath": "microsoft.extensions.hosting.8.0.1.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Hosting.Abstractions/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-nHwq9aPBdBPYXPti6wYEEfgXddfBrYC+CQLn+qISiwQq5tpfaqDZSKOJNxoe9rfQxGf1c+2wC/qWFe1QYJPYqw==",
+      "path": "microsoft.extensions.hosting.abstractions/8.0.1",
+      "hashPath": "microsoft.extensions.hosting.abstractions.8.0.1.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Hosting.WindowsServices/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-5p0tjMDpr8tgzjBdu9Rzk8lUU/PaR1D3Us52XZypl85QTxfAjthR1+YywB3GsGc+FOZWdpuEDsV8kZisEC2Hng==",
+      "path": "microsoft.extensions.hosting.windowsservices/8.0.1",
+      "hashPath": "microsoft.extensions.hosting.windowsservices.8.0.1.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Logging/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-4x+pzsQEbqxhNf1QYRr5TDkLP9UsLT3A6MdRKDDEgrW7h1ljiEPgTNhKYUhNCCAaVpQECVQ+onA91PTPnIp6Lw==",
+      "path": "microsoft.extensions.logging/8.0.1",
+      "hashPath": "microsoft.extensions.logging.8.0.1.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Logging.Abstractions/8.0.2": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-nroMDjS7hNBPtkZqVBbSiQaQjWRDxITI8Y7XnDs97rqG3EbzVTNLZQf7bIeUJcaHOV8bca47s1Uxq94+2oGdxA==",
+      "path": "microsoft.extensions.logging.abstractions/8.0.2",
+      "hashPath": "microsoft.extensions.logging.abstractions.8.0.2.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Logging.Configuration/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-QWwTrsgOnJMmn+XUslm8D2H1n3PkP/u/v52FODtyBc/k4W9r3i2vcXXeeX/upnzllJYRRbrzVzT0OclfNJtBJA==",
+      "path": "microsoft.extensions.logging.configuration/8.0.1",
+      "hashPath": "microsoft.extensions.logging.configuration.8.0.1.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Logging.Console/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-uzcg/5U2eLyn5LIKlERkdSxw6VPC1yydnOSQiRRWGBGN3kphq3iL4emORzrojScDmxRhv49gp5BI8U3Dz7y4iA==",
+      "path": "microsoft.extensions.logging.console/8.0.1",
+      "hashPath": "microsoft.extensions.logging.console.8.0.1.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Logging.Debug/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-B8hqNuYudC2RB+L/DI33uO4rf5by41fZVdcVL2oZj0UyoAZqnwTwYHp1KafoH4nkl1/23piNeybFFASaV2HkFg==",
+      "path": "microsoft.extensions.logging.debug/8.0.1",
+      "hashPath": "microsoft.extensions.logging.debug.8.0.1.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Logging.EventLog/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-ZD1m4GXoxcZeDJIq8qePKj+QAWeQNO/OG8skvrOG8RQfxLp9MAKRoliTc27xanoNUzeqvX5HhS/I7c0BvwAYUg==",
+      "path": "microsoft.extensions.logging.eventlog/8.0.1",
+      "hashPath": "microsoft.extensions.logging.eventlog.8.0.1.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Logging.EventSource/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-YMXMAla6B6sEf/SnfZYTty633Ool3AH7KOw2LOaaEqwSo2piK4f7HMtzyc3CNiipDnq1fsUSuG5Oc7ZzpVy8WQ==",
+      "path": "microsoft.extensions.logging.eventsource/8.0.1",
+      "hashPath": "microsoft.extensions.logging.eventsource.8.0.1.nupkg.sha512"
+    },
+    "Microsoft.Extensions.Options/8.0.2": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-dWGKvhFybsaZpGmzkGCbNNwBD1rVlWzrZKANLW/CcbFJpCEceMCGzT7zZwHOGBCbwM0SzBuceMj5HN1LKV1QqA==",
+      "path": "microsoft.extensions.options/8.0.2",
+      "hashPath": "microsoft.extensions.options.8.0.2.nupkg.sha512"
+    },
+    "Newtonsoft.Json/13.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-ppPFpBcvxdsfUonNcvITKqLl3bqxWbDCZIzDWHzjpdAHRFfZe0Dw9HmA0+za13IdyrgJwpkDTDA9fHaxOrt20A==",
+      "path": "newtonsoft.json/13.0.1",
+      "hashPath": "newtonsoft.json.13.0.1.nupkg.sha512"
+    },
+    "Newtonsoft.Json.Bson/1.0.2": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-QYFyxhaABwmq3p/21VrZNYvCg3DaEoN/wUuw5nmfAf0X3HLjgupwhkEWdgfb9nvGAUIv3osmZoD3kKl4jxEmYQ==",
+      "path": "newtonsoft.json.bson/1.0.2",
+      "hashPath": "newtonsoft.json.bson.1.0.2.nupkg.sha512"
+    },
+    "Promtek.Client/2025.6.19.24-release-cascade": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-I7MXGXiV0FRCJ25x0MC1ZuRjodO/vLXLi2rG0BuQDV32t4+i6XAO1Hc2spvBWe3Y4Fp4U9x0ohXBE6p7Mdzuig==",
+      "path": "promtek.client/2025.6.19.24-release-cascade",
+      "hashPath": "promtek.client.2025.6.19.24-release-cascade.nupkg.sha512"
+    },
+    "Promtek.Cqrs/2023.9.18.72": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-0LO8oR4M1d++dd1BTgBlaeKXlgQtbBfcLfXSoZ6pz6VuUjODoKjbkON0Jg+2Glm61B/LYNC12xwZtvwGSmXxIA==",
+      "path": "promtek.cqrs/2023.9.18.72",
+      "hashPath": "promtek.cqrs.2023.9.18.72.nupkg.sha512"
+    },
+    "Promtek.Logger.Configuration.AppSettings/2025.7.11.160-release-doom": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-FoQPNRIxedL321VY//rsDOYw62DSIxGk2xQCvmWVLNJtjoqiCVnSLQbTBU3u/3hP93uEz2/bQ2IrjP4yG+Tsrw==",
+      "path": "promtek.logger.configuration.appsettings/2025.7.11.160-release-doom",
+      "hashPath": "promtek.logger.configuration.appsettings.2025.7.11.160-release-doom.nupkg.sha512"
+    },
+    "Promtek.Logger.NETStandard/2025.7.11.160-release-doom": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-0JdOrveckpXQ4jmsQ1fwcPsQ3xUE4nK/gr0YzR7oaisN6jxtuW/NkZRzgEzK1Ocebi7s954ybIJrv1Oz1asm2Q==",
+      "path": "promtek.logger.netstandard/2025.7.11.160-release-doom",
+      "hashPath": "promtek.logger.netstandard.2025.7.11.160-release-doom.nupkg.sha512"
+    },
+    "Promtek.Rest.Client.Core/2025.7.11.229-release-doom": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-R0pHJZb4zgqKRQoXBUwcCulGF2eVCFUNr7yVtLX1yIUjVm3p5c66UqDcMw0dL1z9aKAgYIK+p39X9ECv5Kq8Bw==",
+      "path": "promtek.rest.client.core/2025.7.11.229-release-doom",
+      "hashPath": "promtek.rest.client.core.2025.7.11.229-release-doom.nupkg.sha512"
+    },
+    "Promtek.Rest.Client.Core.Extensions/2024.4.9.204": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-SPl4HscIsf11D1KjBeKtbpKBbrjqop2kU5rRj97gcEwBUjLZE6Nh1RPLxXDRLOKryGOsVokOrSMsOR87OCydEg==",
+      "path": "promtek.rest.client.core.extensions/2024.4.9.204",
+      "hashPath": "promtek.rest.client.core.extensions.2024.4.9.204.nupkg.sha512"
+    },
+    "Promtek.Rest.Client.HttpClient.Standard/2025.7.11.229-release-doom": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-0l+eF5YgzhZJkEk6ZlTXvnU4Y84aBjFZ09gYu8cnNM6yWS0tgO24k3FAhi5ZFk5t6rSEfilvOBgcJwav24Ee+w==",
+      "path": "promtek.rest.client.httpclient.standard/2025.7.11.229-release-doom",
+      "hashPath": "promtek.rest.client.httpclient.standard.2025.7.11.229-release-doom.nupkg.sha512"
+    },
+    "Promtek.Rest.QueryString/2024.3.19.31": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-9IdoH4XoW/9lJ8NrKUJHzqpD9DqgJ7jhJtjcyyDELkaJVFms1re94aG/p1RtjbRIU5Bif2+fbnlXIWZr008O6Q==",
+      "path": "promtek.rest.querystring/2024.3.19.31",
+      "hashPath": "promtek.rest.querystring.2024.3.19.31.nupkg.sha512"
+    },
+    "Promtek.Rest.QueryString.Cqrs/2024.3.19.31": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-Lu+n+3+WcI72UPgzVT6XwktrnsazGDSrOOosLgDlAK42aEYw2222pETofyUYWfwtU0Eb4PLWKV9SD+ij9eBvOQ==",
+      "path": "promtek.rest.querystring.cqrs/2024.3.19.31",
+      "hashPath": "promtek.rest.querystring.cqrs.2024.3.19.31.nupkg.sha512"
+    },
+    "Promtek.Service.Importer.Gateway.Client/2025.4.9.109-blanc": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-pTbGAkz7pdkKRr5iZiyyHwkW4ScQDaUllLny6spfPfYlL/brpDWYq7WebzCITH1MlE+NaAjn8uHOtngvOvYzgw==",
+      "path": "promtek.service.importer.gateway.client/2025.4.9.109-blanc",
+      "hashPath": "promtek.service.importer.gateway.client.2025.4.9.109-blanc.nupkg.sha512"
+    },
+    "Promtek.Service.Importer.Gateway.Contracts/2025.4.9.109-blanc": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-P/RlDwoE8BZUylHBb10Xkv1OvSIhyKnuZaMom6uPbrX8ohfOnGHFg2kieKklEE8sxaZipEhKjK5+3oOiSYGyUQ==",
+      "path": "promtek.service.importer.gateway.contracts/2025.4.9.109-blanc",
+      "hashPath": "promtek.service.importer.gateway.contracts.2025.4.9.109-blanc.nupkg.sha512"
+    },
+    "Promtek.Service.Importer.Gateway.DependencyInjection/2025.4.9.109-blanc": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-Hknsa0FiFHkXoVOYWcBrXZNhGMbRPuZhsVbADEuNnGfraEOX0uaeKuCE+I/ZqZEN4VmnaXTitHFx9LHGfUDUbw==",
+      "path": "promtek.service.importer.gateway.dependencyinjection/2025.4.9.109-blanc",
+      "hashPath": "promtek.service.importer.gateway.dependencyinjection.2025.4.9.109-blanc.nupkg.sha512"
+    },
+    "Promtek.Validation.Rest.Contracts/2024.3.21.19": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-iS6pcJsPoL188b8leQcuCHHNJTDy/bVA27/r+GVM6gs7rKPqT6UyPvo16Eosn5cuFniY1iJPpSje9dgzeH5dRQ==",
+      "path": "promtek.validation.rest.contracts/2024.3.21.19",
+      "hashPath": "promtek.validation.rest.contracts.2024.3.21.19.nupkg.sha512"
+    },
+    "Scrutor/5.0.2": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-GkmAfKlp9//FJmssFoF8u5+LEiKsrvKKitYuWgKKq0AILK4l2hASqv09WyKyiNJ3BKRlh/ZwoEV+8yi77AkAgg==",
+      "path": "scrutor/5.0.2",
+      "hashPath": "scrutor.5.0.2.nupkg.sha512"
+    },
+    "System.Diagnostics.EventLog/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-n1ZP7NM2Gkn/MgD8+eOT5MulMj6wfeQMNS2Pizvq5GHCZfjlFMXV2irQlQmJhwA2VABC57M0auudO89Iu2uRLg==",
+      "path": "system.diagnostics.eventlog/8.0.1",
+      "hashPath": "system.diagnostics.eventlog.8.0.1.nupkg.sha512"
+    },
+    "System.Security.Cryptography.ProtectedData/9.0.4": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-o94k2RKuAce3GeDMlUvIXlhVa1kWpJw95E6C9LwW0KlG0nj5+SgCiIxJ2Eroqb9sLtG1mEMbFttZIBZ13EJPvQ==",
+      "path": "system.security.cryptography.protecteddata/9.0.4",
+      "hashPath": "system.security.cryptography.protecteddata.9.0.4.nupkg.sha512"
+    },
+    "System.ServiceProcess.ServiceController/8.0.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-02I0BXo1kmMBgw03E8Hu4K6nTqur4wpQdcDZrndczPzY2fEoGvlinE35AWbyzLZ2h2IksEZ6an4tVt3hi9j1oA==",
+      "path": "system.serviceprocess.servicecontroller/8.0.1",
+      "hashPath": "system.serviceprocess.servicecontroller.8.0.1.nupkg.sha512"
+    },
+    "Promtek.Condor.Rhapsodi.Gateway.Contracts/2026.4.8.11": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

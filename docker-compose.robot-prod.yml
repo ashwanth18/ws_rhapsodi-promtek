@@ -72,6 +72,23 @@ services:
     depends_on:
       - db
 
+  condor_agent:
+    image: ${CONDOR_AGENT_IMAGE:-iserenity/rhapsodi-promtek:condor-agent}
+    build:
+      context: .
+      dockerfile: docker/condor-agent.Dockerfile
+    environment:
+      promtek-condor-rhapsodi-agent__RhapsodiUrl: ${CONDOR_AGENT_RHAPSODI_URL:-http://webhook_service:5000}
+      promtek-condor-rhapsodi-agent__Port: ${CONDOR_AGENT_PORT:-5002}
+      FileLogger__Directory: ${CONDOR_AGENT_LOG_DIR:-/data/condor-agent/logs/{Service.Name}}
+    ports:
+      - "${CONDOR_AGENT_PORT:-5002}:5002"
+    volumes:
+      - ./data:/data
+    depends_on:
+      - webhook_service
+    restart: unless-stopped
+
   dashboard:
     image: ${DASHBOARD_IMAGE:-iserenity/rhapsodi-promtek:dashboard}
     ports:
