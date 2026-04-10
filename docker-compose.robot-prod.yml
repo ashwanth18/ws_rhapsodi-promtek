@@ -85,6 +85,9 @@ services:
       - "${CONDOR_AGENT_PORT:-5002}:5002"
     volumes:
       - ./data:/data
+      - type: bind
+        source: ${CONDOR_AGENT_CONFIG_DIR:-./data/condor-agent/config}
+        target: /app/c:\promtek/config/promtek-condor-rhapsodi-agent
     depends_on:
       - webhook_service
     restart: unless-stopped
