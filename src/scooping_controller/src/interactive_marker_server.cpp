@@ -249,6 +249,7 @@ public:
     this->declare_parameter<std::string>("goal_frame_id", kDefaultGoalFrame);
     this->declare_parameter<std::string>("task_container_id", kDefaultTaskContainerId);
     this->declare_parameter<std::string>("poses_yaml", "~/.ros/scooping_controller/poses.yaml");
+    this->declare_parameter<std::string>("seed_poses_yaml", "");
     this->declare_parameter<bool>("auto_load_poses_on_startup", true);
     this->declare_parameter<std::string>(
       "tool_mesh_resource",
@@ -257,6 +258,7 @@ public:
     scoop_frame_id_ = this->get_parameter("scoop_frame_id").as_string();
     goal_frame_id_ = this->get_parameter("goal_frame_id").as_string();
     poses_yaml_path_ = expand_user_path(this->get_parameter("poses_yaml").as_string());
+    seed_poses_yaml_path_ = expand_user_path(this->get_parameter("seed_poses_yaml").as_string());
     tool_mesh_resource_ = this->get_parameter("tool_mesh_resource").as_string();
     seeds_ = default_marker_seeds();
     goal_seed_ = default_goal_marker_seed();
@@ -308,6 +310,24 @@ private:
 
     for (const auto& seed : seeds_) {
       poses_.push_back(seed.pose);
+    }
+
+    if (this->get_parameter("auto_load_poses_on_startup").as_bool() &&
+        !std::filesystem::exists(poses_yaml_path_))
+    {
+      std::string seed_message;
+      if (seed_startup_poses(seed_message)) {
+        update_status(seed_message, {0.75f, 0.95f, 0.75f});
+        RCLCPP_INFO(
+          this->get_logger(),
+          "%s",
+          seed_message.c_str());
+      } else {
+        RCLCPP_WARN(
+          this->get_logger(),
+          "Failed to seed scoop poses at startup: %s",
+          seed_message.c_str());
+      }
     }
 
     bool loaded_saved_poses = false;
@@ -685,6 +705,38 @@ private:
     }
   }
 
+  bool seed_startup_poses(std::string& message)
+  {
+    try {
+      const std::filesystem::path destination(poses_yaml_path_);
+      if (!destination.parent_path().empty()) {
+        std::filesystem::create_directories(destination.parent_path());
+      }
+
+      if (!seed_poses_yaml_path_.empty() && std::filesystem::exists(seed_poses_yaml_path_)) {
+        std::filesystem::copy_file(
+          seed_poses_yaml_path_,
+          poses_yaml_path_,
+          std::filesystem::copy_options::overwrite_existing);
+        message =
+          "Seeded scoop poses from " + seed_poses_yaml_path_ + " to " + poses_yaml_path_;
+        return true;
+      }
+
+      if (!seed_poses_yaml_path_.empty()) {
+        RCLCPP_WARN(
+          this->get_logger(),
+          "Configured seed_poses_yaml does not exist: %s. Falling back to built-in defaults.",
+          seed_poses_yaml_path_.c_str());
+      }
+
+      return save_poses_to_yaml(message);
+    } catch (const std::exception& ex) {
+      message = std::string("Failed to seed scoop poses: ") + ex.what();
+      return false;
+    }
+  }
+
   bool load_poses_from_yaml(std::string& message)
   {
     try {
@@ -811,6 +863,7 @@ private:
   std::string scoop_frame_id_;
   std::string goal_frame_id_;
   std::string poses_yaml_path_;
+  std::string seed_poses_yaml_path_;
   std::string tool_mesh_resource_;
   tf2::Transform scoop_frame_from_goal_;
   bool has_scoop_frame_transform_{false};

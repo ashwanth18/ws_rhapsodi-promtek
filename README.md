@@ -300,6 +300,10 @@ docker compose --env-file robot-prod.env -f docker-compose.robot-prod.yml pull
 docker compose --env-file robot-prod.env -f docker-compose.robot-prod.yml up -d
 ```
 
+For the detailed Condor + Pi rollout guide, including env strategy, persistence, build/push commands, and debugging:
+
+- `README-condor-agent-pi.md`
+
 The per-Pi settings live in:
 
 ```bash

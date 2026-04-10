@@ -31,6 +31,7 @@ def generate_launch_description():
     headless = LaunchConfiguration("headless")
     rviz_config = LaunchConfiguration("rviz_config")
     poses_yaml = LaunchConfiguration("poses_yaml")
+    seed_poses_yaml = LaunchConfiguration("seed_poses_yaml")
     targets_yaml = LaunchConfiguration("targets_yaml")
     scoop_frame_id = LaunchConfiguration("scoop_frame_id")
     pattern_offset_y = LaunchConfiguration("pattern_offset_y")
@@ -73,6 +74,20 @@ def generate_launch_description():
             "~/.ros/scooping_controller/poses_real.yaml"
         ),
         description="YAML file used by RViz Save/Load scoop pose buttons",
+    )
+    declare_seed_poses_yaml = DeclareLaunchArgument(
+        "seed_poses_yaml",
+        default_value=PathJoinSubstitution(
+            [
+                FindPackageShare("scooping_controller"),
+                "config",
+                "poses_real_seed.yaml",
+            ]
+        ),
+        description=(
+            "Checked-in seed YAML copied on first startup when poses_yaml is "
+            "missing"
+        ),
     )
     declare_targets_yaml = DeclareLaunchArgument(
         "targets_yaml",
@@ -346,6 +361,7 @@ def generate_launch_description():
                 "scoop_frame_id": scoop_frame_id,
                 "goal_frame_id": "base_link",
                 "poses_yaml": poses_yaml,
+                "seed_poses_yaml": seed_poses_yaml,
             }
         ],
     )
@@ -488,6 +504,7 @@ def generate_launch_description():
             declare_headless,
             declare_rviz_config,
             declare_poses_yaml,
+            declare_seed_poses_yaml,
             declare_targets_yaml,
             declare_scoop_frame_id,
             declare_pattern_offset_y,
