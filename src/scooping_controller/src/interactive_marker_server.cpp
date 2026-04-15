@@ -33,9 +33,11 @@ using InteractiveMarkerControl = visualization_msgs::msg::InteractiveMarkerContr
 using Marker = visualization_msgs::msg::Marker;
 using MarkerArray = visualization_msgs::msg::MarkerArray;
 
-constexpr double kTcpOffsetX = 0.183;
+// Keep the RViz tool mesh aligned with the real tcp_link definition in
+// `niryo_ned3pro.urdf.xacro` (`tool_tcp_joint`).
+constexpr double kTcpOffsetX = 0.15825;
 constexpr double kTcpOffsetY = 0.0;
-constexpr double kTcpOffsetZ = -0.072;
+constexpr double kTcpOffsetZ = -0.09356;
 constexpr char kDefaultGoalFrame[] = "base_link";
 constexpr char kDefaultScoopFrame[] = "scooping_container_frame";
 constexpr char kDefaultTaskContainerId[] = "scooping_container";
