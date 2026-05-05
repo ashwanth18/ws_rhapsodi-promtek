@@ -193,6 +193,7 @@ services:
       bash -lc "
       source /opt/ros/jazzy/setup.bash &&
       source /ws/install/setup.bash &&
+      rm -rf build/robot_common_msgs build/pouring_controller install/robot_common_msgs install/pouring_controller &&
       colcon build --packages-select robot_common_msgs pouring_controller --symlink-install &&
       source /workspace/install/setup.bash &&
       ros2 run pouring_controller incline_control_node

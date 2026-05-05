@@ -96,6 +96,8 @@ const POUR_STATUS_TOPIC: string =
   (import.meta as any).env.VITE_POUR_STATUS_TOPIC || '/pour_status'
 const VIBRATION_TOPIC: string =
   (import.meta as any).env.VITE_VIBRATION_TOPIC || '/vibration/intensity'
+const INCLINE_TOPIC: string =
+  (import.meta as any).env.VITE_INCLINE_TOPIC || '/incline_control'
 
 const TIMELINE_PHASES = [
   'Move To Scoop',
@@ -228,6 +230,7 @@ function App() {
   const [lastWeightTs, setLastWeightTs] = useState<number | null>(null)
   const [pourStatus, setPourStatus] = useState<PourStatusMsg | null>(null)
   const [vibrationIntensity, setVibrationIntensity] = useState<number | null>(null)
+  const [inclineAngleDeg, setInclineAngleDeg] = useState<number | null>(null)
   const [latestRun, setLatestRun] = useState<RobotRunRow | null>(null)
   const [latestDetail, setLatestDetail] = useState<DetailRow | null>(null)
   const [loading, setLoading] = useState(false)
@@ -306,6 +309,17 @@ function App() {
       }
     })
 
+    const inclineTopic = new ROSLIB.Topic({
+      ros: r,
+      name: INCLINE_TOPIC,
+      messageType: 'std_msgs/Float64',
+    })
+    inclineTopic.subscribe((msg: { data: number }) => {
+      if (typeof msg.data === 'number' && Number.isFinite(msg.data)) {
+        setInclineAngleDeg(msg.data)
+      }
+    })
+
     const runStateTopic = new ROSLIB.Topic({
       ros: r,
       name: RUN_STATE_TOPIC,
@@ -322,6 +336,7 @@ function App() {
       weightTopic.unsubscribe()
       pourStatusTopic.unsubscribe()
       vibrationTopic.unsubscribe()
+      inclineTopic.unsubscribe()
       runStateTopic.unsubscribe()
     }
   }, [ros])
@@ -414,7 +429,8 @@ function App() {
     Boolean(pourStatus?.active) ||
     livePhase === 'pour_start' ||
     livePhase === 'pour_end' ||
-    (typeof vibrationIntensity === 'number' && vibrationIntensity > 0)
+    (typeof vibrationIntensity === 'number' && vibrationIntensity > 0) ||
+    (typeof inclineAngleDeg === 'number' && inclineAngleDeg > 0)
   )
 
   const scalePct = useMemo(() => {
@@ -504,7 +520,7 @@ function App() {
               </span>
             </div>
             <PhaseTimeline phases={TIMELINE_PHASES} index={phaseIndex} />
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
               <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
                 <div className="text-xs uppercase tracking-wide text-[var(--text-faint)]">
                   Pour Phase
@@ -515,11 +531,21 @@ function App() {
               </div>
               <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
                 <div className="text-xs uppercase tracking-wide text-[var(--text-faint)]">
-                  Vibration Intensity
+                  Vibration Command
                 </div>
                 <div className="mt-1 text-sm font-medium text-[var(--text-primary)]">
                   {pourTelemetryVisible && typeof vibrationIntensity === 'number'
                     ? vibrationIntensity.toFixed(2)
+                    : '—'}
+                </div>
+              </div>
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
+                <div className="text-xs uppercase tracking-wide text-[var(--text-faint)]">
+                  Incline Command
+                </div>
+                <div className="mt-1 text-sm font-medium text-[var(--text-primary)]">
+                  {pourTelemetryVisible && typeof inclineAngleDeg === 'number'
+                    ? `${inclineAngleDeg.toFixed(1)}°`
                     : '—'}
                 </div>
               </div>
