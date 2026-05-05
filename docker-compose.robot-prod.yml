@@ -179,8 +179,8 @@ services:
       -p coarse_vibration_intensity:=${COARSE_VIBRATION_INTENSITY:-0.9}
       -p fine_vibration_intensity:=${FINE_VIBRATION_INTENSITY:-0.70}
       -p trickle_vibration_intensity:=${TRICKLE_VIBRATION_INTENSITY:-0.5}
-      -p trickle_pulse_ms:=${TRICKLE_PULSE_MS:-180}
-      -p trickle_pause_ms:=${TRICKLE_PAUSE_MS:-160}
+      -p trickle_pulse_ms:=${TRICKLE_PULSE_MS:-180.0}
+      -p trickle_pause_ms:=${TRICKLE_PAUSE_MS:-160.0}
       -p no_progress_timeout_s:=${NO_PROGRESS_TIMEOUT_S:-3.0}
       -p no_progress_incline_step_deg:=${NO_PROGRESS_INCLINE_STEP_DEG:-5.0}
       -p max_incline_deg:=${MAX_INCLINE_DEG:-20.0}
@@ -226,8 +226,8 @@ services:
       -p coarse_vibration_intensity:=${COARSE_VIBRATION_INTENSITY:-0.9}
       -p fine_vibration_intensity:=${FINE_VIBRATION_INTENSITY:-0.70}
       -p trickle_vibration_intensity:=${TRICKLE_VIBRATION_INTENSITY:-0.5}
-      -p trickle_pulse_ms:=${TRICKLE_PULSE_MS:-180}
-      -p trickle_pause_ms:=${TRICKLE_PAUSE_MS:-160}
+      -p trickle_pulse_ms:=${TRICKLE_PULSE_MS:-180.0}
+      -p trickle_pause_ms:=${TRICKLE_PAUSE_MS:-160.0}
       -p no_progress_timeout_s:=${NO_PROGRESS_TIMEOUT_S:-3.0}
       -p no_progress_incline_step_deg:=${NO_PROGRESS_INCLINE_STEP_DEG:-5.0}
       -p max_incline_deg:=${MAX_INCLINE_DEG:-20.0}
