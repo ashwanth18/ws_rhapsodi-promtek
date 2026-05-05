@@ -200,7 +200,7 @@ services:
       --packages-select robot_common_msgs pouring_controller
       --symlink-install &&
       source /tmp/pouring_controller_install/setup.bash &&
-      ros2 run pouring_controller incline_control_node
+      /tmp/pouring_controller_install/lib/pouring_controller/incline_control_node
       --ros-args
       -p incline_topic:=/incline_control
       -p joint_state_topic:=/joint_states
@@ -210,7 +210,7 @@ services:
       -p incline_direction:=${INCLINE_DIRECTION:-1.0}
       -p joint_move_time_s:=${INCLINE_JOINT_MOVE_TIME_S:-0.5}
       &
-      exec ros2 run pouring_controller pour_server_node
+      exec /tmp/pouring_controller_install/lib/pouring_controller/pour_server_node
       --ros-args
       -p weight_topic:=/weight
       -p vibration_topic:=/vibration/intensity
