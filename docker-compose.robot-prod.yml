@@ -194,10 +194,9 @@ services:
       source /opt/ros/jazzy/setup.bash &&
       source /ws/install/setup.bash &&
       rm -rf /tmp/pouring_controller_build /tmp/pouring_controller_install /tmp/pouring_controller_log &&
-      colcon build
+      colcon --log-base /tmp/pouring_controller_log build
       --build-base /tmp/pouring_controller_build
       --install-base /tmp/pouring_controller_install
-      --log-base /tmp/pouring_controller_log
       --packages-select robot_common_msgs pouring_controller
       --symlink-install &&
       source /tmp/pouring_controller_install/setup.bash &&
@@ -251,10 +250,9 @@ services:
       source /opt/ros/jazzy/setup.bash &&
       source /ws/install/setup.bash &&
       rm -rf /tmp/orchestrator_build /tmp/orchestrator_install /tmp/orchestrator_log &&
-      colcon build
+      colcon --log-base /tmp/orchestrator_log build
       --build-base /tmp/orchestrator_build
       --install-base /tmp/orchestrator_install
-      --log-base /tmp/orchestrator_log
       --packages-select robot_common_msgs robot_orchestrator
       --symlink-install &&
       source /tmp/orchestrator_install/setup.bash &&
