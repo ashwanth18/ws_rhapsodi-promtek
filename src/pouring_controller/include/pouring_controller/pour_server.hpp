@@ -39,7 +39,7 @@ private:
   double stale_ms_{500.0};
 
   // Phase thresholds
-  double coarse_thresh_{0.30};
+  double coarse_thresh_{0.40};
   double fine_thresh_{0.05};
   double start_in_fine_below_g_{40.0};
   double start_in_trickle_below_g_{10.0};

@@ -20,7 +20,7 @@ PourServer::PourServer(const rclcpp::NodeOptions & options)
   this->declare_parameter<double>("ema_alpha", 0.2);
   this->declare_parameter<double>("sample_rate_hz", 12.0);
   this->declare_parameter<double>("stale_ms", 500.0);
-  this->declare_parameter<double>("coarse_threshold", 0.30);
+  this->declare_parameter<double>("coarse_threshold", 0.40);
   this->declare_parameter<double>("fine_threshold", 0.05);
   this->declare_parameter<double>("start_in_fine_below_g", 40.0);
   this->declare_parameter<double>("start_in_trickle_below_g", 10.0);

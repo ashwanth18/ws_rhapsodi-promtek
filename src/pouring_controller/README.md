@@ -50,7 +50,7 @@ Feedback
 - `valve_topic` (string, `/valve_control`), `incline_topic` (string, `/incline_control`) [Float64]
 - `joint_state_topic` (string, `/joint_states`)
 - `ema_alpha` (double, 0.2), `sample_rate_hz` (double, 12.0), `stale_ms` (double, 500.0)
-- `coarse_threshold` (double, e.g. 0.10), `fine_threshold` (double, e.g. 0.02)
+- `coarse_threshold` (double, default `0.40`), `fine_threshold` (double, default `0.05`)
 - `start_in_fine_below_g` (double, default `40.0`): skip coarse and begin in `FINE`
   for smaller pour targets
 - `start_in_trickle_below_g` (double, default `10.0`): skip straight to `TRICKLE`
@@ -117,7 +117,7 @@ Start server (example):
 ```bash
 ros2 run pouring_controller pour_server_node --ros-args \
   -p weight_topic:=/weight -p vibration_topic:=/vibration/intensity -p joint_state_topic:=/joint_states \
-  -p coarse_threshold:=0.30 -p fine_threshold:=0.05 -p settle_time_s:=0.8 -p hold_within_tol_count:=10 -p ema_alpha:=0.2 \
+  -p coarse_threshold:=0.40 -p fine_threshold:=0.05 -p settle_time_s:=0.8 -p hold_within_tol_count:=10 -p ema_alpha:=0.2 \
   -p coarse_vibration_intensity:=0.9 -p settle_vibration_intensity:=0.0 -p fine_vibration_intensity:=0.70 -p trickle_vibration_intensity:=0.5 \
   -p trickle_pulse_ms:=180 -p trickle_pause_ms:=160 \
   -p tilt_joint_name:=joint_5 -p coarse_tilt_deg:=6 -p fine_tilt_deg:=3 -p trickle_tilt_deg:=1 -p joint_move_time_s:=0.5
