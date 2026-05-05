@@ -217,10 +217,10 @@ class Action:
 
         def result_callback(result):
             nonlocal ros1_result, ros2_result
+            ros1_result = result
             normalize_ROS1_type_to_ROS2(
                 ros1_result, ros2_result.get_fields_and_field_types()
             )
-            ros1_result = result
             result_received_event.set()
 
         ros1_goal.on("feedback", lambda message: feedback_callback(message))
@@ -250,7 +250,16 @@ class Action:
             ROS1_GOAL_STATUS_PREEMPTED,
             ROS1_GOAL_STATUS_RECALLED,
         ]:
-            goal_handle.canceled()
+            # rclpy only accepts CANCELED after the ROS 2 goal has entered
+            # CANCELING. ROS 1 may report PREEMPTED/RECALLED for other bridge
+            # races; complete those as aborted to avoid invalid transitions.
+            if goal_handle.is_cancel_requested:
+                goal_handle.canceled()
+            else:
+                self._node.get_logger().warn(
+                    "ROS1 preempt/recall without ROS2 cancel; aborting goal"
+                )
+                goal_handle.abort()
         elif ros1_result is not None and ros1_goal_status in [
             ROS1_GOAL_STATUS_PENDING,
             ROS1_GOAL_STATUS_ACTIVE,
@@ -259,6 +268,17 @@ class Action:
         ]:
             self._node.get_logger().warn(
                 "ROS1 result callback returned before terminal goal status was visible; "
+                f"treating status {ros1_goal_status} as success"
+            )
+            goal_handle.succeed()
+        elif ros1_goal_status in [
+            ROS1_GOAL_STATUS_PENDING,
+            ROS1_GOAL_STATUS_ACTIVE,
+            ROS1_GOAL_STATUS_PREEMPTING,
+            ROS1_GOAL_STATUS_RECALLING,
+        ]:
+            self._node.get_logger().warn(
+                "ROS1 goal status stayed non-terminal after result wait; "
                 f"treating status {ros1_goal_status} as success"
             )
             goal_handle.succeed()

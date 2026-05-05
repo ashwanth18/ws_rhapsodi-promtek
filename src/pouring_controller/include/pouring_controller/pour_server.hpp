@@ -48,6 +48,8 @@ private:
   double final_settle_time_s_{1.0};
   double min_delta_g_{1.0};
   double no_progress_timeout_s_{2.0};
+  double no_progress_incline_step_deg_{5.0};
+  double max_incline_deg_{20.0};
 
   // Plugin
   std::shared_ptr<pouring_controller::ControlLaw> control_;

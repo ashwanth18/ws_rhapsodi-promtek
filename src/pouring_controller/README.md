@@ -59,6 +59,10 @@ Feedback
 - `min_progress_g` (double, default `0.5`): minimum increase in net poured mass that counts as progress
 - `no_progress_timeout_s` (double, default `2.0`): abort if progress is below `min_progress_g`
   for longer than this during `COARSE` or `FINE`
+- Dynamic incline recovery before rescoop:
+  - `no_progress_incline_step_deg` (double, default `5.0`): add this much incline each
+    time the no-progress watchdog fires
+  - `max_incline_deg` (double, default `20.0`): cap for commanded incline
 - Per-phase normalized vibration tuning:
   - `coarse_vibration_intensity`, `settle_vibration_intensity`, `fine_vibration_intensity`,
     `trickle_vibration_intensity`
@@ -82,6 +86,11 @@ drive phase transitions and stop conditions:
   medium-sized remainder pours
 * `TRICKLE`: controller output capped by `trickle_vibration_intensity` and optionally pulsed using
   `trickle_pulse_ms` and `trickle_pause_ms`; can also be the starting phase for very small top-ups
+
+If `COARSE` or `FINE` makes no progress, the controller now raises `/incline_control` by
+`no_progress_incline_step_deg` up to `max_incline_deg` before returning `need_rescoop=true`.
+The boost counter is scoped to one `/pour_to_target` goal, so a re-scoop starts from the base
+phase incline again.
 
 When `control_law_type:=bangbang`, the per-phase intensities act as a simple robust default.
 When `control_law_type:=pid`, the controller uses feedforward plus PI on the net poured mass while

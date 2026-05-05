@@ -29,6 +29,8 @@ PourServer::PourServer(const rclcpp::NodeOptions & options)
   this->declare_parameter<double>("final_settle_time_s", 2.0);
   this->declare_parameter<double>("min_progress_g", 0.5);
   this->declare_parameter<double>("no_progress_timeout_s", 2.0);
+  this->declare_parameter<double>("no_progress_incline_step_deg", 5.0);
+  this->declare_parameter<double>("max_incline_deg", 20.0);
   this->declare_parameter<std::string>("tilt_joint_name", "");
   this->declare_parameter<std::string>("traj_action_server", "/niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory");
   this->declare_parameter<double>("coarse_tilt_deg", 0.0);
@@ -61,6 +63,8 @@ PourServer::PourServer(const rclcpp::NodeOptions & options)
   final_settle_time_s_ = this->get_parameter("final_settle_time_s").as_double();
   min_delta_g_ = this->get_parameter("min_progress_g").as_double();
   no_progress_timeout_s_ = this->get_parameter("no_progress_timeout_s").as_double();
+  no_progress_incline_step_deg_ = this->get_parameter("no_progress_incline_step_deg").as_double();
+  max_incline_deg_ = this->get_parameter("max_incline_deg").as_double();
   tilt_joint_name_ = this->get_parameter("tilt_joint_name").as_string();
   traj_action_server_ = this->get_parameter("traj_action_server").as_string();
   coarse_tilt_deg_ = this->get_parameter("coarse_tilt_deg").as_double();
@@ -194,6 +198,7 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
   double progress_reference_net_g = 0.0;
   auto progress_reference_time = now();
   auto phase_enter_time = now();
+  int no_progress_incline_boosts = 0;
   // Compute percentage-based error bands relative to target
   const double coarse_band = std::abs(goal->target_weight) * coarse_thresh_;
   const double fine_band = std::abs(goal->target_weight) * fine_thresh_;
@@ -312,6 +317,28 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
 
     // Joint tilt disabled
 
+    auto base_incline_for_phase = [&]() {
+      switch (phase) {
+        case COARSE:
+          return coarse_tilt_deg_;
+        case SETTLE:
+          return fine_tilt_deg_;
+        case FINE:
+          return fine_tilt_deg_;
+        case TRICKLE:
+          return trickle_tilt_deg_;
+      }
+      return 0.0;
+    };
+
+    const double max_incline = std::max(0.0, max_incline_deg_);
+    const double incline_step = std::max(0.0, no_progress_incline_step_deg_);
+    const double base_incline_deg = base_incline_for_phase();
+    const double incline_deg = std::clamp(
+      base_incline_deg + (no_progress_incline_boosts * incline_step),
+      0.0,
+      max_incline);
+
     // control law
     ControlContext ctx; ctx.target_weight = goal->target_weight; ctx.tolerance = goal->tolerance;
     ctx.filtered_weight = net_g; ctx.raw_weight = net_g; ctx.phase = phase_name;
@@ -335,7 +362,7 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
         }
       }
     }
-    send_cmd(vibration_intensity, 0.0, 0.0);
+    send_cmd(vibration_intensity, 0.0, incline_deg);
 
     // feedback
     feedback->current_weight = static_cast<float>(raw_weight_);
@@ -408,6 +435,22 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
         progress_reference_net_g = net_g;
         progress_reference_time = now();
       } else if ((now() - progress_reference_time).seconds() > no_progress_timeout_s_) {
+        const double next_incline_deg = std::clamp(
+          base_incline_deg + ((no_progress_incline_boosts + 1) * incline_step),
+          0.0,
+          max_incline);
+        if (incline_step > 0.0 && next_incline_deg > incline_deg + 1e-6) {
+          ++no_progress_incline_boosts;
+          progress_reference_net_g = net_g;
+          progress_reference_time = now();
+          RCLCPP_WARN(
+            get_logger(),
+            "Pour no-progress: boosting incline to %.3fdeg (boost %d, max %.3fdeg) before rescoop",
+            next_incline_deg,
+            no_progress_incline_boosts,
+            max_incline);
+          continue;
+        }
         stop_cmd();
         publish_status(false, "", 0.0, 0.0, 0.0);
         result->achieved = false;
