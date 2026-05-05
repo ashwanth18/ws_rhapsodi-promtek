@@ -92,6 +92,12 @@ If `COARSE` or `FINE` makes no progress, the controller now raises `/incline_con
 The boost counter is scoped to one `/pour_to_target` goal, so a re-scoop starts from the base
 phase incline again.
 
+`incline_control_node` can subscribe to `/incline_control` and apply it to a configured robot joint
+through `FollowJointTrajectory`. It captures the current `tilt_joint_name` position as zero incline
+when a pour starts, then commands `base + incline_direction * incline_deg` while preserving the
+latest positions of the other controller joints. The robot-prod dev compose service starts this node
+alongside `pour_server_node`.
+
 When `control_law_type:=bangbang`, the per-phase intensities act as a simple robust default.
 When `control_law_type:=pid`, the controller uses feedforward plus PI on the net poured mass while
 still respecting the phase caps above.

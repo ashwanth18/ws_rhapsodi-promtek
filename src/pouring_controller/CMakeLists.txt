@@ -5,6 +5,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(control_msgs REQUIRED)
 find_package(trajectory_msgs REQUIRED)
 find_package(robot_common_msgs REQUIRED)
@@ -20,7 +21,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 ament_target_dependencies(${PROJECT_NAME}
-  rclcpp rclcpp_action std_msgs control_msgs trajectory_msgs robot_common_msgs pluginlib
+  rclcpp rclcpp_action std_msgs sensor_msgs control_msgs trajectory_msgs robot_common_msgs pluginlib
 )
 
 add_executable(pour_server_node src/pour_server_node.cpp)
@@ -30,7 +31,12 @@ ament_target_dependencies(pour_server_node rclcpp)
 add_executable(pour_client_demo src/pour_client_demo.cpp)
 ament_target_dependencies(pour_client_demo rclcpp rclcpp_action robot_common_msgs)
 
-install(TARGETS ${PROJECT_NAME} pour_server_node
+add_executable(incline_control_node src/incline_control_node.cpp)
+ament_target_dependencies(incline_control_node
+  rclcpp rclcpp_action std_msgs sensor_msgs control_msgs trajectory_msgs
+)
+
+install(TARGETS ${PROJECT_NAME} pour_server_node incline_control_node
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}

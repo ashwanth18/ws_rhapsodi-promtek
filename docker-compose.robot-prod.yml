@@ -160,11 +160,25 @@ services:
   pouring_controller:
     <<: *ros-robot-service
     command: >
-      ros2 run pouring_controller pour_server_node
+      bash -lc "
+      ros2 run pouring_controller incline_control_node
+      --ros-args
+      -p incline_topic:=/incline_control
+      -p joint_state_topic:=/joint_states
+      -p traj_action_server:=/niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory
+      -p tilt_joint_name:=${TILT_JOINT_NAME:-joint_5}
+      -p max_incline_deg:=${MAX_INCLINE_DEG:-20.0}
+      -p incline_direction:=${INCLINE_DIRECTION:-1.0}
+      -p joint_move_time_s:=${INCLINE_JOINT_MOVE_TIME_S:-0.5}
+      &
+      exec ros2 run pouring_controller pour_server_node
       --ros-args
       -p weight_topic:=/weight
       -p vibration_topic:=/vibration/intensity
       -p joint_state_topic:=/joint_states
+      -p no_progress_incline_step_deg:=${NO_PROGRESS_INCLINE_STEP_DEG:-5.0}
+      -p max_incline_deg:=${MAX_INCLINE_DEG:-20.0}
+      "
 
   # Development pouring controller: rebuilds a mounted source overlay at container start.
   # Use this instead of `pouring_controller` when iterating on pouring_controller code on the Pi.
@@ -181,11 +195,23 @@ services:
       source /ws/install/setup.bash &&
       colcon build --packages-select robot_common_msgs pouring_controller --symlink-install &&
       source /workspace/install/setup.bash &&
-      ros2 run pouring_controller pour_server_node
+      ros2 run pouring_controller incline_control_node
+      --ros-args
+      -p incline_topic:=/incline_control
+      -p joint_state_topic:=/joint_states
+      -p traj_action_server:=/niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory
+      -p tilt_joint_name:=${TILT_JOINT_NAME:-joint_5}
+      -p max_incline_deg:=${MAX_INCLINE_DEG:-20.0}
+      -p incline_direction:=${INCLINE_DIRECTION:-1.0}
+      -p joint_move_time_s:=${INCLINE_JOINT_MOVE_TIME_S:-0.5}
+      &
+      exec ros2 run pouring_controller pour_server_node
       --ros-args
       -p weight_topic:=/weight
       -p vibration_topic:=/vibration/intensity
       -p joint_state_topic:=/joint_states
+      -p no_progress_incline_step_deg:=${NO_PROGRESS_INCLINE_STEP_DEG:-5.0}
+      -p max_incline_deg:=${MAX_INCLINE_DEG:-20.0}
       "
 
   data_collection:
