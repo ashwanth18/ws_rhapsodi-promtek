@@ -127,6 +127,7 @@ int main(int argc, char ** argv)
                     std::shared_ptr<StartLightsOut::Response> resp){
       const int episodes = std::max(1, req->episodes);
       const double target_g = static_cast<double>(req->target_weight_g);
+      const double tolerance_g = std::max(0.1, target_g * 0.02);
       const auto now = std::chrono::system_clock::now();
       const std::time_t now_t = std::chrono::system_clock::to_time_t(now);
       std::tm tm{};
@@ -138,7 +139,7 @@ int main(int argc, char ** argv)
       blackboard->set("lightsout_powder_name", req->powder_name);
       blackboard->set("lightsout_cycle_end_limit", req->cycle_end_limit);
       blackboard->set("lightsout_target_weight_g", target_g);
-      blackboard->set("lightsout_tolerance_g", 0.5);
+      blackboard->set("lightsout_tolerance_g", tolerance_g);
       blackboard->set("lightsout_episodes", episodes);
       blackboard->set("lightsout_batch_id", req->batch_id);
       blackboard->set("lightsout_container_name", req->powder_name);
@@ -195,7 +196,7 @@ int main(int argc, char ** argv)
     [&, blackboard, webhook_active_pub, webhook_meta_pub](const std::shared_ptr<StartWebhookWeightment::Request> req,
                     std::shared_ptr<StartWebhookWeightment::Response> resp){
       const double target_g = static_cast<double>(req->target_weight_g);
-      const double tolerance_g = std::max(0.1, static_cast<double>(req->tolerance_g));
+      const double tolerance_g = std::max(0.1, target_g * 0.02);
       if (!ros_node->has_parameter("robot_id")) {
         ros_node->declare_parameter<std::string>("robot_id", "robot-1");
       }
