@@ -191,6 +191,7 @@ services:
     working_dir: /workspace
     command: >
       bash -lc "
+      set -e;
       source /opt/ros/jazzy/setup.bash &&
       source /ws/install/setup.bash &&
       rm -rf /tmp/pouring_controller_build /tmp/pouring_controller_install /tmp/pouring_controller_log &&
@@ -199,10 +200,9 @@ services:
       --install-base /tmp/pouring_controller_install
       --packages-select robot_common_msgs pouring_controller
       --symlink-install &&
-      source /tmp/pouring_controller_install/setup.bash &&
-      POURING_PREFIX=$$(ros2 pkg prefix pouring_controller) &&
-      echo Using pouring_controller prefix: $$POURING_PREFIX &&
-      $$POURING_PREFIX/lib/pouring_controller/incline_control_node
+      source /tmp/pouring_controller_install/setup.bash;
+      echo Using pouring_controller prefix: /tmp/pouring_controller_install/pouring_controller;
+      /tmp/pouring_controller_install/pouring_controller/lib/pouring_controller/incline_control_node
       --ros-args
       -p incline_topic:=/incline_control
       -p joint_state_topic:=/joint_states
@@ -212,7 +212,7 @@ services:
       -p incline_direction:=${INCLINE_DIRECTION:-1.0}
       -p joint_move_time_s:=${INCLINE_JOINT_MOVE_TIME_S:-0.5}
       &
-      exec $$POURING_PREFIX/lib/pouring_controller/pour_server_node
+      exec /tmp/pouring_controller_install/pouring_controller/lib/pouring_controller/pour_server_node
       --ros-args
       -p weight_topic:=/weight
       -p vibration_topic:=/vibration/intensity
