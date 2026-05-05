@@ -28,6 +28,7 @@ type RobotRunRow = {
   stock_location_code: string | null
   ingredient_name: string | null
   target_weight_g: number | null
+  weight_tolerance_g: number | null
   trace_run_id: string | null
   status: string | null
   error_message: string | null
@@ -397,6 +398,11 @@ function App() {
     )
   }, [metadata, latestRun, latestDetail])
 
+  const targetToleranceG = useMemo(() => {
+    if (typeof targetWeightG !== 'number') return null
+    return targetWeightG * 0.02
+  }, [targetWeightG])
+
   const phaseIndex = useMemo(() => {
     const showLiveTimeline =
       webhookActive ||
@@ -444,6 +450,19 @@ function App() {
     const maxRange = Math.max(targetWeightG * 1.4, 200)
     return Math.max(0, Math.min(100, (targetWeightG / maxRange) * 100))
   }, [targetWeightG])
+
+  const toleranceBand = useMemo(() => {
+    if (typeof targetWeightG !== 'number' || typeof targetToleranceG !== 'number') {
+      return { left: 0, width: 0 }
+    }
+    const maxRange = Math.max(targetWeightG * 1.4, 200)
+    const low = Math.max(0, targetWeightG - targetToleranceG)
+    const high = Math.min(maxRange, targetWeightG + targetToleranceG)
+    return {
+      left: Math.max(0, Math.min(100, (low / maxRange) * 100)),
+      width: Math.max(0, Math.min(100, ((high - low) / maxRange) * 100)),
+    }
+  }, [targetToleranceG, targetWeightG])
 
   return (
     <div className="px-6 py-6">
@@ -588,11 +607,39 @@ function App() {
                 <span>Target</span>
                 <span>{typeof targetWeightG === 'number' ? `${Math.round(targetWeightG)} g` : '—'}</span>
               </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
+                  <div className="text-xs uppercase tracking-wide text-[var(--text-faint)]">
+                    Target Tolerance
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-[var(--text-primary)]">
+                    2.0%
+                  </div>
+                </div>
+                <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
+                  <div className="text-xs uppercase tracking-wide text-[var(--text-faint)]">
+                    Tolerance Band
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-[var(--text-primary)]">
+                    {typeof targetToleranceG === 'number'
+                      ? `±${formatNumber(targetToleranceG, 1)} g`
+                      : '—'}
+                  </div>
+                </div>
+              </div>
               <div className="h-4 w-full rounded bg-[var(--surface-strong)]">
                 <div className="relative h-full w-full">
                   <div
                     className="absolute top-0 bottom-0 rounded bg-[var(--status-good-bg)]"
                     style={{ width: `${scalePct}%` }}
+                  />
+                  <div
+                    className="absolute top-0 bottom-0 rounded bg-[var(--status-warn-bg)]"
+                    style={{
+                      left: `${toleranceBand.left}%`,
+                      opacity: 0.75,
+                      width: `${toleranceBand.width}%`,
+                    }}
                   />
                   <div
                     className="absolute top-0 bottom-0 w-[2px] rounded bg-[var(--status-good-fg)]"

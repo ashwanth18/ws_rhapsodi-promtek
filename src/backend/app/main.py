@@ -669,6 +669,7 @@ def build_robot_run_contract(db, row: WebhookWeightment) -> dict:
     )
     target_weight_kg = float(row.target_weight_kg)
     target_weight_g = target_weight_kg * 1000.0
+    weight_tolerance_g = target_weight_g * 0.02
     return {
         'weightment_id': row.id,
         'event_id': row.event_id,
@@ -685,7 +686,7 @@ def build_robot_run_contract(db, row: WebhookWeightment) -> dict:
         'return_target_name': targets.return_target_name,
         'target_weight_kg': target_weight_kg,
         'target_weight_g': target_weight_g,
-        'weight_tolerance_g': targets.weight_tolerance_g,
+        'weight_tolerance_g': weight_tolerance_g,
         'expected_lot': row.lot_code or '',
         'mode': 'webhook',
     }

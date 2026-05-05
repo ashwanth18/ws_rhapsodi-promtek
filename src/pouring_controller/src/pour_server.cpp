@@ -194,6 +194,18 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
   const double baseline_g = raw_weight_;
   RCLCPP_INFO(get_logger(), "Pour start: target=%.3f tol=%.3f baseline=%.3f",
               goal->target_weight, goal->tolerance, baseline_g);
+  const double configured_incline_step =
+    no_progress_incline_step_deg_ > 0.0 ? no_progress_incline_step_deg_ : 5.0;
+  const double configured_max_incline =
+    max_incline_deg_ > 0.0 ? max_incline_deg_ : 20.0;
+  RCLCPP_INFO(
+    get_logger(),
+    "Pour incline recovery: step=%.3fdeg max=%.3fdeg coarse_base=%.3fdeg fine_base=%.3fdeg trickle_base=%.3fdeg",
+    configured_incline_step,
+    configured_max_incline,
+    coarse_tilt_deg_,
+    fine_tilt_deg_,
+    trickle_tilt_deg_);
   int within_tol_count = 0;
   double progress_reference_net_g = 0.0;
   auto progress_reference_time = now();
@@ -331,8 +343,8 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
       return 0.0;
     };
 
-    const double max_incline = std::max(0.0, max_incline_deg_);
-    const double incline_step = std::max(0.0, no_progress_incline_step_deg_);
+    const double max_incline = configured_max_incline;
+    const double incline_step = configured_incline_step;
     const double base_incline_deg = base_incline_for_phase();
     const double incline_deg = std::clamp(
       base_incline_deg + (no_progress_incline_boosts * incline_step),
@@ -463,11 +475,15 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
         result->message = "No progress timeout";
         RCLCPP_WARN(
           get_logger(),
-          "Pour no-progress timeout: phase=%s net=%.3fg progress_window=%.3fg dt=%.2fs (baseline=%.3f)",
+          "Pour no-progress timeout: phase=%s net=%.3fg progress_window=%.3fg dt=%.2fs "
+          "incline=%.3fdeg step=%.3fdeg max=%.3fdeg (baseline=%.3f)",
           phase_name.c_str(),
           net_g,
           net_g - progress_reference_net_g,
           (now() - progress_reference_time).seconds(),
+          incline_deg,
+          incline_step,
+          max_incline,
           baseline_g);
         goal_handle->succeed(result);
         return;
