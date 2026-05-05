@@ -183,5 +183,24 @@ services:
       --ros-args
       -p tree_file:=/ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml
 
+  # Development orchestrator: rebuilds a mounted source overlay at container start.
+  # Use this instead of `orchestrator` when iterating on robot_orchestrator code on the Pi.
+  orchestrator_dev:
+    <<: *ros-robot-service
+    volumes:
+      - .:/workspace:rw
+      - ./data:/data
+      - ./data/ros_home:/root/.ros
+    working_dir: /workspace
+    command: >
+      bash -lc "
+      source /opt/ros/jazzy/setup.bash &&
+      source /ws/install/setup.bash &&
+      colcon build --packages-select robot_common_msgs robot_orchestrator --symlink-install &&
+      source /workspace/install/setup.bash &&
+      ros2 run robot_orchestrator orchestrator_node --ros-args
+      -p tree_file:=/workspace/src/robot_orchestrator/bt_trees/webhook_weightment.xml
+      "
+
 volumes:
   db_data:
