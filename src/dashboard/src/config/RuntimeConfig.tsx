@@ -12,15 +12,32 @@ const ROS_DEFAULT = (import.meta as any).env.VITE_ROSBRIDGE_URL || 'ws://localho
 const API_KEY = 'rhapsodi.apiBase'
 const ROS_KEY = 'rhapsodi.rosbridgeUrl'
 
+/** roslib WebSockets require ws: or wss: — http(s):// here throws DOMException in the browser. */
+export function normalizeRosbridgeUrl(raw: string): string {
+  let s = raw.trim()
+  if (!s) return s
+  if (s.startsWith('http://')) s = `ws://${s.slice('http://'.length)}`
+  else if (s.startsWith('https://')) s = `wss://${s.slice('https://'.length)}`
+  return s
+}
+
+function initialApiBase(): string {
+  const stored = localStorage.getItem(API_KEY)?.trim()
+  return stored || API_DEFAULT.trim()
+}
+
+function initialRosbridgeUrl(): string {
+  const stored = localStorage.getItem(ROS_KEY)?.trim()
+  if (!stored) return normalizeRosbridgeUrl(ROS_DEFAULT) || ROS_DEFAULT
+  const n = normalizeRosbridgeUrl(stored)
+  return n || ROS_DEFAULT
+}
+
 const RuntimeConfigCtx = createContext<RuntimeConfig | null>(null)
 
 export function RuntimeConfigProvider({ children }: { children: React.ReactNode }) {
-  const [apiBase, setApiBaseState] = useState<string>(
-    () => localStorage.getItem(API_KEY) || API_DEFAULT
-  )
-  const [rosbridgeUrl, setRosbridgeUrlState] = useState<string>(
-    () => localStorage.getItem(ROS_KEY) || ROS_DEFAULT
-  )
+  const [apiBase, setApiBaseState] = useState<string>(initialApiBase)
+  const [rosbridgeUrl, setRosbridgeUrlState] = useState<string>(initialRosbridgeUrl)
 
   const setApiBase = (value: string) => {
     const next = value.trim()
@@ -29,7 +46,7 @@ export function RuntimeConfigProvider({ children }: { children: React.ReactNode 
   }
 
   const setRosbridgeUrl = (value: string) => {
-    const next = value.trim()
+    const next = normalizeRosbridgeUrl(value)
     setRosbridgeUrlState(next)
     localStorage.setItem(ROS_KEY, next)
   }

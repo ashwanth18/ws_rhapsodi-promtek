@@ -22,7 +22,10 @@ public:
       BT::InputPort<std::string>(
         "flag_key",
         "pour_need_rescoop",
-        "Blackboard key written by PourToTargetNode to request a rescoop")
+        "Blackboard key written by PourToTargetNode to request a rescoop"),
+      BT::OutputPort<int>(
+        "attempt_index",
+        "Zero-based rescoop attempt index for the child sequence")
     };
   }
 
@@ -48,6 +51,7 @@ private:
     }
 
     setStatus(BT::NodeStatus::RUNNING);
+    setOutput("attempt_index", attempt_count_);
     const auto child_status = child_node_->executeTick();
 
     if (child_status == BT::NodeStatus::RUNNING || child_status == BT::NodeStatus::SKIPPED) {
@@ -56,6 +60,7 @@ private:
 
     if (child_status == BT::NodeStatus::SUCCESS) {
       try_reset_flag();
+      setOutput("attempt_index", 0);
       attempt_count_ = 0;
       resetChild();
       return BT::NodeStatus::SUCCESS;
@@ -74,6 +79,7 @@ private:
     }
 
     try_reset_flag();
+    setOutput("attempt_index", 0);
     attempt_count_ = 0;
     resetChild();
     return BT::NodeStatus::FAILURE;

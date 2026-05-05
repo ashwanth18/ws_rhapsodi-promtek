@@ -4,7 +4,9 @@
       <WaitSeconds seconds="0.5"/>
       <WeightFresh max_age_s="2.0"/>
       <CaptureBaseline/>
-      <RetryIfNeedRescoop num_attempts="-1" flag_key="pour_need_rescoop">
+      <RetryIfNeedRescoop num_attempts="-1"
+                           flag_key="pour_need_rescoop"
+                           attempt_index="{rescoop_attempt_index}">
         <Sequence name="RescoopCycle">
           <!-- <MoveTo name="MoveToWebhookPickup"
                   target_name="{webhook_pickup_target_name}"
@@ -20,7 +22,15 @@
           <PhaseMarker phase="transport_end"/>
           <WaitSeconds seconds="1.0"/>
           <PhaseMarker phase="scoop_start"/>
-          <ExecuteScoop continuous="true" timeout_s="120.0"/>
+          <ComputeScoopOffset attempt_index="{rescoop_attempt_index}"
+                              base_offset_y="0.0"
+                              step_y="-0.06"
+                              min_offset_y="-0.18"
+                              max_offset_y="0.0"
+                              pattern_offset_y="{scoop_pattern_offset_y}"/>
+          <ExecuteScoop continuous="true"
+                        timeout_s="120.0"
+                        pattern_offset_y="{scoop_pattern_offset_y}"/>
           <PhaseMarker phase="scoop_end"/>
           <WaitSeconds seconds="1.0"/>
 
