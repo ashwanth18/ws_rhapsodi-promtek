@@ -168,7 +168,7 @@ services:
       -p traj_action_server:=/niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory
       -p tilt_joint_name:=${TILT_JOINT_NAME:-joint_5}
       -p max_incline_deg:=${MAX_INCLINE_DEG:-20.0}
-      -p incline_direction:=${INCLINE_DIRECTION:-1.0}
+      -p incline_direction:=${INCLINE_DIRECTION:--1.0}
       -p joint_move_time_s:=${INCLINE_JOINT_MOVE_TIME_S:-0.5}
       &
       exec ros2 run pouring_controller pour_server_node
@@ -209,7 +209,7 @@ services:
       -p traj_action_server:=/niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory
       -p tilt_joint_name:=${TILT_JOINT_NAME:-joint_5}
       -p max_incline_deg:=${MAX_INCLINE_DEG:-20.0}
-      -p incline_direction:=${INCLINE_DIRECTION:-1.0}
+      -p incline_direction:=${INCLINE_DIRECTION:--1.0}
       -p joint_move_time_s:=${INCLINE_JOINT_MOVE_TIME_S:-0.5}
       &
       exec /tmp/pouring_controller_install/pouring_controller/lib/pouring_controller/pour_server_node
