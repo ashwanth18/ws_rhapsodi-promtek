@@ -176,6 +176,9 @@ services:
       -p weight_topic:=/weight
       -p vibration_topic:=/vibration/intensity
       -p joint_state_topic:=/joint_states
+      -p coarse_tilt_deg:=${COARSE_TILT_DEG:-15.0}
+      -p coarse_threshold:=${COARSE_THRESHOLD:-0.30}
+      -p fine_threshold:=${FINE_THRESHOLD:-0.05}
       -p coarse_vibration_intensity:=${COARSE_VIBRATION_INTENSITY:-0.9}
       -p fine_vibration_intensity:=${FINE_VIBRATION_INTENSITY:-0.70}
       -p trickle_vibration_intensity:=${TRICKLE_VIBRATION_INTENSITY:-0.5}
@@ -223,6 +226,9 @@ services:
       -p weight_topic:=/weight
       -p vibration_topic:=/vibration/intensity
       -p joint_state_topic:=/joint_states
+      -p coarse_tilt_deg:=${COARSE_TILT_DEG:-15.0}
+      -p coarse_threshold:=${COARSE_THRESHOLD:-0.30}
+      -p fine_threshold:=${FINE_THRESHOLD:-0.05}
       -p coarse_vibration_intensity:=${COARSE_VIBRATION_INTENSITY:-0.9}
       -p fine_vibration_intensity:=${FINE_VIBRATION_INTENSITY:-0.70}
       -p trickle_vibration_intensity:=${TRICKLE_VIBRATION_INTENSITY:-0.5}

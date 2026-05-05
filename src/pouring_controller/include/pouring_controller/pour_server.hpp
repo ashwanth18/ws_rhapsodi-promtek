@@ -39,7 +39,7 @@ private:
   double stale_ms_{500.0};
 
   // Phase thresholds
-  double coarse_thresh_{0.2};
+  double coarse_thresh_{0.30};
   double fine_thresh_{0.05};
   double start_in_fine_below_g_{40.0};
   double start_in_trickle_below_g_{10.0};
@@ -67,7 +67,7 @@ private:
   std::mutex joint_mutex_;
   rclcpp::TimerBase::SharedPtr traj_client_init_timer_;
   bool traj_client_ready_{false};
-  double coarse_tilt_deg_{0.0};
+  double coarse_tilt_deg_{15.0};
   double fine_tilt_deg_{0.0};
   double trickle_tilt_deg_{0.0};
   double joint_move_time_s_{2.0};

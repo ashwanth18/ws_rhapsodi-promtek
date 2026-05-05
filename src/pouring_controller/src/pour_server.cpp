@@ -20,8 +20,8 @@ PourServer::PourServer(const rclcpp::NodeOptions & options)
   this->declare_parameter<double>("ema_alpha", 0.2);
   this->declare_parameter<double>("sample_rate_hz", 12.0);
   this->declare_parameter<double>("stale_ms", 500.0);
-  this->declare_parameter<double>("coarse_threshold", 0.10);
-  this->declare_parameter<double>("fine_threshold", 0.02);
+  this->declare_parameter<double>("coarse_threshold", 0.30);
+  this->declare_parameter<double>("fine_threshold", 0.05);
   this->declare_parameter<double>("start_in_fine_below_g", 40.0);
   this->declare_parameter<double>("start_in_trickle_below_g", 10.0);
   this->declare_parameter<double>("settle_time_s", 2.0);
@@ -33,7 +33,7 @@ PourServer::PourServer(const rclcpp::NodeOptions & options)
   this->declare_parameter<double>("max_incline_deg", 20.0);
   this->declare_parameter<std::string>("tilt_joint_name", "");
   this->declare_parameter<std::string>("traj_action_server", "/niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory");
-  this->declare_parameter<double>("coarse_tilt_deg", 0.0);
+  this->declare_parameter<double>("coarse_tilt_deg", 15.0);
   this->declare_parameter<double>("fine_tilt_deg", 0.0);
   this->declare_parameter<double>("trickle_tilt_deg", 0.0);
   this->declare_parameter<double>("joint_move_time_s", 0.5);
