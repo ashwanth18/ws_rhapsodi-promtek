@@ -220,7 +220,7 @@ The scooping launch files default to:
 
 - `post_lift_vibration_enabled:=true`
 - `post_lift_vibration_duration_s:=5.0`
-- `post_lift_vibration_intensity:=0.5`
+- `post_lift_vibration_intensity:=0.75`
 - `post_lift_vibration_publish_rate_hz:=10.0`
 
 To disable shake-off at launch time:
@@ -245,7 +245,7 @@ To change it live after the node is already running:
 ```bash
 ros2 param set /scooping_mtc_node post_lift_vibration_enabled false
 ros2 param set /scooping_mtc_node post_lift_vibration_duration_s 5.0
-ros2 param set /scooping_mtc_node post_lift_vibration_intensity 0.5
+ros2 param set /scooping_mtc_node post_lift_vibration_intensity 0.75
 ros2 param set /scooping_mtc_node post_lift_vibration_publish_rate_hz 10.0
 ```
 
@@ -377,7 +377,7 @@ cd /home/ashwanth/ws_rhapsodi-promtek-dev
 
 - Do not run both the physical scale and `weight_sim` at the same time on `/weight`.
 - The scooping launch files now default post-lift shake-off to enabled.
-- The current shake-off defaults are `enabled=true`, `duration=5.0 s`, `intensity=0.5`.
+- The current shake-off defaults are `enabled=true`, `duration=5.0 s`, `intensity=0.75`.
 - If you use the weight simulator with webhook runs, the `phase_topic` should follow webhook phases, not the old lights-out phase topic.
 - For webhook runs, `data_collection_manager` is not optional if you want MCAP capture and automatic processing results in the backend.
 - The current webhook tree uses a separate `PourAtWeighingContainer` target for the tilted pour pose and a `RecoverFromPourAtWeighingContainer` target to retreat before re-establishing the upright weighing pose and returning home.

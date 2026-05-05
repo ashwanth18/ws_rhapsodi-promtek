@@ -47,7 +47,7 @@ private:
   int hold_within_tol_count_{5};
   double final_settle_time_s_{1.0};
   double min_delta_g_{1.0};
-  double no_progress_timeout_s_{2.0};
+  double no_progress_timeout_s_{3.0};
   double no_progress_incline_step_deg_{5.0};
   double max_incline_deg_{20.0};
 
@@ -72,12 +72,12 @@ private:
   double trickle_tilt_deg_{0.0};
   double joint_move_time_s_{2.0};
   // Normalized vibration intensity (0..1)
-  double coarse_vibration_intensity_{0.75};
+  double coarse_vibration_intensity_{0.9};
   double settle_vibration_intensity_{0.0};
-  double fine_vibration_intensity_{0.40};
-  double trickle_vibration_intensity_{0.15};
-  double trickle_pulse_ms_{120.0};
-  double trickle_pause_ms_{180.0};
+  double fine_vibration_intensity_{0.70};
+  double trickle_vibration_intensity_{0.5};
+  double trickle_pulse_ms_{180.0};
+  double trickle_pause_ms_{160.0};
 
   void sendTiltJoint(double target_deg);
   void onJointState(const sensor_msgs::msg::JointState::SharedPtr msg);

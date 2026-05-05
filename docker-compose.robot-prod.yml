@@ -129,7 +129,7 @@ services:
       container_scene_yaml:=${CONTAINER_SCENE_YAML:-/ws/install/share/scooping_controller/config/container_scene_real.yaml}
       post_lift_vibration_enabled:=${POST_LIFT_VIBRATION_ENABLED:-true}
       post_lift_vibration_duration_s:=${POST_LIFT_VIBRATION_DURATION_S:-5.0}
-      post_lift_vibration_intensity:=${POST_LIFT_VIBRATION_INTENSITY:-0.25}
+      post_lift_vibration_intensity:=${POST_LIFT_VIBRATION_INTENSITY:-0.75}
       post_lift_vibration_publish_rate_hz:=${POST_LIFT_VIBRATION_PUBLISH_RATE_HZ:-10.0}
 
   scale_launcher:
@@ -176,6 +176,12 @@ services:
       -p weight_topic:=/weight
       -p vibration_topic:=/vibration/intensity
       -p joint_state_topic:=/joint_states
+      -p coarse_vibration_intensity:=${COARSE_VIBRATION_INTENSITY:-0.9}
+      -p fine_vibration_intensity:=${FINE_VIBRATION_INTENSITY:-0.70}
+      -p trickle_vibration_intensity:=${TRICKLE_VIBRATION_INTENSITY:-0.5}
+      -p trickle_pulse_ms:=${TRICKLE_PULSE_MS:-180}
+      -p trickle_pause_ms:=${TRICKLE_PAUSE_MS:-160}
+      -p no_progress_timeout_s:=${NO_PROGRESS_TIMEOUT_S:-3.0}
       -p no_progress_incline_step_deg:=${NO_PROGRESS_INCLINE_STEP_DEG:-5.0}
       -p max_incline_deg:=${MAX_INCLINE_DEG:-20.0}
       "
@@ -217,6 +223,12 @@ services:
       -p weight_topic:=/weight
       -p vibration_topic:=/vibration/intensity
       -p joint_state_topic:=/joint_states
+      -p coarse_vibration_intensity:=${COARSE_VIBRATION_INTENSITY:-0.9}
+      -p fine_vibration_intensity:=${FINE_VIBRATION_INTENSITY:-0.70}
+      -p trickle_vibration_intensity:=${TRICKLE_VIBRATION_INTENSITY:-0.5}
+      -p trickle_pulse_ms:=${TRICKLE_PULSE_MS:-180}
+      -p trickle_pause_ms:=${TRICKLE_PAUSE_MS:-160}
+      -p no_progress_timeout_s:=${NO_PROGRESS_TIMEOUT_S:-3.0}
       -p no_progress_incline_step_deg:=${NO_PROGRESS_INCLINE_STEP_DEG:-5.0}
       -p max_incline_deg:=${MAX_INCLINE_DEG:-20.0}
       "

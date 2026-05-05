@@ -239,7 +239,7 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
 , post_lift_vibration_duration_edit_(new QLineEdit(this))
 , post_lift_vibration_duration_slider_(make_slider(this, 0, 500, 50))
 , post_lift_vibration_intensity_edit_(new QLineEdit(this))
-, post_lift_vibration_intensity_slider_(make_slider(this, 0, 100, 50))
+, post_lift_vibration_intensity_slider_(make_slider(this, 0, 100, 75))
 , template_x_edit_(new QLineEdit(this))
 , template_y_edit_(new QLineEdit(this))
 , template_z_initial_edit_(new QLineEdit(this))
@@ -400,7 +400,7 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   lift_offset_z_edit_->setText("0.000");
   post_lift_vibration_enabled_checkbox_->setChecked(true);
   post_lift_vibration_duration_edit_->setText("5.00");
-  post_lift_vibration_intensity_edit_->setText("0.50");
+  post_lift_vibration_intensity_edit_->setText("0.75");
   velocity_scale_slider_->setToolTip("0.00 to 1.00");
   acceleration_scale_slider_->setToolTip("0.00 to 1.00");
   pattern_offset_x_slider_->setToolTip("-0.200 m to 0.200 m");
@@ -988,7 +988,7 @@ void ScoopingPanel::onZeroOffsetClicked()
   setLineEditValue(lift_offset_z_edit_, 0.0, 3);
   post_lift_vibration_enabled_checkbox_->setChecked(true);
   setLineEditValue(post_lift_vibration_duration_edit_, 5.00, 2);
-  setLineEditValue(post_lift_vibration_intensity_edit_, 0.50, 2);
+  setLineEditValue(post_lift_vibration_intensity_edit_, 0.75, 2);
   setLineEditValue(offset_step_edit_, 0.010, 3);
   applyMotionTuning();
 }

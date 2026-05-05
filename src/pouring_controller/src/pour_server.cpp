@@ -28,7 +28,7 @@ PourServer::PourServer(const rclcpp::NodeOptions & options)
   this->declare_parameter<int>("hold_within_tol_count", 5);
   this->declare_parameter<double>("final_settle_time_s", 2.0);
   this->declare_parameter<double>("min_progress_g", 0.5);
-  this->declare_parameter<double>("no_progress_timeout_s", 2.0);
+  this->declare_parameter<double>("no_progress_timeout_s", 3.0);
   this->declare_parameter<double>("no_progress_incline_step_deg", 5.0);
   this->declare_parameter<double>("max_incline_deg", 20.0);
   this->declare_parameter<std::string>("tilt_joint_name", "");
@@ -38,12 +38,12 @@ PourServer::PourServer(const rclcpp::NodeOptions & options)
   this->declare_parameter<double>("trickle_tilt_deg", 0.0);
   this->declare_parameter<double>("joint_move_time_s", 0.5);
   this->declare_parameter<std::string>("control_law_type", "bangbang"); // pid|bangbang
-  this->declare_parameter<double>("coarse_vibration_intensity", 0.75);
+  this->declare_parameter<double>("coarse_vibration_intensity", 0.9);
   this->declare_parameter<double>("settle_vibration_intensity", 0.0);
-  this->declare_parameter<double>("fine_vibration_intensity", 0.40);
-  this->declare_parameter<double>("trickle_vibration_intensity", 0.15);
-  this->declare_parameter<double>("trickle_pulse_ms", 120.0);
-  this->declare_parameter<double>("trickle_pause_ms", 180.0);
+  this->declare_parameter<double>("fine_vibration_intensity", 0.70);
+  this->declare_parameter<double>("trickle_vibration_intensity", 0.5);
+  this->declare_parameter<double>("trickle_pulse_ms", 180.0);
+  this->declare_parameter<double>("trickle_pause_ms", 160.0);
   this->declare_parameter<double>("pid_kp", 0.02);
   this->declare_parameter<double>("pid_ki", 0.001);
   this->declare_parameter<double>("pid_kd", 0.0);

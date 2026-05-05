@@ -94,7 +94,7 @@ def generate_launch_description():
     )
     declare_post_lift_vibration_intensity = DeclareLaunchArgument(
         "post_lift_vibration_intensity",
-        default_value="0.5",
+        default_value="0.75",
         description="Default post-lift shake-off intensity in normalized 0..1 units",
     )
     declare_post_lift_vibration_publish_rate_hz = DeclareLaunchArgument(

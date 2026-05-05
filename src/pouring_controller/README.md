@@ -57,7 +57,7 @@ Feedback
   for very small top-up pours
 - `settle_time_s` (double), `hold_within_tol_count` (int), `final_settle_time_s` (double)
 - `min_progress_g` (double, default `0.5`): minimum increase in net poured mass that counts as progress
-- `no_progress_timeout_s` (double, default `2.0`): abort if progress is below `min_progress_g`
+- `no_progress_timeout_s` (double, default `3.0`): abort if progress is below `min_progress_g`
   for longer than this during `COARSE` or `FINE`
 - Dynamic incline recovery before rescoop:
   - `no_progress_incline_step_deg` (double, default `5.0`): add this much incline each
@@ -118,8 +118,8 @@ Start server (example):
 ros2 run pouring_controller pour_server_node --ros-args \
   -p weight_topic:=/weight -p vibration_topic:=/vibration/intensity -p joint_state_topic:=/joint_states \
   -p coarse_threshold:=0.10 -p fine_threshold:=0.02 -p settle_time_s:=0.8 -p hold_within_tol_count:=10 -p ema_alpha:=0.2 \
-  -p coarse_vibration_intensity:=0.82 -p settle_vibration_intensity:=0.0 -p fine_vibration_intensity:=0.35 -p trickle_vibration_intensity:=0.12 \
-  -p trickle_pulse_ms:=120 -p trickle_pause_ms:=180 \
+  -p coarse_vibration_intensity:=0.9 -p settle_vibration_intensity:=0.0 -p fine_vibration_intensity:=0.70 -p trickle_vibration_intensity:=0.5 \
+  -p trickle_pulse_ms:=180 -p trickle_pause_ms:=160 \
   -p tilt_joint_name:=joint_5 -p coarse_tilt_deg:=6 -p fine_tilt_deg:=3 -p trickle_tilt_deg:=1 -p joint_move_time_s:=0.5
 ```
 

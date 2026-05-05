@@ -70,7 +70,7 @@ public:
     this->declare_parameter<double>("manual_lift_offset_z", 0.0);
     this->declare_parameter<bool>("post_lift_vibration_enabled", true);
     this->declare_parameter<double>("post_lift_vibration_duration_s", 5.0);
-    this->declare_parameter<double>("post_lift_vibration_intensity", 0.5);
+    this->declare_parameter<double>("post_lift_vibration_intensity", 0.75);
     this->declare_parameter<double>("post_lift_vibration_publish_rate_hz", 10.0);
     this->declare_parameter<std::string>("post_lift_vibration_topic", "/vibration/intensity");
     this->declare_parameter<double>("cartesian_velocity_scaling", 0.15);
