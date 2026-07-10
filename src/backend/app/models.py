@@ -94,6 +94,7 @@ class WebhookWeightment(Base):
     target_weight_kg = Column(Float, nullable=True)
     actual_weight_kg = Column(Float, nullable=True)
     weightment_completed = Column(Boolean, nullable=False, default=False)
+    mes_timeseries_sent = Column(Boolean, nullable=False, default=False)
     batch_auto_run_enabled = Column(Boolean, nullable=False, default=False)
     start_utc = Column(String, nullable=True)
     end_utc = Column(String, nullable=True)
@@ -157,3 +158,4 @@ class RobotWeightmentRun(Base):
     parquet_path = Column(String, nullable=True)
     mes_weighment_sent = Column(Boolean, nullable=False, default=False)
     mes_batch_end_sent = Column(Boolean, nullable=False, default=False)
+    mes_timeseries_sent = Column(Boolean, nullable=False, default=False)

@@ -39,6 +39,7 @@ services:
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000,http://localhost:8080,http://10.42.0.72:8080
       WEIGHMENT_URL: http://localhost:5002/batch/weighment
       BATCH_END_URL: http://localhost:5002/batch/end
+      TIMESERIES_URL: http://localhost:5002/timeseries
       ROBOT_START_ADAPTER_URL: http://localhost:8010/start_webhook_weightment
       ROBOT_RUNNING_TIMEOUT_SECONDS: ${ROBOT_RUNNING_TIMEOUT_SECONDS:-300}
       ROSBRIDGE_HOST: localhost

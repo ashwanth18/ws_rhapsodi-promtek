@@ -3,13 +3,13 @@
   <model name="scooping_container">
     <static>true</static>
     <link name="container_link">
+      <!-- Primitive collision (STLs omitted on DART; keeps world load + static geometry valid). -->
       <collision name="collision">
-        <pose>0 0 0 0 0 0</pose>
+        <pose>0 0 0.06 0 0 0</pose>
         <geometry>
-          <mesh>
-            <uri>model://scooping_container/meshes/scooping_container.STL</uri>
-            <scale>0.001 0.001 0.001</scale>
-          </mesh>
+          <box>
+            <size>0.42 0.32 0.12</size>
+          </box>
         </geometry>
       </collision>
       <visual name="visual">

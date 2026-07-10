@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="jaka_zu5">
+    <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
+    <xacro:arg name="use_gazebo" default="false"/>
+    <xacro:arg name="use_rviz_sim" default="false"/>
+
+    <!-- Import jaka_zu5 urdf file -->
+    <xacro:include filename="$(find jaka_description)/urdf/jaka_zu5.urdf" />
+    <xacro:include filename="$(find scoop_description)/urdf/scoop_tool.xacro" />
+
+    <!-- Scoop tool attachment.
+         The scoop poses in scooping_controller are authored for a tool TCP, not
+         for the raw robot flange. Mirror the Niryo scoop frame convention so
+         Jaka plans to the scoop tip (`tcp_link`) rather than `Link6`.
+
+         Mount offset is intentionally simple for now: Link6 -> tool_link uses
+         the same fixed transform Niryo uses from hand_link -> tool_link, and
+         tool_link -> tcp_link reuses the Niryo scoop TCP offset. Calibrate the
+         mount joint origin if the physical adapter differs. -->
+    <xacro:scoop_tool
+        parent_link="Link6"
+        mount_joint_name="jaka_scoop_mount_joint"
+        tcp_joint_name="jaka_scoop_tcp_joint"
+        mesh_resource="file://$(find niryo_robot_description)/meshes/ned3pro/stl/niryo_scoop_v4-ros.STL"
+        mount_xyz="0 0 0.043"
+        mount_rpy="3.14159265359 0 0"
+        tcp_xyz="0.15825 0 -0.09356"
+        mass="0.01083"
+        ixx="0.00000138319"
+        iyy="0.00000138107"
+        izz="0.00000040812" />
+
+    <!-- Import control_xacro -->
+    <xacro:include filename="jaka_zu5.ros2_control.xacro" />
+
+
+    <!-- <xacro:jaka_zu5_ros2_control name="FakeSystem" initial_positions_file="$(arg initial_positions_file)"/> -->
+    <xacro:jaka_zu5_ros2_control name="jaka_zu5_hardware" initial_positions_file="$(arg initial_positions_file)" use_gazebo="$(arg use_gazebo)" use_rviz_sim="$(arg use_rviz_sim)" />
+
+</robot>

@@ -64,3 +64,27 @@ def batch_end(payload: dict[str, Any]) -> dict[str, Any]:
         "endpoint": "batch/end",
         "receivedAt": utc_now(),
     }
+
+
+@app.post("/timeseries")
+def timeseries(payload: dict[str, Any]) -> dict[str, Any]:
+    item_count = len(payload.get("items") or [])
+    logger.info(
+        "Received mock /timeseries payload: item_count=%s payload=%s",
+        item_count,
+        payload,
+    )
+    append_jsonl(
+        "timeseries.jsonl",
+        {
+            "receivedAt": utc_now(),
+            "itemCount": item_count,
+            "payload": payload,
+        },
+    )
+    return {
+        "accepted": True,
+        "endpoint": "timeseries",
+        "itemCount": item_count,
+        "receivedAt": utc_now(),
+    }

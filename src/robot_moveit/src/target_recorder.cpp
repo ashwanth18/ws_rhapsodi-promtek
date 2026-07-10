@@ -10,6 +10,7 @@ TargetRecorder::TargetRecorder(const rclcpp::NodeOptions & options)
   this->declare_parameter<std::string>("planning_group", "arm");
   this->declare_parameter<std::string>("targets_yaml", "");
   this->declare_parameter<std::string>("eef_link", "");
+  this->declare_parameter<std::string>("record_frame", "");
   this->declare_parameter<std::string>("pose_source", "auto");
   init_timer_ = this->create_wall_timer(std::chrono::milliseconds(0), std::bind(&TargetRecorder::deferred_init, this));
 }
@@ -27,7 +28,12 @@ void TargetRecorder::deferred_init()
     end_effector_link_ = mgi_->getEndEffectorLink();
   }
 
-  // Set up TF buffer/listener to transform the recorded pose into base_link
+  record_frame_ = this->get_parameter("record_frame").as_string();
+  if (record_frame_.empty()) {
+    record_frame_ = mgi_->getPlanningFrame();
+  }
+
+  // Set up TF buffer/listener to transform the recorded pose into record_frame.
   tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
   pose_source_ = this->get_parameter("pose_source").as_string();
@@ -75,7 +81,7 @@ void TargetRecorder::handle_request(const std::shared_ptr<robot_common_msgs::srv
     root["targets"][request->name] = entry;
   } else {
     // Record Cartesian pose using requested source
-    const std::string target_frame = "base_link";
+    const std::string target_frame = record_frame_;
     bool wrote = false;
     if (pose_source_ == "tf" || pose_source_ == "auto") {
       try {

@@ -1,0 +1,9 @@
+# Default spawn / ros2_control initial pose (approx. vertical-ready; not sprawled horizontal).
+# Matches SRDF group_state pose_1 (rad).
+initial_positions:
+  joint_1: 0
+  joint_2: 1.5707
+  joint_3: -1.5707
+  joint_4: 1.5707
+  joint_5: 1.5707
+  joint_6: 0

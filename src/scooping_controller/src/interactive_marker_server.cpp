@@ -179,6 +179,7 @@ Marker make_origin_marker(const std::array<float, 3>& color, double size)
 Marker make_tool_mesh_marker(
   const std::array<float, 3>& color,
   const std::string& mesh_resource,
+  const std::array<double, 3>& tcp_visual_offset_xyz,
   bool apply_visual_offset = true,
   bool draw_relative_to_tcp = false)
 {
@@ -190,9 +191,9 @@ Marker make_tool_mesh_marker(
   marker.scale.y = 0.001;
   marker.scale.z = 0.001;
   if (draw_relative_to_tcp) {
-    marker.pose.position.x = -kTcpOffsetX;
-    marker.pose.position.y = -kTcpOffsetY;
-    marker.pose.position.z = -kTcpOffsetZ;
+    marker.pose.position.x = -tcp_visual_offset_xyz[0];
+    marker.pose.position.y = -tcp_visual_offset_xyz[1];
+    marker.pose.position.z = -tcp_visual_offset_xyz[2];
   } else if (apply_visual_offset) {
     marker.pose.position.y = -0.038;
     marker.pose.position.z = -0.03;
@@ -256,12 +257,27 @@ public:
     this->declare_parameter<std::string>(
       "tool_mesh_resource",
       "package://niryo_robot_description/meshes/ned3pro/stl/niryo_scoop_v4-ros.STL");
+    this->declare_parameter<std::vector<double>>(
+      "tcp_visual_offset_xyz",
+      {kTcpOffsetX, kTcpOffsetY, kTcpOffsetZ});
     scooping_controller::declare_container_scene_parameters(*this);
     scoop_frame_id_ = this->get_parameter("scoop_frame_id").as_string();
     goal_frame_id_ = this->get_parameter("goal_frame_id").as_string();
     poses_yaml_path_ = expand_user_path(this->get_parameter("poses_yaml").as_string());
     seed_poses_yaml_path_ = expand_user_path(this->get_parameter("seed_poses_yaml").as_string());
     tool_mesh_resource_ = this->get_parameter("tool_mesh_resource").as_string();
+    const auto tcp_visual_offset =
+      this->get_parameter("tcp_visual_offset_xyz").as_double_array();
+    if (tcp_visual_offset.size() == tcp_visual_offset_xyz_.size()) {
+      std::copy(
+        tcp_visual_offset.begin(),
+        tcp_visual_offset.end(),
+        tcp_visual_offset_xyz_.begin());
+    } else {
+      RCLCPP_WARN(
+        this->get_logger(),
+        "tcp_visual_offset_xyz must contain exactly 3 values; using defaults");
+    }
     seeds_ = default_marker_seeds();
     goal_seed_ = default_goal_marker_seed();
     goal_pose_ = goal_seed_.pose;
@@ -378,7 +394,8 @@ private:
       visual_control.markers.push_back(make_cube_marker(seed.color, 0.035, 0.035, 0.035));
     } else {
       visual_control.markers.push_back(
-        make_tool_mesh_marker(seed.color, tool_mesh_resource_, false, true));
+        make_tool_mesh_marker(
+          seed.color, tool_mesh_resource_, tcp_visual_offset_xyz_, false, true));
     }
     visual_control.markers.push_back(
       make_text_marker(seed.label + " (TCP)", seed.color, 0.07, 0.04));
@@ -410,7 +427,8 @@ private:
       visual_control.markers.push_back(make_cube_marker(goal_seed_.color, 0.04, 0.04, 0.04));
     } else {
       visual_control.markers.push_back(
-        make_tool_mesh_marker(goal_seed_.color, tool_mesh_resource_, false, true));
+        make_tool_mesh_marker(
+          goal_seed_.color, tool_mesh_resource_, tcp_visual_offset_xyz_, false, true));
     }
     visual_control.markers.push_back(
       make_text_marker(goal_seed_.label + " (TCP)", goal_seed_.color, 0.08, 0.045));
@@ -867,6 +885,8 @@ private:
   std::string poses_yaml_path_;
   std::string seed_poses_yaml_path_;
   std::string tool_mesh_resource_;
+  std::array<double, 3> tcp_visual_offset_xyz_{
+    kTcpOffsetX, kTcpOffsetY, kTcpOffsetZ};
   tf2::Transform scoop_frame_from_goal_;
   bool has_scoop_frame_transform_{false};
   std::array<MarkerSeed, 5> seeds_{};

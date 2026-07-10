@@ -157,6 +157,7 @@ MoveToServer::MoveToServer(const rclcpp::NodeOptions & options)
   this->declare_parameter<double>("planning_time", 5.0);
   this->declare_parameter<std::string>("planning_pipeline", "stomp");
   this->declare_parameter<std::string>("planner_id", "");
+  this->declare_parameter<bool>("position_only_goal", false);
   this->declare_parameter<bool>("cartesian_avoid_collisions", false);
   this->declare_parameter<bool>("constrain_upright", false);
   this->declare_parameter<bool>("constrain_transport_pitch", false);
@@ -344,7 +345,9 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
   const bool constrain_upright =
     !constrain_transport_pitch &&
     (goal->constrain_upright || this->get_parameter("constrain_upright").as_bool());
-  const bool transport_position_only_goal = constrain_transport_pitch;
+  const bool position_only_goal =
+    constrain_transport_pitch ||
+    (!constrain_upright && this->get_parameter("position_only_goal").as_bool());
   moveit_msgs::msg::Constraints active_constraints;
   double active_roll_tolerance = 0.0;
   double active_pitch_tolerance = 0.0;
@@ -420,7 +423,7 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
 
   RCLCPP_INFO(
     this->get_logger(),
-    "MoveTo request: target=%s plan_only=%s cartesian=%s pipeline=%s planner_id=%s transport_constraint=%s upright_constraint=%s vel=%.2f acc=%.2f",
+    "MoveTo request: target=%s plan_only=%s cartesian=%s pipeline=%s planner_id=%s transport_constraint=%s upright_constraint=%s position_only=%s vel=%.2f acc=%.2f",
     goal->target_name.empty() ? "<pose>" : goal->target_name.c_str(),
     plan_only ? "true" : "false",
     goal->use_cartesian ? "true" : "false",
@@ -428,6 +431,7 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
     planner_id.empty() ? "<default>" : planner_id.c_str(),
     constrain_transport_pitch ? "true" : "false",
     constrain_upright ? "true" : "false",
+    position_only_goal ? "true" : "false",
     vel,
     acc);
 
@@ -517,7 +521,7 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
                                    std::string& failure_message) -> bool {
     while (retries-- > 0) {
       wait_and_sync_start_state();
-      if (transport_position_only_goal) {
+      if (position_only_goal) {
         mgi_->setPositionTarget(pose.position.x, pose.position.y, pose.position.z, eef_link);
       } else {
         mgi_->setPoseTarget(pose);
@@ -537,8 +541,8 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
       }
       RCLCPP_WARN(get_logger(), "%s execute aborted; checking pose tolerance. Retries left: %d", context.c_str(), retries);
       auto cur_pose = mgi_->getCurrentPose(eef_link);
-      if ((transport_position_only_goal && within_position_tolerance(cur_pose.pose, pose)) ||
-          (!transport_position_only_goal && within_pose_tolerance(cur_pose.pose, pose))) {
+      if ((position_only_goal && within_position_tolerance(cur_pose.pose, pose)) ||
+          (!position_only_goal && within_pose_tolerance(cur_pose.pose, pose))) {
         RCLCPP_INFO(get_logger(), "%s reached tolerance despite execute abort; continuing", context.c_str());
         return true;
       }
@@ -641,7 +645,7 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
           mgi_->setMaxAccelerationScalingFactor(acc);
         }
         wait_and_sync_start_state();
-        if (transport_position_only_goal) {
+        if (position_only_goal) {
           mgi_->setPositionTarget(poses[i].position.x, poses[i].position.y, poses[i].position.z, eef_link);
         } else {
           mgi_->setPoseTarget(poses[i]);
@@ -674,8 +678,8 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
           }
           if (!execute_plan_direct(plan)) {
             auto cur_pose = mgi_->getCurrentPose(eef_link);
-            if ((transport_position_only_goal && !within_position_tolerance(cur_pose.pose, poses[i])) ||
-                (!transport_position_only_goal && !within_pose_tolerance(cur_pose.pose, poses[i]))) {
+            if ((position_only_goal && !within_position_tolerance(cur_pose.pose, poses[i])) ||
+                (!position_only_goal && !within_pose_tolerance(cur_pose.pose, poses[i]))) {
               result->success = false;
               result->message = "Execution failed at segment " + std::to_string(i);
               goal_handle->succeed(result);
@@ -736,7 +740,7 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
     int retries = 3;
     while (retries-- > 0) {
       wait_and_sync_start_state();
-      if (transport_position_only_goal) {
+      if (position_only_goal) {
         mgi_->setPositionTarget(
           target.pose.position.x,
           target.pose.position.y,
@@ -767,8 +771,8 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
       }
       RCLCPP_WARN(get_logger(), "Execute aborted; checking pose tolerance and retrying. Retries left: %d", retries);
       auto cur_pose = mgi_->getCurrentPose(eef_link);
-      if ((transport_position_only_goal && within_position_tolerance(cur_pose.pose, target.pose)) ||
-          (!transport_position_only_goal && within_pose_tolerance(cur_pose.pose, target.pose))) {
+      if ((position_only_goal && within_position_tolerance(cur_pose.pose, target.pose)) ||
+          (!position_only_goal && within_pose_tolerance(cur_pose.pose, target.pose))) {
         RCLCPP_INFO(get_logger(), "Within final pose tolerance despite execute abort; treating as success");
         break;
       }

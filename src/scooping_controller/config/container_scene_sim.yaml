@@ -14,7 +14,10 @@
 
     table_geometry_type: "box"
     table_mesh_resource: ""
-    table_position_xyz: [0.00, 0.00, -0.015]
+    # Planning-scene table is shifted ~5 mm below the gz world top so that
+    # robots mounted at link0/base_link z=0 don't false-positive as colliding
+    # with the table top in MoveIt's StartStateCollision / MTC stages.
+    table_position_xyz: [0.00, 0.00, -0.02]
     table_orientation_xyzw: [0.0, 0.0, 0.0, 1.0]
     table_scale_xyz: [1.0, 1.0, 1.0]
     table_dimensions_xyz: [1.02, 0.61, 0.03]

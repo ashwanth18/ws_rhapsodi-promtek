@@ -1,0 +1,77 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:macro
+    name="scoop_tool"
+    params="
+      parent_link
+      mount_joint_name
+      tcp_joint_name
+      mesh_resource
+      tool_link:=tool_link
+      tcp_link:=tcp_link
+      mount_xyz:='0 0 0'
+      mount_rpy:='0 0 0'
+      tcp_xyz:='0.0 0.0 0.0'
+      tcp_rpy:='0 0 0'
+      visual_xyz:='0 0 0'
+      visual_rpy:='0 0 0'
+      collision_xyz:='0 0 0'
+      collision_rpy:='0 0 0'
+      mesh_scale:='0.001 0.001 0.001'
+      mass:=0.02
+      ixx:=0.00001
+      ixy:=0.0
+      ixz:=0.0
+      iyy:=0.00001
+      iyz:=0.0
+      izz:=0.00001">
+
+    <material name="scoop_tool_color">
+      <color rgba="1.0 0.0 0.0 1.0"/>
+    </material>
+
+    <link name="${tool_link}">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="${mass}"/>
+        <inertia
+          ixx="${ixx}"
+          ixy="${ixy}"
+          ixz="${ixz}"
+          iyy="${iyy}"
+          iyz="${iyz}"
+          izz="${izz}"/>
+      </inertial>
+      <visual>
+        <origin xyz="${visual_xyz}" rpy="${visual_rpy}"/>
+        <geometry>
+          <mesh filename="${mesh_resource}" scale="${mesh_scale}"/>
+        </geometry>
+        <material name="scoop_tool_color"/>
+      </visual>
+      <collision>
+        <origin xyz="${collision_xyz}" rpy="${collision_rpy}"/>
+        <geometry>
+          <mesh filename="${mesh_resource}" scale="${mesh_scale}"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="${mount_joint_name}" type="fixed">
+      <origin xyz="${mount_xyz}" rpy="${mount_rpy}"/>
+      <parent link="${parent_link}"/>
+      <child link="${tool_link}"/>
+    </joint>
+
+    <link name="${tcp_link}"/>
+    <joint name="${tcp_joint_name}" type="fixed">
+      <origin xyz="${tcp_xyz}" rpy="${tcp_rpy}"/>
+      <parent link="${tool_link}"/>
+      <child link="${tcp_link}"/>
+    </joint>
+
+    <gazebo reference="${tool_link}">
+      <material>Gazebo/Red</material>
+    </gazebo>
+  </xacro:macro>
+</robot>

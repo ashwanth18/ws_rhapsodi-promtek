@@ -37,6 +37,13 @@
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>moveit_ros_move_group</exec_depend>
   <exec_depend>moveit_ros_visualization</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>jaka_driver</exec_depend>
+  <exec_depend>jaka_zu5_moveit_config</exec_depend>
+  <exec_depend>joint_trajectory_controller</exec_depend>
+  <exec_depend>joint_state_broadcaster</exec_depend>
+  <exec_depend>mock_components</exec_depend>
   <exec_depend>niryo_ned_ros2_driver</exec_depend>
   <exec_depend>niryo_ned3pro_moveit_config</exec_depend>
   <exec_depend>niryo_robot_description</exec_depend>

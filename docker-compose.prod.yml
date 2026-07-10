@@ -75,6 +75,9 @@ services:
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000,http://localhost:8080
       WEIGHMENT_URL: http://host.docker.internal:5002/batch/weighment
       BATCH_END_URL: http://host.docker.internal:5002/batch/end
+      TIMESERIES_URL: http://host.docker.internal:5002/timeseries
+      PATH_MAP_FROM: ${WORKSPACE_ROOT:-/home/ashwanth/ws_rhapsodi-promtek-dev}/data
+      PATH_MAP_TO: /data
       ROBOT_START_ADAPTER_URL: http://host.docker.internal:8010/start_webhook_weightment
       ROBOT_RUNNING_TIMEOUT_SECONDS: ${ROBOT_RUNNING_TIMEOUT_SECONDS:-300}
       ROSBRIDGE_HOST: host.docker.internal

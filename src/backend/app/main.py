@@ -12,7 +12,7 @@ from urllib import error, request
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from sqlalchemy import text
+from sqlalchemy import func, text
 
 from .database import SessionLocal, engine
 from .models import (
@@ -26,6 +26,10 @@ from .models import (
 from .pipeline import store_processed_run
 from .rosbridge_client import rosbridge_robot_client
 from .robot_mapping import resolve_robot_targets
+from .timeseries import (
+    build_timeseries_items_from_runs,
+    build_timeseries_payload,
+)
 from .schemas import (
     ProcessedRequest,
     ProcessedResponse,
@@ -40,6 +44,12 @@ WEIGHMENT_URL = os.environ.get(
     'WEIGHMENT_URL', 'http://localhost:5002/batch/weighment'
 )
 BATCH_END_URL = os.environ.get('BATCH_END_URL', 'http://localhost:5002/batch/end')
+TIMESERIES_URL = os.environ.get(
+    'TIMESERIES_URL', 'http://localhost:5002/timeseries'
+)
+TIMESERIES_TIMEOUT_SECONDS = float(
+    os.environ.get('TIMESERIES_TIMEOUT_SECONDS', '60')
+)
 ROBOT_START_ADAPTER_URL = os.environ.get(
     'ROBOT_START_ADAPTER_URL',
     'http://host.docker.internal:8010/start_webhook_weightment',
@@ -111,6 +121,7 @@ def ensure_webhook_weightment_columns() -> None:
         'ALTER TABLE webhook_weightments ADD COLUMN IF NOT EXISTS end_utc VARCHAR',
         'ALTER TABLE webhook_weightments ADD COLUMN IF NOT EXISTS energy_kwh INTEGER',
         'ALTER TABLE webhook_weightments ADD COLUMN IF NOT EXISTS lot_code VARCHAR',
+        'ALTER TABLE webhook_weightments ADD COLUMN IF NOT EXISTS mes_timeseries_sent BOOLEAN DEFAULT FALSE',
     ]
     with engine.begin() as conn:
         for statement in statements:
@@ -158,6 +169,7 @@ def ensure_robot_weightment_run_columns() -> None:
         'ALTER TABLE robot_weightment_runs ADD COLUMN IF NOT EXISTS processed_id INTEGER',
         'ALTER TABLE robot_weightment_runs ADD COLUMN IF NOT EXISTS mcap_path VARCHAR',
         'ALTER TABLE robot_weightment_runs ADD COLUMN IF NOT EXISTS parquet_path VARCHAR',
+        'ALTER TABLE robot_weightment_runs ADD COLUMN IF NOT EXISTS mes_timeseries_sent BOOLEAN DEFAULT FALSE',
     ]
     with engine.begin() as conn:
         for statement in statements:
@@ -240,6 +252,7 @@ def serialize_webhook_weightment(row: WebhookWeightment) -> dict:
         'target_weight_kg': row.target_weight_kg,
         'actual_weight_kg': row.actual_weight_kg,
         'weightment_completed': row.weightment_completed,
+        'mes_timeseries_sent': row.mes_timeseries_sent,
         'batch_auto_run_enabled': row.batch_auto_run_enabled,
         'start_utc': row.start_utc,
         'end_utc': row.end_utc,
@@ -299,6 +312,7 @@ def serialize_robot_run(row: RobotWeightmentRun) -> dict:
         'parquet_path': row.parquet_path,
         'mes_weighment_sent': row.mes_weighment_sent,
         'mes_batch_end_sent': row.mes_batch_end_sent,
+        'mes_timeseries_sent': row.mes_timeseries_sent,
         'contract': parse_json_text(row.request_payload_json),
         'result_payload': parse_json_text(row.result_payload_json),
     }
@@ -817,6 +831,135 @@ def apply_measurement_to_weightment(
     row.lot_code = lot_code
 
 
+def batch_timeseries_already_sent(db, batch_id: str) -> bool:
+    rows = (
+        db.query(WebhookWeightment)
+        .filter(WebhookWeightment.batch_id == batch_id)
+        .all()
+    )
+    return bool(rows) and all(row.mes_timeseries_sent for row in rows)
+
+
+def mark_batch_timeseries_sent(db, batch_id: str) -> None:
+    (
+        db.query(WebhookWeightment)
+        .filter(WebhookWeightment.batch_id == batch_id)
+        .update(
+            {WebhookWeightment.mes_timeseries_sent: True},
+            synchronize_session=False,
+        )
+    )
+    (
+        db.query(RobotWeightmentRun)
+        .filter(RobotWeightmentRun.batch_id == batch_id)
+        .update(
+            {RobotWeightmentRun.mes_timeseries_sent: True},
+            synchronize_session=False,
+        )
+    )
+
+
+def list_timeseries_pending_batch_ids(db) -> list[str]:
+    rows = (
+        db.query(
+            WebhookWeightment.batch_id,
+            func.bool_and(WebhookWeightment.weightment_completed).label('all_completed'),
+            func.bool_and(WebhookWeightment.mes_timeseries_sent).label('all_sent'),
+        )
+        .filter(WebhookWeightment.batch_id.isnot(None))
+        .group_by(WebhookWeightment.batch_id)
+        .all()
+    )
+    return [
+        str(row.batch_id)
+        for row in rows
+        if row.all_completed and not row.all_sent
+    ]
+
+
+def send_batch_timeseries_to_mes(db, batch_id: str) -> dict:
+    if batch_timeseries_already_sent(db, batch_id):
+        logger.info(
+            'Skipping batch timeseries send: batch_id=%s already_sent=true',
+            batch_id,
+        )
+        return {
+            'ok': True,
+            'skipped': True,
+            'reason': 'already_sent',
+            'batchId': batch_id,
+            'itemCount': 0,
+        }
+
+    runs = (
+        db.query(RobotWeightmentRun)
+        .join(
+            WebhookWeightment,
+            WebhookWeightment.id == RobotWeightmentRun.weightment_id,
+        )
+        .filter(
+            RobotWeightmentRun.batch_id == batch_id,
+            RobotWeightmentRun.parquet_path.isnot(None),
+            WebhookWeightment.weightment_completed.is_(True),
+        )
+        .order_by(RobotWeightmentRun.id.asc())
+        .all()
+    )
+    items = build_timeseries_items_from_runs(batch_id, runs)
+    if not items:
+        logger.warning(
+            'Batch timeseries send skipped: batch_id=%s no weight items from %s parquet files',
+            batch_id,
+            len(runs),
+        )
+        return {
+            'ok': False,
+            'skipped': False,
+            'reason': 'no_weight_items',
+            'batchId': batch_id,
+            'itemCount': 0,
+            'parquetFiles': len(runs),
+        }
+
+    payload = build_timeseries_payload(batch_id, items)
+    try:
+        response = post_json(
+            TIMESERIES_URL,
+            payload,
+            timeout_seconds=TIMESERIES_TIMEOUT_SECONDS,
+        )
+    except HTTPException as exc:
+        logger.error(
+            'Batch timeseries send failed: batch_id=%s item_count=%s detail=%s',
+            batch_id,
+            len(items),
+            exc.detail,
+        )
+        return {
+            'ok': False,
+            'skipped': False,
+            'reason': 'downstream_error',
+            'batchId': batch_id,
+            'itemCount': len(items),
+            'detail': exc.detail,
+        }
+
+    mark_batch_timeseries_sent(db, batch_id)
+    db.commit()
+    logger.info(
+        'Batch timeseries send succeeded: batch_id=%s item_count=%s',
+        batch_id,
+        len(items),
+    )
+    return {
+        'ok': True,
+        'skipped': False,
+        'batchId': batch_id,
+        'itemCount': len(items),
+        'response': response,
+    }
+
+
 def send_weightment_to_mes(db, row: WebhookWeightment) -> dict:
     if row.batch_id is None or row.ingredient_id is None or row.target_weight_kg is None:
         raise HTTPException(
@@ -879,6 +1022,22 @@ def send_weightment_to_mes(db, row: WebhookWeightment) -> dict:
                 },
             )
             batch_end_sent = True
+            try:
+                timeseries_result = send_batch_timeseries_to_mes(db, str(row.batch_id))
+            except Exception:
+                logger.exception(
+                    'Unexpected batch timeseries send failure: batch_id=%s',
+                    row.batch_id,
+                )
+                timeseries_result = {
+                    'ok': False,
+                    'reason': 'unexpected_error',
+                    'batchId': str(row.batch_id),
+                }
+        else:
+            timeseries_result = None
+    else:
+        timeseries_result = None
 
     return {
         'weightmentId': row.id,
@@ -886,6 +1045,7 @@ def send_weightment_to_mes(db, row: WebhookWeightment) -> dict:
         'weighmentResponse': weighment_response,
         'batchEndSent': batch_end_sent,
         'batchEndResponse': batch_end_response,
+        'timeseriesResult': timeseries_result,
     }
 
 
@@ -1736,6 +1896,10 @@ def get_webhook_weightment_details(event_id: str) -> dict:
                     'robot_mes_batch_end_sent': run_row.mes_batch_end_sent
                     if run_row is not None
                     else False,
+                    'mes_timeseries_sent': row.mes_timeseries_sent,
+                    'robot_mes_timeseries_sent': run_row.mes_timeseries_sent
+                    if run_row is not None
+                    else False,
                 }
             )
         summary = build_webhook_event_summary(db, rows, data)
@@ -1792,6 +1956,10 @@ def get_webhook_event_live_status(event_id: str) -> dict:
                     if run_row is not None
                     else False,
                     'robot_mes_batch_end_sent': run_row.mes_batch_end_sent
+                    if run_row is not None
+                    else False,
+                    'mes_timeseries_sent': row.mes_timeseries_sent,
+                    'robot_mes_timeseries_sent': run_row.mes_timeseries_sent
                     if run_row is not None
                     else False,
                 }
@@ -1930,6 +2098,49 @@ def complete_robot_weightment_run(
         if weightment_row is None:
             raise HTTPException(status_code=404, detail='Weightment not found')
         return finalize_robot_weightment_run(db, run_row, weightment_row, req)
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    finally:
+        db.close()
+
+
+@app.get('/batches/timeseries_pending')
+def get_timeseries_pending_batches() -> dict:
+    db = SessionLocal()
+    try:
+        batch_ids = list_timeseries_pending_batch_ids(db)
+        return {'batchIds': batch_ids, 'count': len(batch_ids)}
+    finally:
+        db.close()
+
+
+@app.post('/batches/{batch_id}/send_timeseries')
+def send_batch_timeseries(batch_id: str) -> dict:
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(WebhookWeightment)
+            .filter(WebhookWeightment.batch_id == batch_id)
+            .all()
+        )
+        if not rows:
+            raise HTTPException(status_code=404, detail='Batch not found')
+        if not all(row.weightment_completed for row in rows):
+            raise HTTPException(
+                status_code=400,
+                detail='Batch is not fully completed; cannot send timeseries yet',
+            )
+        result = send_batch_timeseries_to_mes(db, batch_id)
+        if not result.get('ok') and not result.get('skipped'):
+            raise HTTPException(
+                status_code=502,
+                detail=result.get('detail') or result.get('reason'),
+            )
+        return result
     except HTTPException:
         db.rollback()
         raise
