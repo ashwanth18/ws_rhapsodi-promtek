@@ -59,6 +59,15 @@ CREATE TABLE IF NOT EXISTS artifacts (
 
 CREATE INDEX IF NOT EXISTS idx_artifacts_run_key ON artifacts(run_key);
 CREATE INDEX IF NOT EXISTS idx_runs_tier1_ack ON runs(tier1_acked_at, tier1_pruned_at, anomaly_flag);
+
+-- Resume offset for fleet-wide, non-run-scoped append-only files (today:
+-- health.jsonl) that the uplink daemon tails incrementally instead of
+-- re-uploading in full each pass.
+CREATE TABLE IF NOT EXISTS fleet_sync_state (
+    file_path TEXT PRIMARY KEY,
+    synced_bytes INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
+);
 """
 
 
@@ -292,6 +301,58 @@ class RunManifest:
                 WHERE tier1_acked_at IS NOT NULL
                   AND tier1_pruned_at IS NULL
                   AND anomaly_flag = 0
+                ORDER BY created_at ASC
+                """
+            )
+            rows = cur.fetchall()
+        return [RunRecord.from_row(r) for r in rows]
+
+    def get_fleet_sync_offset(self, file_path: Path) -> int:
+        with self._lock:
+            cur = self._conn.execute(
+                'SELECT synced_bytes FROM fleet_sync_state '
+                'WHERE file_path = ?',
+                (str(file_path),),
+            )
+            row = cur.fetchone()
+        return int(row['synced_bytes']) if row else 0
+
+    def set_fleet_sync_offset(self, file_path: Path, synced_bytes: int) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO fleet_sync_state (file_path, synced_bytes, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(file_path) DO UPDATE SET
+                    synced_bytes = excluded.synced_bytes,
+                    updated_at = excluded.updated_at
+                """,
+                (str(file_path), int(synced_bytes), _utcnow()),
+            )
+
+    def list_runs_needing_tier0_sync(self) -> List[RunRecord]:
+        with self._lock:
+            cur = self._conn.execute(
+                """
+                SELECT * FROM runs
+                WHERE tier0_synced_at IS NULL
+                ORDER BY created_at ASC
+                """
+            )
+            rows = cur.fetchall()
+        return [RunRecord.from_row(r) for r in rows]
+
+    def list_runs_needing_tier1_upload(self) -> List[RunRecord]:
+        """Runs whose Tier 0 has already synced (so the server has a run
+        record to attach Tier-1 blobs to) but whose Tier 1 hasn't been
+        acked yet."""
+        with self._lock:
+            cur = self._conn.execute(
+                """
+                SELECT * FROM runs
+                WHERE tier0_synced_at IS NOT NULL
+                  AND tier1_acked_at IS NULL
+                  AND tier1_pruned_at IS NULL
                 ORDER BY created_at ASC
                 """
             )

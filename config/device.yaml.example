@@ -39,5 +39,6 @@ device:
     processing_url: http://localhost:8002/process
 
     # New Rhapsodi data-collection ingestion channel (NOT condor_agent /
-    # MES). Placeholder until the central ingestion service exists.
-    ingestion_url: http://localhost:8011/ingest
+    # MES) — base URL only; uplink_daemon appends its own /v1/... paths
+    # (see data_collection_manager/uplink_client.py).
+    ingestion_url: http://localhost:8011

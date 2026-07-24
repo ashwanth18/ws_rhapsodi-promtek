@@ -18,7 +18,7 @@ constexpr const char * kFallbackRobotId = "robot-1";
 constexpr const char * kFallbackRobotType = "niryo";
 constexpr const char * kFallbackSiteId = "site-1";
 constexpr const char * kFallbackProcessingUrl = "http://localhost:8002/process";
-constexpr const char * kFallbackIngestionUrl = "http://localhost:8011/ingest";
+constexpr const char * kFallbackIngestionUrl = "http://localhost:8011";
 
 DeviceConfig fallbackConfig()
 {

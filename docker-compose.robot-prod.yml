@@ -276,6 +276,16 @@ services:
       --ros-args
       -p output_root:=/data/webhook
 
+  # Store-and-forward uplink to the (future) central-ingestion-service
+  # (uplink-daemon): fleet health log, then Tier 0, then Tier 1, in that
+  # priority order. ingestion_url defaults from config/device.yaml.
+  uplink_daemon:
+    <<: *ros-robot-service
+    command: >
+      ros2 run data_collection_manager uplink_daemon
+      --ros-args
+      -p output_root:=/data/webhook
+
   orchestrator:
     <<: *ros-robot-service
     command: >

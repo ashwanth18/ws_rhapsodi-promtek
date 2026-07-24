@@ -153,6 +153,19 @@ services:
       --ros-args
       -p output_root:=/data/lightsout
 
+  # Store-and-forward uplink to the (future) central-ingestion-service
+  # (uplink-daemon); see docker-compose.robot-prod.yml for the rationale.
+  uplink_daemon:
+    <<: *ros-service
+    volumes:
+      - ${WORKSPACE_ROOT:-.}/fastdds.xml:/fastdds.xml:ro
+      - ${WORKSPACE_ROOT:-.}/data:/data
+      - ${WORKSPACE_ROOT:-.}/config:/ws/config:ro
+    command: >
+      ros2 run data_collection_manager uplink_daemon
+      --ros-args
+      -p output_root:=/data/lightsout
+
   # micro-ROS agent (serial)
   micro_ros_agent:
     image: microros/micro-ros-agent:jazzy

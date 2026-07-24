@@ -10,4 +10,4 @@ device:
   site_id: site-1
   fleet:
     processing_url: http://localhost:8002/process
-    ingestion_url: http://localhost:8011/ingest
+    ingestion_url: http://localhost:8011

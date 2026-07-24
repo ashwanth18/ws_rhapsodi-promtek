@@ -206,6 +206,22 @@ services:
       ]
     restart: unless-stopped
 
+  # Store-and-forward uplink to the (future) central-ingestion-service
+  # (uplink-daemon); see docker-compose.robot-prod.yml for the rationale.
+  uplink_daemon:
+    <<: *ros-sim-service
+    command:
+      [
+        "ros2",
+        "run",
+        "data_collection_manager",
+        "uplink_daemon",
+        "--ros-args",
+        "-p",
+        "output_root:=/data/webhook",
+      ]
+    restart: unless-stopped
+
   pouring_controller:
     <<: *ros-sim-service
     command:

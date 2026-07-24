@@ -37,7 +37,7 @@ _FALLBACK_ROBOT_ID = 'robot-1'
 _FALLBACK_ROBOT_TYPE = 'niryo'
 _FALLBACK_SITE_ID = 'site-1'
 _FALLBACK_PROCESSING_URL = 'http://localhost:8002/process'
-_FALLBACK_INGESTION_URL = 'http://localhost:8011/ingest'
+_FALLBACK_INGESTION_URL = 'http://localhost:8011'
 
 
 @dataclass(frozen=True)

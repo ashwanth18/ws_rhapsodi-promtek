@@ -24,6 +24,7 @@ setup(
             'weight_sim = data_collection_manager.weight_sim:main',
             'lightsout_sim = data_collection_manager.lightsout_sim:main',
             'retention_watchdog = data_collection_manager.retention_watchdog:main',
+            'uplink_daemon = data_collection_manager.uplink_daemon:main',
         ],
     },
 )
