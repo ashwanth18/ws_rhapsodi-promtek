@@ -3,16 +3,62 @@
 <package format="3">
   <name>scooping_controller</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Manual scooping trajectory authoring and execution for the Niryo simulation and hardware stacks.</description>
   <maintainer email="ashwanth@todo.todo">ashwanth</maintainer>
-  <license>TODO: License declaration</license>
+  <license>BSD-3-Clause</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>ament_index_cpp</depend>
+  <depend>control_msgs</depend>
+  <depend>geometric_shapes</depend>
+  <depend>geometry_msgs</depend>
+  <depend>interactive_markers</depend>
+  <depend>moveit_core</depend>
+  <depend>moveit_msgs</depend>
+  <depend>moveit_ros_planning</depend>
+  <depend>moveit_ros_planning_interface</depend>
+  <depend>moveit_task_constructor_core</depend>
+  <depend>moveit_task_constructor_msgs</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_action</depend>
+  <depend>robot_common_msgs</depend>
+  <depend>rviz_common</depend>
+  <depend>shape_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>visualization_msgs</depend>
+  <depend>yaml-cpp</depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>moveit_ros_move_group</exec_depend>
+  <exec_depend>moveit_ros_visualization</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>jaka_driver</exec_depend>
+  <exec_depend>jaka_zu5_moveit_config</exec_depend>
+  <exec_depend>joint_trajectory_controller</exec_depend>
+  <exec_depend>joint_state_broadcaster</exec_depend>
+  <exec_depend>mock_components</exec_depend>
+  <exec_depend>niryo_ned_ros2_driver</exec_depend>
+  <exec_depend>niryo_ned3pro_moveit_config</exec_depend>
+  <exec_depend>niryo_robot_description</exec_depend>
+  <exec_depend>niryo_robot_simulation_client</exec_depend>
+  <exec_depend>niryo_robot_moveit_interface</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>robot_moveit</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>warehouse_ros_sqlite</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
+    <rviz plugin="${prefix}/scooping_rviz_plugin_description.xml"/>
   </export>
 </package>

@@ -1,0 +1,130 @@
+2026-03-11T11:45:42.5747204+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-11T11:45:42.5748786+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-11T11:45:42.5748977+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-11T11:45:42.5749055+00:00: Config locations:
+2026-03-11T11:45:42.5749157+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-11T11:45:42.5925238+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek.app/gateway/rhapsodi/",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-11T11:45:42.5986063+00:00: Config:Verifying configuration ...
+2026-03-11T11:45:42.5999888+00:00: Config:Configuration OK
+2026-03-11T11:45:42.6006794+00:00: Register:Registration required
+2026-03-11T11:45:42.6006990+00:00: Register:Registering against https://promtek.app/gateway/rhapsodi/ ...
+2026-03-11T11:45:43.0272660+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:46:03.2433407+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:46:23.4787751+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:46:43.7232466+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:47:03.9003638+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:49:55.5299491+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-11T11:49:55.5301541+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-11T11:49:55.5302128+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-11T11:49:55.5302228+00:00: Config locations:
+2026-03-11T11:49:55.5302359+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-11T11:49:55.5497710+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek.app/gateway/rhapsodi/",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-11T11:49:55.5565422+00:00: Config:Verifying configuration ...
+2026-03-11T11:49:55.5582651+00:00: Config:Configuration OK
+2026-03-11T11:49:55.5589695+00:00: Register:Registration required
+2026-03-11T11:49:55.5589866+00:00: Register:Registering against https://promtek.app/gateway/rhapsodi/ ...
+2026-03-11T11:49:55.9838620+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:50:16.1796951+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:50:36.4016204+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:50:56.6271076+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:51:16.8748422+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:51:37.0757455+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:51:57.2839322+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:52:17.4907109+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:52:37.6963060+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:52:57.9281500+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:53:18.1446363+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:53:38.3339293+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:53:58.5513197+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:54:18.7492461+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:54:38.9408446+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:54:59.2019821+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:55:19.3811918+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:55:39.6887342+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:55:59.9034519+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:56:20.0972965+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:56:40.2988997+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:57:00.5039094+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:57:20.7176929+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:57:40.9819956+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-03-11T11:57:59.7207419+00:00: Promtek Condor Rhapsodi Agent v2026.3.11.7
+2026-03-11T11:57:59.7209715+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-03-11T11:57:59.7210006+00:00: Application location: /home/ashwanth/Rhapsodi Condor Agent Mar 11 2026/
+2026-03-11T11:57:59.7210113+00:00: Config locations:
+2026-03-11T11:57:59.7210263+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-03-11T11:57:59.7417695+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "2eef9bd9-9503-4a4b-a294-8184bb80ca7c",
+    "AgentName": "ROBOT-TEST-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://localhost:5000",
+    "Port": 5002,
+    "AuthorisationToken": "vtlXIfnQGgTavI1oKhJ1JtxWkjsF6jG8xQZ_XB6K0WQ",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-03-11T11:57:59.7485677+00:00: Config:Verifying configuration ...
+2026-03-11T11:57:59.7502193+00:00: Config:Configuration OK
+2026-03-11T11:57:59.7509845+00:00: Register:Registration required
+2026-03-11T11:57:59.7510074+00:00: Register:Registering against https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app ...
+2026-03-11T11:58:04.6193057+00:00: Register:(200) success Agent must be authorised before use
+2026-03-11T11:58:04.6203625+00:00: Startup:tasks completed
+2026-03-11T11:58:04.7458207+00:00: WebServer:Listening on http://+:5002
+2026-03-11T11:58:04.8064225+00:00: WebSocket:Connecting to wss://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app/ws...
+2026-03-11T11:58:04.9543239+00:00: WebSocket:Connected OK
+2026-03-11T11:58:04.9560015+00:00: WebSocket:Waiting for messages ...
+2026-03-11T11:58:04.9563462+00:00: Ping:Started sending 'ping' message
+2026-03-11T11:58:04.9697838+00:00: Active:(200 OK)
+2026-03-11T11:58:07.0540109+00:00: WebSocket:WebSocket connection established.
+2026-03-11T11:58:07.0540863+00:00: WebSocket:Waiting for messages ...
+2026-03-11T11:58:07.2536482+00:00: WebSocket:Waiting for messages ...
+2026-03-11T11:58:24.9786891+00:00: WebSocket:Waiting for messages ...
+2026-03-11T11:58:44.9778750+00:00: WebSocket:Waiting for messages ...
+2026-03-11T11:59:04.9756896+00:00: WebSocket:Waiting for messages ...
+2026-03-11T11:59:24.9772457+00:00: WebSocket:Waiting for messages ...
+2026-03-11T11:59:44.9769339+00:00: WebSocket:Waiting for messages ...
+2026-03-11T12:00:04.9781523+00:00: WebSocket:Waiting for messages ...
+2026-03-11T12:00:24.9790907+00:00: WebSocket:Waiting for messages ...
+2026-03-11T12:00:44.9777333+00:00: WebSocket:Waiting for messages ...
+2026-03-11T12:01:04.9811018+00:00: WebSocket:Waiting for messages ...
+2026-03-11T12:01:24.9789097+00:00: WebSocket:Waiting for messages ...
+2026-03-11T12:01:44.9974481+00:00: WebSocket:Waiting for messages ...
+2026-03-11T12:02:05.6123293+00:00: WebSocket:Waiting for messages ...
+2026-03-11T12:02:24.9801858+00:00: WebSocket:Waiting for messages ...
+2026-03-11T12:02:44.9795816+00:00: WebSocket:Waiting for messages ...
+2026-03-11T12:03:04.9795053+00:00: WebSocket:Waiting for messages ...

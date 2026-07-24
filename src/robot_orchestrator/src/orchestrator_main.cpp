@@ -8,6 +8,7 @@
 #include <sstream>
 #include <robot_common_msgs/srv/start_batch.hpp>
 #include <robot_common_msgs/srv/start_lights_out.hpp>
+#include <robot_common_msgs/srv/start_webhook_weightment.hpp>
 #include <algorithm>
 #include <atomic>
 #include "robot_orchestrator/register.hpp"
@@ -15,6 +16,7 @@
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/int32.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <rhapsodi_common_cpp/health_event_publisher.hpp>
 
 int main(int argc, char ** argv)
 {
@@ -36,14 +38,16 @@ int main(int argc, char ** argv)
   auto ros_node = rclcpp::Node::make_shared("robot_orchestrator");
   auto blackboard = BT::Blackboard::create();
   blackboard->set("ros_node", ros_node);
+  blackboard->set("phase_topic", std::string("/lightsout_training/phase"));
 
   // Status publisher
   auto status_pub = ros_node->create_publisher<robot_common_msgs::msg::SystemStatus>("/system_status", 10);
+  rhapsodi_common_cpp::HealthEventPublisher health(ros_node.get(), "robot_orchestrator");
 
   auto latched_qos = rclcpp::QoS(1).transient_local();
 
   // Lights-out training status/metadata publishers
-  auto lightsout_active_pub = ros_node->create_publisher<std_msgs::msg::Bool>("/lightsout_training/active", 10);
+  auto lightsout_active_pub = ros_node->create_publisher<std_msgs::msg::Bool>("/lightsout_training/active", latched_qos);
   auto lightsout_meta_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/metadata", latched_qos);
   auto lightsout_run_id_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/run_id", latched_qos);
   auto lightsout_batch_id_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/batch_id", latched_qos);
@@ -52,6 +56,14 @@ int main(int argc, char ** argv)
   auto lightsout_mode_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/mode", latched_qos);
   auto lightsout_robot_id_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/robot_id", latched_qos);
   auto lightsout_episodes_total_pub = ros_node->create_publisher<std_msgs::msg::Int32>("/lightsout_training/episodes_total", latched_qos);
+  auto webhook_active_pub = ros_node->create_publisher<std_msgs::msg::Bool>("/webhook_run/active", latched_qos);
+  auto webhook_meta_pub = ros_node->create_publisher<std_msgs::msg::String>("/webhook_run/metadata", latched_qos);
+  auto run_state_pub = ros_node->create_publisher<std_msgs::msg::String>("/orchestrator/run_state", latched_qos);
+  {
+    std_msgs::msg::String idle_msg;
+    idle_msg.data = "idle";
+    run_state_pub->publish(idle_msg);
+  }
 
   // Subscribe to weight topic and keep blackboard updated continuously
   ros_node->declare_parameter<std::string>("weight_topic", "/weight");
@@ -87,6 +99,7 @@ int main(int argc, char ** argv)
   std::atomic<bool> pause_requested{false};
   std::atomic<bool> stop_requested{false};
   std::atomic<bool> lightsout_active{false};
+  std::atomic<bool> webhook_active{false};
 
   using StartBatch = robot_common_msgs::srv::StartBatch;
   auto start_batch_srv = ros_node->create_service<StartBatch>(
@@ -116,6 +129,7 @@ int main(int argc, char ** argv)
                     std::shared_ptr<StartLightsOut::Response> resp){
       const int episodes = std::max(1, req->episodes);
       const double target_g = static_cast<double>(req->target_weight_g);
+      const double tolerance_g = std::max(0.1, target_g * 0.02);
       const auto now = std::chrono::system_clock::now();
       const std::time_t now_t = std::chrono::system_clock::to_time_t(now);
       std::tm tm{};
@@ -127,11 +141,12 @@ int main(int argc, char ** argv)
       blackboard->set("lightsout_powder_name", req->powder_name);
       blackboard->set("lightsout_cycle_end_limit", req->cycle_end_limit);
       blackboard->set("lightsout_target_weight_g", target_g);
-      blackboard->set("lightsout_tolerance_g", 0.5);
+      blackboard->set("lightsout_tolerance_g", tolerance_g);
       blackboard->set("lightsout_episodes", episodes);
       blackboard->set("lightsout_batch_id", req->batch_id);
       blackboard->set("lightsout_container_name", req->powder_name);
       blackboard->set("lightsout_episode_index", 0);
+      blackboard->set("phase_topic", std::string("/lightsout_training/phase"));
 
       start_requested = true;
       pause_requested = false;
@@ -175,6 +190,94 @@ int main(int argc, char ** argv)
 
       resp->accepted = true;
       resp->message = "Lights-out training accepted";
+    });
+
+  using StartWebhookWeightment = robot_common_msgs::srv::StartWebhookWeightment;
+  auto start_webhook_weightment_srv = ros_node->create_service<StartWebhookWeightment>(
+    "bt_start_webhook_weightment",
+    [&, blackboard, webhook_active_pub, webhook_meta_pub](const std::shared_ptr<StartWebhookWeightment::Request> req,
+                    std::shared_ptr<StartWebhookWeightment::Response> resp){
+      const double target_g = static_cast<double>(req->target_weight_g);
+      const double tolerance_g = std::max(0.1, target_g * 0.02);
+      if (!ros_node->has_parameter("robot_id")) {
+        ros_node->declare_parameter<std::string>("robot_id", "robot-1");
+      }
+      const std::string robot_id = ros_node->get_parameter("robot_id").as_string();
+
+      auto json_escape = [](const std::string & value) {
+        std::string out;
+        out.reserve(value.size());
+        for (const char ch : value) {
+          switch (ch) {
+            case '\\': out += "\\\\"; break;
+            case '"': out += "\\\""; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default: out += ch; break;
+          }
+        }
+        return out;
+      };
+
+      blackboard->set("phase_topic", std::string("/webhook_run/phase"));
+      blackboard->set("webhook_run_id", req->run_id);
+      blackboard->set("webhook_weightment_id", req->weightment_id);
+      blackboard->set("webhook_batch_id", req->batch_id);
+      blackboard->set("webhook_ingredient_id", req->ingredient_id);
+      blackboard->set("webhook_location_id", req->location_id);
+      blackboard->set("webhook_location_code", req->location_code);
+      blackboard->set("webhook_pickup_target_name", req->pickup_target_name);
+      blackboard->set("webhook_weigh_target_name", req->weigh_target_name);
+      blackboard->set("webhook_return_target_name", req->return_target_name);
+      blackboard->set("webhook_target_weight_g", target_g);
+      blackboard->set("webhook_tolerance_g", tolerance_g);
+      blackboard->set("webhook_expected_lot", req->expected_lot);
+
+      start_requested = true;
+      pause_requested = false;
+      stop_requested = false;
+      webhook_active = true;
+
+      std_msgs::msg::Bool active_msg;
+      active_msg.data = true;
+      webhook_active_pub->publish(active_msg);
+
+      std_msgs::msg::String meta_msg;
+      meta_msg.data =
+        std::string("{") +
+        "\"run_id\":\"" + json_escape(req->run_id) + "\"," +
+        "\"weightment_id\":\"" + json_escape(req->weightment_id) + "\"," +
+        "\"batch_id\":\"" + json_escape(req->batch_id) + "\"," +
+        "\"ingredient_id\":\"" + json_escape(req->ingredient_id) + "\"," +
+        "\"location_id\":\"" + json_escape(req->location_id) + "\"," +
+        "\"location_code\":\"" + json_escape(req->location_code) + "\"," +
+        "\"pickup_target_name\":\"" + json_escape(req->pickup_target_name) + "\"," +
+        "\"weigh_target_name\":\"" + json_escape(req->weigh_target_name) + "\"," +
+        "\"return_target_name\":\"" + json_escape(req->return_target_name) + "\"," +
+        "\"expected_lot\":\"" + json_escape(req->expected_lot) + "\"," +
+        "\"target_weight_g\":" + std::to_string(target_g) + "," +
+        "\"tolerance_g\":" + std::to_string(tolerance_g) + "," +
+        "\"mode\":\"webhook\"," +
+        "\"robot_id\":\"" + json_escape(robot_id) + "\"" +
+        "}";
+      webhook_meta_pub->publish(meta_msg);
+
+      RCLCPP_INFO(
+        ros_node->get_logger(),
+        "Webhook weightment accepted: run_id=%s weightment_id=%s batch_id=%s ingredient_id=%s pickup=%s weigh=%s return=%s target_g=%.3f tolerance_g=%.3f",
+        req->run_id.c_str(),
+        req->weightment_id.c_str(),
+        req->batch_id.c_str(),
+        req->ingredient_id.c_str(),
+        req->pickup_target_name.c_str(),
+        req->weigh_target_name.c_str(),
+        req->return_target_name.c_str(),
+        target_g,
+        tolerance_g);
+
+      resp->accepted = true;
+      resp->message = "Webhook weightment accepted";
     });
 
   auto pause_srv = ros_node->create_service<std_srvs::srv::Trigger>(
@@ -225,10 +328,18 @@ int main(int argc, char ** argv)
     // Reset tree before running
     tree.haltTree();
 
+    {
+      std_msgs::msg::String running_msg;
+      running_msg.data = "running";
+      run_state_pub->publish(running_msg);
+    }
+
     BT::NodeStatus status = BT::NodeStatus::RUNNING;
+    bool stopped = false;
     while (rclcpp::ok() && status == BT::NodeStatus::RUNNING) {
       if (stop_requested.load()) {
         tree.haltTree();
+        stopped = true;
         break;
       }
       if (!pause_requested.load()) {
@@ -264,11 +375,39 @@ int main(int argc, char ** argv)
       start_requested = false;
     }
 
+    const std::string completed_run_mode =
+      lightsout_active.load() ? "lightsout" :
+      (webhook_active.load() ? "webhook" : "unknown");
+
     if (lightsout_active.load()) {
       lightsout_active = false;
       std_msgs::msg::Bool active_msg;
       active_msg.data = false;
       lightsout_active_pub->publish(active_msg);
+    }
+    if (webhook_active.load()) {
+      webhook_active = false;
+      std_msgs::msg::Bool active_msg;
+      active_msg.data = false;
+      webhook_active_pub->publish(active_msg);
+    }
+
+    {
+      std_msgs::msg::String run_state_msg;
+      if (stopped) {
+        run_state_msg.data = "stopped";
+      } else if (status == BT::NodeStatus::SUCCESS) {
+        run_state_msg.data = "succeeded";
+      } else if (status == BT::NodeStatus::FAILURE) {
+        run_state_msg.data = "failed";
+        health.error(
+          "bt_tree_failure",
+          "Behavior tree returned FAILURE for tree_file=" + tree_file,
+          "{\"tree_file\":\"" + tree_file + "\",\"run_mode\":\"" + completed_run_mode + "\"}");
+      } else {
+        run_state_msg.data = "idle";
+      }
+      run_state_pub->publish(run_state_msg);
     }
 
     // Brief idle between cycles

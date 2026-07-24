@@ -1,0 +1,265 @@
+{
+  "sentUtc": "2026-03-15T22:53:53.7367266Z",
+  "userId": "84b4baba-7a76-4cd7-a621-5425bc54a2d6",
+  "siteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+  "eventId": "e27e659a-8974-4771-893b-402cedefa293",
+  "sender": "promtek-service-batch",
+  "batch": {
+    "id": 22673,
+    "createdUtc": "2026-03-15T22:53:53.6466667",
+    "logBatch": 10,
+    "batchNumber": 9,
+    "controlSystemCode": "RHAPSODI",
+    "startTimeUtc": "2026-03-15T22:53:51.2461108Z",
+    "batchSize": 0.001,
+    "startingScheduleItemId": 8616,
+    "scheduleItemId": 8616,
+    "workOrderId": 7088,
+    "routeWorkCentreId": 20,
+    "finishedProductId": 1343,
+    "baseFormula": {
+      "id": 818,
+      "code": "F001",
+      "name": "Formula 1",
+      "versionId": 2506,
+      "versionCode": "1"
+    },
+    "targetQuantity": 1.0,
+    "batchStatus": {
+      "id": 1,
+      "code": "TODO",
+      "batchStatusType": {
+        "id": 1,
+        "code": "TODO"
+      }
+    },
+    "siteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "createdByUserId": "84b4baba-7a76-4cd7-a621-5425bc54a2d6",
+    "lines": [
+      {
+        "id": 502992,
+        "siteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+        "createdUtc": "2026-03-15T22:53:53.6450106Z",
+        "batchId": 22673,
+        "controlSystemId": 14,
+        "controlSystemCode": "RHAPSODI",
+        "sequence": 0,
+        "formulaVersionLineId": 39703,
+        "batchInstructionId": 19,
+        "batchInstructionCode": "MAT_ADD",
+        "useInstructionCode": false,
+        "weigherLocationId": 14,
+        "weigherLocationCode": "RW1",
+        "weigherId": 16,
+        "weigherCode": "RW1",
+        "batchLineStatus": {
+          "id": 1,
+          "code": "TODO"
+        },
+        "parameters": [
+          {
+            "id": 1226597,
+            "siteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+            "batchLineId": 502992,
+            "sequence": 1,
+            "batchInstructionParameterId": 56,
+            "batchInstructionParameterCode": "Ingredient",
+            "batchInstructionParameterTypeId": 3,
+            "batchInstructionParameterTypeCode": "INGREDIENT",
+            "target": "1330"
+          },
+          {
+            "id": 1226598,
+            "siteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+            "batchLineId": 502992,
+            "sequence": 3,
+            "batchInstructionParameterId": 57,
+            "batchInstructionParameterCode": "Weigher",
+            "batchInstructionParameterTypeId": 7,
+            "batchInstructionParameterTypeCode": "WEIGHER",
+            "target": "16"
+          },
+          {
+            "id": 1226599,
+            "siteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+            "batchLineId": 502992,
+            "sequence": 2,
+            "batchInstructionParameterId": 58,
+            "batchInstructionParameterCode": "Quantity",
+            "batchInstructionParameterTypeId": 2,
+            "batchInstructionParameterTypeCode": "NUMERIC",
+            "target": "0.5000000"
+          }
+        ]
+      },
+      {
+        "id": 502993,
+        "siteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+        "createdUtc": "2026-03-15T22:53:53.6450112Z",
+        "batchId": 22673,
+        "controlSystemId": 14,
+        "controlSystemCode": "RHAPSODI",
+        "sequence": 1,
+        "formulaVersionLineId": 39704,
+        "batchInstructionId": 19,
+        "batchInstructionCode": "MAT_ADD",
+        "useInstructionCode": false,
+        "weigherLocationId": 14,
+        "weigherLocationCode": "RW1",
+        "weigherId": 16,
+        "weigherCode": "RW1",
+        "batchLineStatus": {
+          "id": 1,
+          "code": "TODO"
+        },
+        "parameters": [
+          {
+            "id": 1226600,
+            "siteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+            "batchLineId": 502993,
+            "sequence": 1,
+            "batchInstructionParameterId": 56,
+            "batchInstructionParameterCode": "Ingredient",
+            "batchInstructionParameterTypeId": 3,
+            "batchInstructionParameterTypeCode": "INGREDIENT",
+            "target": "1329"
+          },
+          {
+            "id": 1226601,
+            "siteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+            "batchLineId": 502993,
+            "sequence": 3,
+            "batchInstructionParameterId": 57,
+            "batchInstructionParameterCode": "Weigher",
+            "batchInstructionParameterTypeId": 7,
+            "batchInstructionParameterTypeCode": "WEIGHER",
+            "target": "16"
+          },
+          {
+            "id": 1226602,
+            "siteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+            "batchLineId": 502993,
+            "sequence": 2,
+            "batchInstructionParameterId": 58,
+            "batchInstructionParameterCode": "Quantity",
+            "batchInstructionParameterTypeId": 2,
+            "batchInstructionParameterTypeCode": "NUMERIC",
+            "target": "0.2300000"
+          }
+        ]
+      },
+      {
+        "id": 502994,
+        "siteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+        "createdUtc": "2026-03-15T22:53:53.6450121Z",
+        "batchId": 22673,
+        "controlSystemId": 14,
+        "controlSystemCode": "RHAPSODI",
+        "sequence": 2,
+        "formulaVersionLineId": 39702,
+        "batchInstructionId": 19,
+        "batchInstructionCode": "MAT_ADD",
+        "useInstructionCode": false,
+        "weigherLocationId": 14,
+        "weigherLocationCode": "RW1",
+        "weigherId": 16,
+        "weigherCode": "RW1",
+        "batchLineStatus": {
+          "id": 1,
+          "code": "TODO"
+        },
+        "parameters": [
+          {
+            "id": 1226603,
+            "siteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+            "batchLineId": 502994,
+            "sequence": 1,
+            "batchInstructionParameterId": 56,
+            "batchInstructionParameterCode": "Ingredient",
+            "batchInstructionParameterTypeId": 3,
+            "batchInstructionParameterTypeCode": "INGREDIENT",
+            "target": "1327"
+          },
+          {
+            "id": 1226604,
+            "siteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+            "batchLineId": 502994,
+            "sequence": 3,
+            "batchInstructionParameterId": 57,
+            "batchInstructionParameterCode": "Weigher",
+            "batchInstructionParameterTypeId": 7,
+            "batchInstructionParameterTypeCode": "WEIGHER",
+            "target": "16"
+          },
+          {
+            "id": 1226605,
+            "siteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+            "batchLineId": 502994,
+            "sequence": 2,
+            "batchInstructionParameterId": 58,
+            "batchInstructionParameterCode": "Quantity",
+            "batchInstructionParameterTypeId": 2,
+            "batchInstructionParameterTypeCode": "NUMERIC",
+            "target": "0.1500000"
+          }
+        ]
+      },
+      {
+        "id": 502995,
+        "siteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+        "createdUtc": "2026-03-15T22:53:53.6450128Z",
+        "batchId": 22673,
+        "controlSystemId": 14,
+        "controlSystemCode": "RHAPSODI",
+        "sequence": 3,
+        "formulaVersionLineId": 39701,
+        "batchInstructionId": 19,
+        "batchInstructionCode": "MAT_ADD",
+        "useInstructionCode": false,
+        "weigherLocationId": 14,
+        "weigherLocationCode": "RW1",
+        "weigherId": 16,
+        "weigherCode": "RW1",
+        "batchLineStatus": {
+          "id": 1,
+          "code": "TODO"
+        },
+        "parameters": [
+          {
+            "id": 1226606,
+            "siteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+            "batchLineId": 502995,
+            "sequence": 1,
+            "batchInstructionParameterId": 56,
+            "batchInstructionParameterCode": "Ingredient",
+            "batchInstructionParameterTypeId": 3,
+            "batchInstructionParameterTypeCode": "INGREDIENT",
+            "target": "1326"
+          },
+          {
+            "id": 1226607,
+            "siteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+            "batchLineId": 502995,
+            "sequence": 3,
+            "batchInstructionParameterId": 57,
+            "batchInstructionParameterCode": "Weigher",
+            "batchInstructionParameterTypeId": 7,
+            "batchInstructionParameterTypeCode": "WEIGHER",
+            "target": "16"
+          },
+          {
+            "id": 1226608,
+            "siteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+            "batchLineId": 502995,
+            "sequence": 2,
+            "batchInstructionParameterId": 58,
+            "batchInstructionParameterCode": "Quantity",
+            "batchInstructionParameterTypeId": 2,
+            "batchInstructionParameterTypeCode": "NUMERIC",
+            "target": "0.1200000"
+          }
+        ]
+      }
+    ]
+  }
+}

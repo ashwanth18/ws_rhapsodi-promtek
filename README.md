@@ -6,12 +6,20 @@ This repo contains a ROS 2 Jazzy workspace plus Docker assets to build/run it co
 
 It also includes an optional **React dashboard** (`src/dashboard`) that talks to ROS via **rosbridge websocket**.
 
+The container builds assume `MoveIt` and `MoveIt Task Constructor` come from the ROS 2 Jazzy apt
+underlay on both `amd64` and `arm64`; they are not fetched from `src/ros2.repos`.
+
 ### What’s in here
 
 - **ROS workspace**: `src/` (your packages)
 - **External source deps**: `src/ros2.repos` (fetched during Docker build)
-- **ROS image**: `Dockerfile` (builds the workspace into `/ws/install`)
-- **Compose**: `docker-compose.yml` (`runtime`, `dev`, `dashboard`)
+- **ROS dev image**: `docker/ros/Dockerfile.dev` (local build + interactive dev shell)
+- **ROS prod image**: `docker/ros/Dockerfile.prod` (multi-stage runtime image for registry / Pi)
+- **Compose**:
+  - `docker-compose.yml` for local build/dev
+  - `docker-compose.prod.yml` for the same architecture using prebuilt images
+  - `docker-compose.robot-prod.yml` for the full webhook physical robot stack on a Pi
+  - `docker-compose.lightsout.yml` for the special-purpose lightsout/runtime stack
 
 ---
 
@@ -33,7 +41,10 @@ It also includes an optional **React dashboard** (`src/dashboard`) that talks to
 
 ```bash
 cd ws_rhapsodi-promtek
-docker build --build-arg COLCON_PARALLEL_WORKERS=1 -t rhapsodi-promtek:jazzy .
+docker build \
+  --build-arg COLCON_PARALLEL_WORKERS=1 \
+  -f docker/ros/Dockerfile.prod \
+  -t rhapsodi-promtek:ros-prod-local .
 ```
 
 ### Faster builds on a strong laptop
@@ -43,7 +54,10 @@ and BuildKit caching:
 
 ```bash
 cd ws_rhapsodi-promtek
-DOCKER_BUILDKIT=1 docker build --build-arg COLCON_PARALLEL_WORKERS=24 -t rhapsodi-promtek:jazzy .
+DOCKER_BUILDKIT=1 docker build \
+  --build-arg COLCON_PARALLEL_WORKERS=24 \
+  -f docker/ros/Dockerfile.prod \
+  -t rhapsodi-promtek:ros-prod-local .
 ```
 
 If you build multi‑arch often, enable a local buildx cache:
@@ -55,7 +69,8 @@ docker buildx build \
   --cache-to=type=local,dest=./.buildx-cache-new \
   --platform linux/amd64,linux/arm64 \
   --build-arg COLCON_PARALLEL_WORKERS=24 \
-  -t iserenity/rhapsodi-promtek:jazzy --push .
+  -f docker/ros/Dockerfile.prod \
+  -t iserenity/rhapsodi-promtek:ros-prod --push .
 mv ./.buildx-cache-new ./.buildx-cache
 ```
 
@@ -84,6 +99,13 @@ docker buildx build \
   --cache-from=type=local,src=./.buildx-cache \
   --cache-to=type=local,dest=./.buildx-cache-new \
   --platform linux/amd64,linux/arm64 \
+  -t iserenity/rhapsodi-promtek:webhook --push ./src/backend/webhook_service
+mv ./.buildx-cache-new ./.buildx-cache
+
+docker buildx build \
+  --cache-from=type=local,src=./.buildx-cache \
+  --cache-to=type=local,dest=./.buildx-cache-new \
+  --platform linux/amd64,linux/arm64 \
   --build-arg COLCON_PARALLEL_WORKERS=24 \
   -t iserenity/rhapsodi-promtek:dashboard --push -f docker/dashboard.Dockerfile .
 mv ./.buildx-cache-new ./.buildx-cache
@@ -97,7 +119,10 @@ Notes:
 
 ```bash
 cd ws_rhapsodi-promtek
-docker build --build-arg COLCON_PARALLEL_WORKERS=1 -t rhapsodi-promtek:jazzy .
+docker build \
+  --build-arg COLCON_PARALLEL_WORKERS=1 \
+  -f docker/ros/Dockerfile.prod \
+  -t rhapsodi-promtek:ros-prod-local .
 ```
 
 Notes:
@@ -111,7 +136,7 @@ Notes:
 ### Interactive shell (recommended first test)
 
 ```bash
-docker run --rm -it --net=host --ipc=host rhapsodi-promtek:jazzy bash
+docker run --rm -it --net=host --ipc=host rhapsodi-promtek:ros-prod-local bash
 ```
 
 Inside the container, ROS + the overlay are already sourced. Quick check:
@@ -122,13 +147,13 @@ ros2 pkg list | head
 
 ### Using docker compose
 
-- Runtime (no source mounts):
+- Runtime (local build of the production ROS image, no source mounts):
 
 ```bash
 docker compose run --rm runtime
 ```
 
-- Dev (mounts your local `./src` so you can edit and rebuild inside the container):
+- Dev shell (bind-mounts the repo at `/workspace` so you can edit locally and rebuild inside the container):
 
 ```bash
 docker compose run --rm dev
@@ -137,10 +162,12 @@ docker compose run --rm dev
 Rebuild overlay inside `dev`:
 
 ```bash
+cd /workspace
 source /opt/ros/jazzy/setup.bash
-cd /ws
-colcon build --merge-install --parallel-workers 1
-source /ws/install/setup.bash
+vcs import src < src/ros2.repos
+rosdep install --from-paths src --ignore-src -r -y --rosdistro jazzy
+colcon build --merge-install --parallel-workers 1 --packages-skip micro_ros_agent
+source install/setup.bash
 ```
 
 ---
@@ -188,13 +215,13 @@ Use this if you want the **dashboard container on your laptop** but the **ROS st
 VITE_API_BASE=http://<pi-ip>:8000 \
 VITE_ROSBRIDGE_URL=ws://<pi-ip>:9090 \
 VITE_MICROROS_HEARTBEAT_TOPIC=/microros/heartbeat \
-docker compose -f docker-compose.lightsout.yml build --no-cache dashboard
+docker compose build --no-cache dashboard
 ```
 
 2) Start the dashboard container:
 
 ```bash
-docker compose -f docker-compose.lightsout.yml up -d dashboard
+docker compose up -d dashboard
 ```
 
 3) Open:
@@ -214,10 +241,10 @@ docker login
 docker buildx create --use
 ```
 
-Base ROS image:
+ROS production image:
 
 ```bash
-docker buildx build --platform linux/arm64 -t iserenity/rhapsodi-promtek:jazzy --push .
+docker buildx build --platform linux/arm64 -f docker/ros/Dockerfile.prod -t iserenity/rhapsodi-promtek:ros-prod --push .
 ```
 
 Backend:
@@ -232,6 +259,12 @@ Processing:
 docker buildx build --platform linux/arm64 -t iserenity/rhapsodi-promtek:processing --push ./src/backend/processing
 ```
 
+Webhook:
+
+```bash
+docker buildx build --platform linux/arm64 -t iserenity/rhapsodi-promtek:webhook --push ./src/backend/webhook_service
+```
+
 Dashboard:
 
 ```bash
@@ -241,18 +274,76 @@ docker buildx build --platform linux/arm64 -t iserenity/rhapsodi-promtek:dashboa
 Multi‑arch (amd64 + arm64) from the laptop:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -t iserenity/rhapsodi-promtek:jazzy --push .
+docker buildx build --platform linux/amd64,linux/arm64 -f docker/ros/Dockerfile.prod -t iserenity/rhapsodi-promtek:ros-prod --push .
 docker buildx build --platform linux/amd64,linux/arm64 -t iserenity/rhapsodi-promtek:backend --push ./src/backend
 docker buildx build --platform linux/amd64,linux/arm64 -t iserenity/rhapsodi-promtek:processing --push ./src/backend/processing
+docker buildx build --platform linux/amd64,linux/arm64 -t iserenity/rhapsodi-promtek:webhook --push ./src/backend/webhook_service
 docker buildx build --platform linux/amd64,linux/arm64 -t iserenity/rhapsodi-promtek:dashboard --push -f docker/dashboard.Dockerfile .
 ```
 
-On each Pi:
+On each Pi for the generic production app-stack:
 
 ```bash
-docker compose -f docker-compose.lightsout.yml pull
-docker compose -f docker-compose.lightsout.yml up -d
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
 ```
+
+`docker-compose.lightsout.yml` remains available as a different stack shape for the lightsout /
+robot-run workflow and is not the production equivalent of `docker-compose.yml`.
+
+For the full webhook physical robot runtime stack on a Pi with minimal manual steps:
+
+```bash
+cp robot-prod.env.example robot-prod.env
+# edit robot-prod.env for this Pi / robot
+docker compose --env-file robot-prod.env -f docker-compose.robot-prod.yml pull
+docker compose --env-file robot-prod.env -f docker-compose.robot-prod.yml up -d
+```
+
+For the detailed Condor + Pi rollout guide, including env strategy, persistence, build/push commands, and debugging:
+
+- `README-condor-agent-pi.md`
+
+The per-Pi settings live in:
+
+```bash
+robot-prod.env
+```
+
+Start from:
+
+```bash
+robot-prod.env.example
+```
+
+If you do not need per-Pi overrides, plain compose also works:
+
+```bash
+docker compose -f docker-compose.robot-prod.yml pull
+docker compose -f docker-compose.robot-prod.yml up -d
+```
+
+This stack includes the Pi-side app and robot runtime services:
+
+- `db`
+- `backend`
+- `processing`
+- `webhook_service`
+- `dashboard`
+- `rosbridge`
+- `robot_start_adapter`
+- `scooping_stack`
+- `scale_launcher`
+- `micro_ros_agent`
+- `pouring_controller`
+- `data_collection`
+- `orchestrator`
+
+Recommended dashboard deployment:
+
+- run the dashboard on your laptop and point it to the Pi backend + rosbridge for normal operation
+- only run the dashboard on the Pi if you specifically want a separate kiosk-style setup outside `docker-compose.robot-prod.yml`
+- the current dashboard image bakes `VITE_API_BASE` and `VITE_ROSBRIDGE_URL` at build time, so a Pi-hosted dashboard should be built with the Pi-reachable URLs
 
 ---
 
@@ -426,13 +517,13 @@ ping -c 3 10.42.0.1
 Example serial device:
 
 ```bash
-docker run --rm -it --net=host --ipc=host --device=/dev/ttyACM0 rhapsodi-promtek:jazzy bash
+docker run --rm -it --net=host --ipc=host --device=/dev/ttyACM0 rhapsodi-promtek:ros-prod-local bash
 ```
 
 If you truly need broad access (use sparingly):
 
 ```bash
-docker run --rm -it --net=host --ipc=host --privileged rhapsodi-promtek:jazzy bash
+docker run --rm -it --net=host --ipc=host --privileged rhapsodi-promtek:ros-prod-local bash
 ```
 
 ---
@@ -446,3 +537,17 @@ See `docker/README.md` for additional notes.
 See `GIT_WORKFLOW.md` for the commands to push to GitHub and pull/update on the laptop/Pi.
 
 
+
+
+
+
+source /opt/ros/jazzy/setup.bash
+export ROS_DOMAIN_ID=0
+export ROS_LOCALHOST_ONLY=0
+export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+export FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
+export ROS_STATIC_PEERS=169.254.200.201
+ros2 daemon stop
+sleep 2
+ros2 topic list

@@ -11,10 +11,12 @@
   <depend>rclcpp</depend>
   <depend>rclcpp_action</depend>
   <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
   <depend>control_msgs</depend>
   <depend>trajectory_msgs</depend>
   <depend>robot_common_msgs</depend>
   <depend>pluginlib</depend>
+  <depend>rhapsodi_common_cpp</depend>
 
   <exec_depend>rosidl_default_runtime</exec_depend>
 

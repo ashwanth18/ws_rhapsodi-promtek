@@ -49,6 +49,9 @@ src/dashboard/node_modules/**
 **/*.dll
 **/*.exe
 
+# Keep published Condor agent artifacts in build context
+!Rhapsodi Condor Agent WIP Apr 8 2026/**
+
 # Big/irrelevant media (avoid shipping into the image unless you really need it)
 src/video_solution.mp4
 

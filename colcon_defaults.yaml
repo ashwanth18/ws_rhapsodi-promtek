@@ -1,0 +1,5 @@
+# Colcon defaults when building from this workspace (merged with ~/.colcon/defaults.yaml).
+# Ensures ament/CMake uses Ubuntu ROS Python, not a uv ~/.local Python missing catkin_pkg.
+build:
+  cmake-args:
+    - "-DPython3_EXECUTABLE=/usr/bin/python3"

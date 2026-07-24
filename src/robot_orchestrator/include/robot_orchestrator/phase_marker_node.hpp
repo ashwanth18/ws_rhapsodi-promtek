@@ -22,8 +22,13 @@ public:
     auto bb = config().blackboard;
     if (!node_) {
       node_ = bb->get<rclcpp::Node::SharedPtr>("ros_node");
-      pub_ = node_->create_publisher<std_msgs::msg::String>(
-        "/lightsout_training/phase", 10);
+    }
+
+    std::string phase_topic = "/lightsout_training/phase";
+    try { (void)bb->get("phase_topic", phase_topic); } catch (...) {}
+    if (!pub_ || phase_topic != current_topic_) {
+      pub_ = node_->create_publisher<std_msgs::msg::String>(phase_topic, 10);
+      current_topic_ = phase_topic;
     }
 
     auto phase = getInput<std::string>("phase");
@@ -42,6 +47,7 @@ public:
 private:
   rclcpp::Node::SharedPtr node_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_;
+  std::string current_topic_;
 };
 
 } // namespace robot_orchestrator

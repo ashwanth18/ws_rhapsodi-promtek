@@ -49,6 +49,27 @@ from .utils.conversion import (
 )
 
 
+ROS1_GOAL_STATUS_PENDING = 0
+ROS1_GOAL_STATUS_ACTIVE = 1
+ROS1_GOAL_STATUS_PREEMPTED = 2
+ROS1_GOAL_STATUS_SUCCEEDED = 3
+ROS1_GOAL_STATUS_ABORTED = 4
+ROS1_GOAL_STATUS_REJECTED = 5
+ROS1_GOAL_STATUS_PREEMPTING = 6
+ROS1_GOAL_STATUS_RECALLING = 7
+ROS1_GOAL_STATUS_RECALLED = 8
+ROS1_GOAL_STATUS_LOST = 9
+
+ROS1_TERMINAL_GOAL_STATUSES = {
+    ROS1_GOAL_STATUS_PREEMPTED,
+    ROS1_GOAL_STATUS_SUCCEEDED,
+    ROS1_GOAL_STATUS_ABORTED,
+    ROS1_GOAL_STATUS_REJECTED,
+    ROS1_GOAL_STATUS_RECALLED,
+    ROS1_GOAL_STATUS_LOST,
+}
+
+
 class Action:
     """
     Action class for bridging ROS1 and ROS2 action systems.
@@ -196,10 +217,10 @@ class Action:
 
         def result_callback(result):
             nonlocal ros1_result, ros2_result
+            ros1_result = result
             normalize_ROS1_type_to_ROS2(
                 ros1_result, ros2_result.get_fields_and_field_types()
             )
-            ros1_result = result
             result_received_event.set()
 
         ros1_goal.on("feedback", lambda message: feedback_callback(message))
@@ -211,16 +232,56 @@ class Action:
             time.sleep(0.01)
 
         ros1_goal_status = ros1_goal.status["status"]
+        status_wait_deadline = time.monotonic() + 1.0
+        while ros1_goal_status not in ROS1_TERMINAL_GOAL_STATUSES:
+            if time.monotonic() >= status_wait_deadline:
+                break
+            time.sleep(0.01)
+            ros1_goal_status = ros1_goal.status["status"]
         set_message_fields(ros2_result, ros1_result)
 
         # Map ROS1 terminal states to ROS2 terminal states
         # https://docs.ros.org/en/noetic/api/actionlib_msgs/html/msg/GoalStatus.html
-        if ros1_goal_status == 3:
+        if ros1_goal_status == ROS1_GOAL_STATUS_SUCCEEDED:
             goal_handle.succeed()
-        elif ros1_goal_status in [4, 5]:
+        elif ros1_goal_status in [ROS1_GOAL_STATUS_ABORTED, ROS1_GOAL_STATUS_REJECTED]:
             goal_handle.abort()
-        elif ros1_goal_status in [2, 8]:
-            goal_handle.canceled()
+        elif ros1_goal_status in [
+            ROS1_GOAL_STATUS_PREEMPTED,
+            ROS1_GOAL_STATUS_RECALLED,
+        ]:
+            # rclpy only accepts CANCELED after the ROS 2 goal has entered
+            # CANCELING. ROS 1 may report PREEMPTED/RECALLED for other bridge
+            # races; complete those as aborted to avoid invalid transitions.
+            if goal_handle.is_cancel_requested:
+                goal_handle.canceled()
+            else:
+                self._node.get_logger().warn(
+                    "ROS1 preempt/recall without ROS2 cancel; aborting goal"
+                )
+                goal_handle.abort()
+        elif ros1_result is not None and ros1_goal_status in [
+            ROS1_GOAL_STATUS_PENDING,
+            ROS1_GOAL_STATUS_ACTIVE,
+            ROS1_GOAL_STATUS_PREEMPTING,
+            ROS1_GOAL_STATUS_RECALLING,
+        ]:
+            self._node.get_logger().warn(
+                "ROS1 result callback returned before terminal goal status was visible; "
+                f"treating status {ros1_goal_status} as success"
+            )
+            goal_handle.succeed()
+        elif ros1_goal_status in [
+            ROS1_GOAL_STATUS_PENDING,
+            ROS1_GOAL_STATUS_ACTIVE,
+            ROS1_GOAL_STATUS_PREEMPTING,
+            ROS1_GOAL_STATUS_RECALLING,
+        ]:
+            self._node.get_logger().warn(
+                "ROS1 goal status stayed non-terminal after result wait; "
+                f"treating status {ros1_goal_status} as success"
+            )
+            goal_handle.succeed()
         else:
             self._node.get_logger().warn(
                 f"Unknown ROS1 goal status: {ros1_goal_status}"

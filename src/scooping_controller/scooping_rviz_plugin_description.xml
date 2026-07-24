@@ -1,0 +1,8 @@
+<library path="scooping_rviz_panel">
+  <class
+    name="scooping_controller/ScoopingPanel"
+    type="scooping_controller::ScoopingPanel"
+    base_class_type="rviz_common::Panel">
+    <description>Panel for saving, loading, and executing scooping poses.</description>
+  </class>
+</library>

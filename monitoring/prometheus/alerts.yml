@@ -1,0 +1,36 @@
+groups:
+  - name: rhapsodi-fleet
+    rules:
+      - alert: DeviceDown
+        expr: up{role="node"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Device {{ $labels.instance }} is down"
+          description: "node_exporter scrape failed for 5 minutes."
+
+      - alert: DiskAlmostFull
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes) < 0.15
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk low on {{ $labels.instance }}"
+          description: "Filesystem {{ $labels.mountpoint }} under 15% free."
+
+      - alert: HighMemoryPressure
+        expr: (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) < 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Memory pressure on {{ $labels.instance }}"
+
+      - alert: ContainerRestarting
+        expr: increase(container_last_seen{name!=""}[15m]) > 0 and changes(container_start_time_seconds[15m]) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container churn on {{ $labels.instance }}"

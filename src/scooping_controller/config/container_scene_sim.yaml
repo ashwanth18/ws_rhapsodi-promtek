@@ -1,0 +1,24 @@
+/**:
+  ros__parameters:
+    scooping_container_mesh_resource: "package://scooping_controller/models/scooping_container/meshes/scooping_container.STL"
+    scooping_container_position_xyz: [0.460, -0.119, 0.00]
+    scooping_container_orientation_xyzw: [0.0, 0.0, 1.0, 0.0]
+    scooping_container_scale_xyz: [0.001, 0.001, 0.001]
+    scooping_container_color_rgb: [0.7, 0.7, 0.7]
+
+    weighing_container_mesh_resource: "package://scooping_controller/models/weighing_container/meshes/rs3_container.STL"
+    weighing_container_position_xyz: [0.00, -0.4218, 0.07]
+    weighing_container_orientation_xyzw: [0.0, 0.0, 0.70710678, 0.70710678]
+    weighing_container_scale_xyz: [0.001, 0.001, 0.001]
+    weighing_container_color_rgb: [0.4, 0.8, 0.4]
+
+    table_geometry_type: "box"
+    table_mesh_resource: ""
+    # Planning-scene table is shifted ~5 mm below the gz world top so that
+    # robots mounted at link0/base_link z=0 don't false-positive as colliding
+    # with the table top in MoveIt's StartStateCollision / MTC stages.
+    table_position_xyz: [0.00, 0.00, -0.02]
+    table_orientation_xyzw: [0.0, 0.0, 0.0, 1.0]
+    table_scale_xyz: [1.0, 1.0, 1.0]
+    table_dimensions_xyz: [1.02, 0.61, 0.03]
+    table_color_rgb: [0.55, 0.39, 0.22]

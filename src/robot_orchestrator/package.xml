@@ -16,6 +16,7 @@
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>
   <depend>ament_index_cpp</depend>
+  <depend>rhapsodi_common_cpp</depend>
 
   <exec_depend>rosidl_default_runtime</exec_depend>
 

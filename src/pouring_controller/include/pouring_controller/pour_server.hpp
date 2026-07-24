@@ -10,8 +10,9 @@
 #include <control_msgs/action/follow_joint_trajectory.hpp>
 #include <trajectory_msgs/msg/joint_trajectory_point.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
-#include <std_msgs/msg/int32.hpp>
 #include <robot_common_msgs/msg/pour_status.hpp>
+#include <rhapsodi_common_cpp/health_event_publisher.hpp>
+#include <memory>
 #include <mutex>
 #include <vector>
 
@@ -27,10 +28,11 @@ public:
 private:
   rclcpp_action::Server<PourToTarget>::SharedPtr action_server_;
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr weight_sub_;
-  rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr vibration_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr vibration_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr valve_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr incline_pub_;
   rclcpp::Publisher<robot_common_msgs::msg::PourStatus>::SharedPtr pour_status_pub_;
+  std::unique_ptr<rhapsodi_common_cpp::HealthEventPublisher> health_;
   std::mutex data_mutex_;
   double raw_weight_{0.0};
   double filtered_weight_{0.0};
@@ -40,12 +42,17 @@ private:
   double stale_ms_{500.0};
 
   // Phase thresholds
-  double coarse_thresh_{0.2};
+  double coarse_thresh_{0.40};
   double fine_thresh_{0.05};
+  double start_in_fine_below_g_{40.0};
+  double start_in_trickle_below_g_{10.0};
   double settle_time_s_{0.3};
   int hold_within_tol_count_{5};
   double final_settle_time_s_{1.0};
   double min_delta_g_{1.0};
+  double no_progress_timeout_s_{3.0};
+  double no_progress_incline_step_deg_{5.0};
+  double max_incline_deg_{20.0};
 
   // Plugin
   std::shared_ptr<pouring_controller::ControlLaw> control_;
@@ -63,15 +70,17 @@ private:
   std::mutex joint_mutex_;
   rclcpp::TimerBase::SharedPtr traj_client_init_timer_;
   bool traj_client_ready_{false};
-  double coarse_tilt_deg_{0.0};
+  double coarse_tilt_deg_{15.0};
   double fine_tilt_deg_{0.0};
   double trickle_tilt_deg_{0.0};
   double joint_move_time_s_{2.0};
-  // Per-phase vibration raw command (0..255)
-  int coarse_vibration_raw_{230};
-  int settle_vibration_raw_{178};
-  int fine_vibration_raw_{128};
-  int trickle_vibration_raw_{76};
+  // Normalized vibration intensity (0..1)
+  double coarse_vibration_intensity_{0.9};
+  double settle_vibration_intensity_{0.0};
+  double fine_vibration_intensity_{0.70};
+  double trickle_vibration_intensity_{0.5};
+  double trickle_pulse_ms_{180.0};
+  double trickle_pause_ms_{160.0};
 
   void sendTiltJoint(double target_deg);
   void onJointState(const sensor_msgs::msg::JointState::SharedPtr msg);

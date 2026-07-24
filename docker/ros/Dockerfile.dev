@@ -1,0 +1,73 @@
+FROM ros:jazzy-ros-base AS devbase
+
+SHELL ["/bin/bash", "-c"]
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_BREAK_SYSTEM_PACKAGES=1
+
+COPY docker/ros/apt-packages.txt /tmp/apt-packages.txt
+
+RUN apt-get update \
+    && xargs -r apt-get install -y --no-install-recommends < /tmp/apt-packages.txt \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -f /tmp/apt-packages.txt
+
+RUN if [ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]; then rosdep init; fi \
+    && rosdep update
+
+WORKDIR /ws
+
+COPY src/ /ws/src/
+
+RUN if [ -f /ws/src/ros2.repos ] && ! grep -qE '^repositories:\\s*\\{\\}\\s*$' /ws/src/ros2.repos; then \
+      vcs import /ws/src < /ws/src/ros2.repos; \
+    fi
+
+RUN python3 -m venv --system-site-packages /opt/venv \
+    && /opt/venv/bin/pip install -r /ws/src/requirements.txt \
+    && if [ -f /ws/src/backend/requirements.txt ]; then /opt/venv/bin/pip install -r /ws/src/backend/requirements.txt; fi
+
+RUN apt-get update \
+    && rosdep install \
+        --from-paths /ws/src \
+        --ignore-src \
+        -r -y \
+        --rosdistro jazzy \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG COLCON_PARALLEL_WORKERS=8
+ARG CMAKE_BUILD_TYPE=RelWithDebInfo
+ARG TARGETARCH
+
+ENV MAKEFLAGS="-j${COLCON_PARALLEL_WORKERS}" \
+    CMAKE_BUILD_PARALLEL_LEVEL="${COLCON_PARALLEL_WORKERS}" \
+    CCACHE_DIR=/root/.cache/ccache \
+    CCACHE_MAXSIZE=20G
+
+RUN --mount=type=cache,target=/ws/build,id=colcon-dev-build-${TARGETARCH} \
+    --mount=type=cache,target=/ws/log,id=colcon-dev-log-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/ccache,id=ccache-dev-${TARGETARCH} \
+    source /opt/ros/jazzy/setup.bash \
+    && mkdir -p /ws/build /ws/log /ws/install \
+    && colcon build \
+        --merge-install \
+        --parallel-workers ${COLCON_PARALLEL_WORKERS} \
+        --packages-skip micro_ros_agent \
+        --cmake-args \
+          -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh \
+    && mkdir -p /workspace
+
+FROM devbase AS runtime
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["bash"]
+
+FROM runtime AS devshell
+WORKDIR /workspace
+CMD ["bash"]

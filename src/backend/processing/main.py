@@ -1,20 +1,25 @@
 import json
+import logging
 import os
-from datetime import datetime
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
 import re
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 import requests
 from fastapi import FastAPI, HTTPException
 from mcap_ros2.reader import read_ros2_messages
 from pydantic import BaseModel
+logger = logging.getLogger('uvicorn.error')
+
 
 
 BACKEND_URL = os.environ.get('BACKEND_URL', 'http://backend:8000')
 PHASE_TOPIC = os.environ.get('PHASE_TOPIC', '/lightsout_training/phase')
+WEBHOOK_PHASE_TOPIC = os.environ.get('WEBHOOK_PHASE_TOPIC', '/webhook_run/phase')
 RUN_ID_TOPIC = os.environ.get('RUN_ID_TOPIC', '/lightsout_training/run_id')
 BATCH_ID_TOPIC = os.environ.get(
     'BATCH_ID_TOPIC', '/lightsout_training/batch_id'
@@ -32,9 +37,13 @@ EPISODE_TOPIC = os.environ.get(
 ROBOT_ID_TOPIC = os.environ.get(
     'ROBOT_ID_TOPIC', '/lightsout_training/robot_id'
 )
+WEBHOOK_METADATA_TOPIC = os.environ.get(
+    'WEBHOOK_METADATA_TOPIC', '/webhook_run/metadata'
+)
 TOPICS_FILTER = [
     '/weight',
     PHASE_TOPIC,
+    WEBHOOK_PHASE_TOPIC,
     RUN_ID_TOPIC,
     BATCH_ID_TOPIC,
     INGREDIENT_ID_TOPIC,
@@ -42,6 +51,7 @@ TOPICS_FILTER = [
     MODE_TOPIC,
     EPISODE_TOPIC,
     ROBOT_ID_TOPIC,
+    WEBHOOK_METADATA_TOPIC,
 ]
 PHASE_START = os.environ.get('PHASE_START', 'pour_start')
 PHASE_END = os.environ.get('PHASE_END', 'pour_end')
@@ -103,6 +113,8 @@ def _remap_path(path: Path) -> Path:
 
 
 def _load_metadata(run_folder: Path) -> Tuple[Dict[str, Any], Path]:
+    if not run_folder.exists():
+        run_folder = _remap_path(run_folder)
     metadata_path = run_folder / 'metadata.json'
     if not metadata_path.exists():
         raise FileNotFoundError(f'metadata.json not found in {run_folder}')
@@ -134,7 +146,7 @@ def _read_samples(
                     t_ns=log_time_ns, weight_g=float(msg.ros_msg.data)
                 )
             )
-        elif topic == PHASE_TOPIC:
+        elif topic in {PHASE_TOPIC, WEBHOOK_PHASE_TOPIC}:
             phases.append(
                 PhaseEvent(t_ns=log_time_ns, phase=str(msg.ros_msg.data))
             )
@@ -153,6 +165,16 @@ def _read_samples(
                 meta[topic] = MetaValue(
                     log_time_ns, str(int(msg.ros_msg.data))
                 )
+        elif topic == WEBHOOK_METADATA_TOPIC:
+            try:
+                payload = json.loads(str(msg.ros_msg.data) or '{}')
+            except json.JSONDecodeError:
+                payload = {}
+            if isinstance(payload, dict):
+                for key, value in payload.items():
+                    meta[f'webhook:{key}'] = MetaValue(
+                        log_time_ns, str(value)
+                    )
     weights.sort(key=lambda x: x.t_ns)
     phases.sort(key=lambda x: x.t_ns)
     return mcap_path, weights, phases, meta
@@ -184,6 +206,20 @@ def _meta_value(meta: Dict[str, MetaValue], topic: str) -> Optional[str]:
     if topic not in meta:
         return None
     return meta[topic].value
+
+
+def _webhook_meta_value(meta: Dict[str, MetaValue], field: str) -> Optional[str]:
+    return _meta_value(meta, f'webhook:{field}')
+
+
+def _resolved_meta_value(
+    meta: Dict[str, MetaValue], topic: str, webhook_field: str | None = None
+) -> Optional[str]:
+    if webhook_field:
+        webhook_value = _webhook_meta_value(meta, webhook_field)
+        if webhook_value is not None:
+            return webhook_value
+    return _meta_value(meta, topic)
 
 
 def _episode_from_path(mcap_path: Path) -> Optional[int]:
@@ -244,7 +280,9 @@ def _compute_features(
     phases: List[PhaseEvent],
     meta: Dict[str, MetaValue],
 ) -> Dict[str, Any]:
-    target_weight = _meta_value(meta, TARGET_WEIGHT_TOPIC)
+    target_weight = _resolved_meta_value(
+        meta, TARGET_WEIGHT_TOPIC, 'target_weight_g'
+    )
     target_weight = float(target_weight) if target_weight is not None else None
 
     if weights:
@@ -297,8 +335,8 @@ def _compute_features(
         else None
     )
     overshoot = (
-        max(0.0, max_weight - target_weight)
-        if max_weight is not None and target_weight is not None
+        final_weight - target_weight
+        if final_weight is not None and target_weight is not None
         else None
     )
 
@@ -327,16 +365,23 @@ def _compute_features(
         start_time_ns = min(timestamps)
         end_time_ns = max(timestamps)
 
+    episode_value = _resolved_meta_value(meta, EPISODE_TOPIC, 'episode_index')
+    if episode_value is None and _webhook_meta_value(meta, 'run_id') is not None:
+        episode_value = '1'
+
     return {
-        'run_id': _meta_value(meta, RUN_ID_TOPIC),
-        'robot_id': _meta_value(meta, ROBOT_ID_TOPIC),
-        'batch_id': _meta_value(meta, BATCH_ID_TOPIC),
-        'ingredient_id': _meta_value(meta, INGREDIENT_ID_TOPIC),
-        'mode': _meta_value(meta, MODE_TOPIC),
+        'run_id': _resolved_meta_value(meta, RUN_ID_TOPIC, 'run_id'),
+        'robot_id': _resolved_meta_value(meta, ROBOT_ID_TOPIC, 'robot_id'),
+        'batch_id': _resolved_meta_value(meta, BATCH_ID_TOPIC, 'batch_id'),
+        'ingredient_id': _resolved_meta_value(
+            meta, INGREDIENT_ID_TOPIC, 'ingredient_id'
+        ),
+        'weightment_id': _webhook_meta_value(meta, 'weightment_id'),
+        'location_id': _webhook_meta_value(meta, 'location_id'),
+        'location_code': _webhook_meta_value(meta, 'location_code'),
+        'mode': _resolved_meta_value(meta, MODE_TOPIC, 'mode'),
         'episode_index': (
-            int(_meta_value(meta, EPISODE_TOPIC))
-            if _meta_value(meta, EPISODE_TOPIC)
-            else None
+            int(episode_value) if episode_value else None
         ),
         'target_weight_g': target_weight,
         'baseline_weight_g': baseline,
@@ -367,13 +412,18 @@ def _write_parquet(
         return None
     out_path.parent.mkdir(parents=True, exist_ok=True)
     rows: List[Dict[str, Any]] = []
-    run_id = _meta_value(meta, RUN_ID_TOPIC)
-    batch_id = _meta_value(meta, BATCH_ID_TOPIC)
-    ingredient_id = _meta_value(meta, INGREDIENT_ID_TOPIC)
-    mode = _meta_value(meta, MODE_TOPIC)
-    robot_id = _meta_value(meta, ROBOT_ID_TOPIC)
-    episode_index = _meta_value(meta, EPISODE_TOPIC)
-    target_weight = _meta_value(meta, TARGET_WEIGHT_TOPIC)
+    run_id = _resolved_meta_value(meta, RUN_ID_TOPIC, 'run_id')
+    batch_id = _resolved_meta_value(meta, BATCH_ID_TOPIC, 'batch_id')
+    ingredient_id = _resolved_meta_value(meta, INGREDIENT_ID_TOPIC, 'ingredient_id')
+    mode = _resolved_meta_value(meta, MODE_TOPIC, 'mode')
+    robot_id = _resolved_meta_value(meta, ROBOT_ID_TOPIC, 'robot_id')
+    episode_index = _resolved_meta_value(meta, EPISODE_TOPIC, 'episode_index')
+    if episode_index is None and _webhook_meta_value(meta, 'run_id') is not None:
+        episode_index = '1'
+    target_weight = _resolved_meta_value(meta, TARGET_WEIGHT_TOPIC, 'target_weight_g')
+    weightment_id = _webhook_meta_value(meta, 'weightment_id')
+    location_id = _webhook_meta_value(meta, 'location_id')
+    location_code = _webhook_meta_value(meta, 'location_code')
 
     for w in weights:
         rows.append(
@@ -388,6 +438,9 @@ def _write_parquet(
                 'robot_id': robot_id,
                 'episode_index': episode_index,
                 'target_weight_g': target_weight,
+                'weightment_id': weightment_id,
+                'location_id': location_id,
+                'location_code': location_code,
             }
         )
     for p in phases:
@@ -403,6 +456,9 @@ def _write_parquet(
                 'robot_id': robot_id,
                 'episode_index': episode_index,
                 'target_weight_g': target_weight,
+                'weightment_id': weightment_id,
+                'location_id': location_id,
+                'location_code': location_code,
             }
         )
     df = pd.DataFrame(rows).sort_values('log_time_ns')
@@ -412,12 +468,31 @@ def _write_parquet(
 
 @app.post('/process')
 def process(req: ProcessRequest) -> Dict[str, Any]:
+    started_at = time.monotonic()
     try:
-        if not req.bag_path:
-            raise ValueError('bag_path required')
-        bag_path = Path(req.bag_path).expanduser().resolve()
-        if not bag_path.exists():
-            bag_path = _remap_path(bag_path)
+        logger.info(
+            'Processing request received: run_db_id=%s run_folder=%s bag_path=%s out_path=%s',
+            req.run_db_id,
+            req.run_folder,
+            req.bag_path,
+            req.out_path,
+        )
+        metadata: Dict[str, Any] = {}
+        if req.run_folder:
+            metadata, metadata_bag_path = _load_metadata(
+                Path(req.run_folder).expanduser().resolve()
+            )
+        else:
+            metadata_bag_path = None
+
+        if req.bag_path:
+            bag_path = Path(req.bag_path).expanduser().resolve()
+            if not bag_path.exists():
+                bag_path = _remap_path(bag_path)
+        elif metadata_bag_path is not None:
+            bag_path = metadata_bag_path
+        else:
+            raise ValueError('bag_path or run_folder required')
         mcap_path, weights, phases, meta = _read_samples(bag_path)
         episode_from_path = _episode_from_path(mcap_path)
         if episode_from_path is not None:
@@ -440,22 +515,78 @@ def process(req: ProcessRequest) -> Dict[str, Any]:
             else mcap_path.with_suffix('.parquet')
         )
         parquet_path = _write_parquet(weights, phases, meta, out_path)
+        metadata_json = json.dumps(metadata) if metadata else None
+        if metadata_json is None and req.run_folder:
+            metadata_json = json.dumps(
+                {
+                    'run_folder': req.run_folder,
+                    'bag_path': str(bag_path),
+                }
+            )
+        features['mcap_path'] = str(mcap_path)
         features['parquet_path'] = parquet_path
+        features['metadata_json'] = metadata_json
         features['features_json'] = json.dumps(
             {
                 'weights_count': len(weights),
                 'phases_count': len(phases),
             }
         )
+        logger.info(
+            'Processing complete: run_id=%s batch_id=%s ingredient_id=%s '
+            'weightment_id=%s weights=%s phases=%s parquet=%s elapsed=%.2fs',
+            features.get('run_id'),
+            features.get('batch_id'),
+            features.get('ingredient_id'),
+            features.get('weightment_id'),
+            len(weights),
+            len(phases),
+            parquet_path,
+            time.monotonic() - started_at,
+        )
     except Exception as exc:
+        logger.exception(
+            'Processing failed before backend callback: run_db_id=%s run_folder=%s bag_path=%s',
+            req.run_db_id,
+            req.run_folder,
+            req.bag_path,
+        )
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     payload = {'run_db_id': req.run_db_id, **features}
     try:
+        callback_started_at = time.monotonic()
+        logger.info(
+            'Posting processed result to backend: run_id=%s robot_weightment_run_id=%s '
+            'weightment_id=%s backend_url=%s',
+            payload.get('run_id'),
+            payload.get('robot_weightment_run_id'),
+            payload.get('weightment_id'),
+            f'{BACKEND_URL}/processed',
+        )
         resp = requests.post(
             f'{BACKEND_URL}/processed', json=payload, timeout=10
         )
         resp.raise_for_status()
+        logger.info(
+            'Backend processed callback succeeded: status=%s elapsed=%.2fs body=%s',
+            resp.status_code,
+            time.monotonic() - callback_started_at,
+            resp.text[:500] or '<empty>',
+        )
     except Exception as exc:
+        if isinstance(exc, requests.HTTPError) and exc.response is not None:
+            logger.error(
+                'Backend processed callback failed: status=%s body=%s',
+                exc.response.status_code,
+                exc.response.text[:1000],
+            )
+        else:
+            logger.exception(
+                'Backend processed callback failed: run_id=%s weightment_id=%s backend_url=%s',
+                payload.get('run_id'),
+                payload.get('weightment_id'),
+                f'{BACKEND_URL}/processed',
+            )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return resp.json()

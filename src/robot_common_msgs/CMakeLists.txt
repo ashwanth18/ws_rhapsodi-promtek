@@ -5,19 +5,22 @@ find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(builtin_interfaces REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ContainerSpec.msg"
   "msg/SystemStatus.msg"
   "msg/PourStatus.msg"
+  "msg/HealthEvent.msg"
   "action/MoveTo.action"
   "action/ScanQr.action"
   "action/Scoop.action"
   "action/PourToTarget.action"
   "srv/StartBatch.srv"
   "srv/StartLightsOut.srv"
+  "srv/StartWebhookWeightment.srv"
   "srv/RecordTarget.srv"
-  DEPENDENCIES std_msgs geometry_msgs
+  DEPENDENCIES std_msgs geometry_msgs builtin_interfaces
 )
 
 ament_export_dependencies(rosidl_default_runtime)

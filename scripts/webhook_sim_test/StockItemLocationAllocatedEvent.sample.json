@@ -1,0 +1,15 @@
+{
+  "eventId": "00000000-0000-0000-0000-000000000002",
+  "contextId": "sim-context-001",
+  "siteId": "sim-site",
+  "createdUtc": "2026-03-14T12:00:00Z",
+  "stockItemLocationId": 92,
+  "stockItemLocationCode": "SIM_BIN_A",
+  "allocatedStockItems": [
+    {
+      "id": "1327",
+      "code": "SIM-INGREDIENT-1327",
+      "name": "Simulation Powder"
+    }
+  ]
+}

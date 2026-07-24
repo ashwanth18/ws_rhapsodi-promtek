@@ -1,6 +1,7 @@
 #include <behaviortree_cpp/bt_factory.h>
 #include "robot_orchestrator/pour_to_target_node.hpp"
 #include "robot_orchestrator/move_to_node.hpp"
+#include "robot_orchestrator/execute_scoop_node.hpp"
 #include "robot_orchestrator/scan_qr_node.hpp"
 #include "robot_orchestrator/has_active_container_node.hpp"
 #include "robot_orchestrator/load_next_container_node.hpp"
@@ -15,10 +16,13 @@
 #include "robot_orchestrator/check_remaining_node.hpp"
 #include "robot_orchestrator/weight_fresh_node.hpp"
 #include "robot_orchestrator/capture_baseline_node.hpp"
+#include "robot_orchestrator/compute_scoop_offset_node.hpp"
 #include "robot_orchestrator/weight_delta_node.hpp"
 #include "robot_orchestrator/episode_marker_node.hpp"
 #include "robot_orchestrator/episode_end_marker_node.hpp"
 #include "robot_orchestrator/phase_marker_node.hpp"
+#include "robot_orchestrator/log_remaining_weight_node.hpp"
+#include "robot_orchestrator/retry_if_need_rescoop_node.hpp"
 #include <behaviortree_cpp/decorators/loop_node.h>
 #include <behaviortree_cpp/decorators/consume_queue.h>
 #include <robot_common_msgs/msg/container_spec.hpp>
@@ -29,6 +33,7 @@ void RegisterNodes(BT::BehaviorTreeFactory & factory)
 {
   factory.registerNodeType<PourToTargetNode>("PourToTarget");
   factory.registerNodeType<MoveToNode>("MoveTo");
+  factory.registerNodeType<ExecuteScoopNode>("ExecuteScoop");
   factory.registerNodeType<ScanQrNode>("ScanQr");
   // Legacy nodes no longer used in Loop-based tree, keep registered for compatibility
   factory.registerNodeType<HasActiveContainerNode>("HasActiveContainer");
@@ -44,10 +49,13 @@ void RegisterNodes(BT::BehaviorTreeFactory & factory)
   factory.registerNodeType<CheckRemainingNode>("CheckRemaining");
   factory.registerNodeType<WeightFreshNode>("WeightFresh");
   factory.registerNodeType<CaptureBaselineNode>("CaptureBaseline");
+  factory.registerNodeType<ComputeScoopOffsetNode>("ComputeScoopOffset");
   factory.registerNodeType<WeightDeltaNode>("WeightDelta");
   factory.registerNodeType<EpisodeMarkerNode>("EpisodeMarker");
   factory.registerNodeType<EpisodeEndMarkerNode>("EpisodeEndMarker");
   factory.registerNodeType<PhaseMarkerNode>("PhaseMarker");
+  factory.registerNodeType<LogRemainingWeightNode>("LogRemainingWeight");
+  factory.registerNodeType<RetryIfNeedRescoopNode>("RetryIfNeedRescoop");
 
   // Register LoopNode for ContainerSpec queue consumption
   factory.registerNodeType<BT::LoopNode<robot_common_msgs::msg::ContainerSpec>>("LoopContainerSpec");

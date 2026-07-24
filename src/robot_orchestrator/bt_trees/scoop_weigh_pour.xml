@@ -1,0 +1,49 @@
+<root BTCPP_format="4" main_tree_to_execute="ScoopWeighPour">
+  <BehaviorTree ID="ScoopWeighPour">
+    <Sequence name="ScoopWeighPourFlow">
+      <WaitSeconds seconds="0.5"/>
+      <Repeat num_cycles="{lightsout_episodes}">
+        <Sequence name="ScoopWeighPourEpisode">
+          <EpisodeMarker/>
+          <PhaseMarker phase="scoop_start"/>
+
+          <MoveTo name="MoveToScoopingContainer"
+                  target_name="MoveToScoopingContainer"
+                  use_cartesian="false"
+                  velocity_scaling="0.20"
+                  acceleration_scaling="0.20" />
+          <WaitSeconds seconds="1.0"/>
+
+          <ExecuteScoop continuous="true" timeout_s="120.0"/>
+          <PhaseMarker phase="scoop_end"/>
+          <WaitSeconds seconds="1.0"/>
+
+          <PhaseMarker phase="transport_start"/>
+          <MoveTo name="MoveToWeighingContainer"
+                  target_name="MoveToWeighingContainer"
+                  constrain_transport_pitch="true"
+                  use_cartesian="false"
+                  velocity_scaling="0.15"
+                  acceleration_scaling="0.15" />
+          <PhaseMarker phase="transport_end"/>
+          <WaitSeconds seconds="2.5"/>
+
+          <PhaseMarker phase="pour_start"/>
+          <PourToTarget target_weight="{lightsout_target_weight_g}"
+                        tolerance="{lightsout_tolerance_g}"
+                        max_time_s="30"/>
+          <PhaseMarker phase="pour_end"/>
+          <WaitSeconds seconds="1.0"/>
+
+          <MoveTo name="ReturnHome"
+                  target_name="ReturnHome"
+                  constrain_upright="true"
+                  use_cartesian="false"
+                  velocity_scaling="0.20"
+                  acceleration_scaling="0.20" />
+          <EpisodeEndMarker/>
+        </Sequence>
+      </Repeat>
+    </Sequence>
+  </BehaviorTree>
+</root>

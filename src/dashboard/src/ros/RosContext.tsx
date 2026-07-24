@@ -1,15 +1,15 @@
 // RosContext: provides a single shared ROSLIB.Ros connection to rosbridge
 // so all pages/components reuse one websocket and share lifecycle.
 import React, { createContext, useContext, useEffect, useState } from 'react'
+import { normalizeRosbridgeUrl, useRuntimeConfig } from '../config/RuntimeConfig'
 import { ROSLIB } from './roslib'
-import { useRuntimeConfig } from '../config/RuntimeConfig'
 
 const RosCtx = createContext<ROSLIB.Ros | null>(null)
 
 export function RosProvider({ children }: { children: React.ReactNode }) {
   const [ros, setRos] = useState<ROSLIB.Ros | null>(null)
   const { rosbridgeUrl } = useRuntimeConfig()
-  const url: string = rosbridgeUrl || 'ws://localhost:9090'
+  const url = normalizeRosbridgeUrl(rosbridgeUrl) || 'ws://localhost:9090'
 
   useEffect(() => {
     // Create a single ROS connection for the app

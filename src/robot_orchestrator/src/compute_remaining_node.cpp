@@ -15,21 +15,22 @@ BT::PortsList ComputeRemainingNode::providedPorts()
 BT::NodeStatus ComputeRemainingNode::tick()
 {
   double batch_target = 0.0, tol = 0.0;
-  // Prefer constant container_target_g for recompute; else use input
-  if (!config().blackboard->get("container_target_g", batch_target)) {
-    // fallback to previous remaining as target if constant not set
-    config().blackboard->get("remaining_weight", batch_target);
+  // Use the explicit BT input first so webhook flows honor their requested target.
+  if (!getInput("batch_target", batch_target) || batch_target <= 0.0) {
+    // Fall back to blackboard-backed container flows when no explicit input is provided.
+    if (!config().blackboard->get("container_target_g", batch_target)) {
+      // Final fallback to previous remaining target for legacy/recompute use.
+      (void)config().blackboard->get("remaining_weight", batch_target);
+    }
   }
-  if (batch_target <= 0.0) {
-    if (!getInput("batch_target", batch_target)) return BT::NodeStatus::FAILURE;
-  }
+  if (batch_target <= 0.0) return BT::NodeStatus::FAILURE;
   if (!getInput("tolerance", tol)) return BT::NodeStatus::FAILURE;
 
   // Live scale and per-ingredient baseline
   double scale_weight = 0.0;
-  config().blackboard->get("scale_weight", scale_weight);
+  (void)config().blackboard->get("scale_weight", scale_weight);
   double baseline_g = 0.0;
-  config().blackboard->get("container_baseline_g", baseline_g);
+  (void)config().blackboard->get("container_baseline_g", baseline_g);
 
   // Net weight added for this ingredient
   const double net_added = std::max(0.0, scale_weight - baseline_g);

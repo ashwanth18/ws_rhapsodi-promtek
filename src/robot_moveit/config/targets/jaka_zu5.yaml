@@ -1,0 +1,7 @@
+# Per-robot saved targets for the Jaka ZU5 (sim or real).
+# Frame must match the Jaka URDF root link (link0).
+targets:
+  jaka_home:
+    frame_id: link0
+    position: {x: 0.0, y: 0.0, z: 0.30}
+    orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}

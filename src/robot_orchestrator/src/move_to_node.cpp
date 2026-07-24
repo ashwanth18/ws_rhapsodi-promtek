@@ -18,12 +18,20 @@ BT::PortsList MoveToNode::providedPorts()
     BT::InputPort<double>("qw", 1.0, "orientation w"),
     BT::InputPort<std::string>("frame_id", std::string("base_link"), "pose frame"),
     BT::InputPort<bool>("use_cartesian", false, "use Cartesian path"),
+    BT::InputPort<bool>("plan_only", false, "plan but do not execute"),
+    BT::InputPort<std::string>("planning_pipeline", std::string(), "MoveIt planning pipeline"),
+    BT::InputPort<std::string>("planner_id", std::string(), "planner id within selected pipeline"),
     BT::InputPort<double>("eef_step", 0.01, "Cartesian eef step"),
     BT::InputPort<double>("jump_threshold", 0.0, "Cartesian jump threshold"),
     // New optional ports matching updated action:
     BT::InputPort<std::vector<std::string>>("waypoint_names", {}, "list of named waypoints"),
     BT::InputPort<double>("velocity_scaling", 0.0, "per-goal velocity scaling [0,1] (0=use param)"),
     BT::InputPort<double>("acceleration_scaling", 0.0, "per-goal acceleration scaling [0,1] (0=use param)"),
+    BT::InputPort<bool>("constrain_upright", false, "keep roll/pitch upright along path"),
+    BT::InputPort<bool>("constrain_transport_pitch", false, "keep transport pitch from scoop-horizontal convention"),
+    BT::InputPort<double>("upright_roll_tolerance", 0.0, "upright roll tolerance in radians (0=use server param)"),
+    BT::InputPort<double>("upright_pitch_tolerance", 0.0, "upright pitch tolerance in radians (0=use server param)"),
+    BT::InputPort<double>("upright_yaw_tolerance", 0.0, "upright yaw tolerance in radians (0=use server param)"),
     BT::InputPort<std::vector<double>>("waypoint_velocity_scaling", {}, "per-waypoint velocity scaling for joint-space"),
     BT::InputPort<std::vector<double>>("waypoint_acceleration_scaling", {}, "per-waypoint acceleration scaling for joint-space")
   };
@@ -40,6 +48,10 @@ MoveToNode::MoveToNode(const std::string& name, const BT::NodeConfiguration& cfg
 
 BT::NodeStatus MoveToNode::onStart()
 {
+  goal_handle_.reset();
+  send_future_ = {};
+  result_future_ = {};
+
   RCLCPP_INFO(node_->get_logger(), "MoveToNode: waiting for action server %s", "/move_to");
   if (!client_->wait_for_action_server(10s)) {
     RCLCPP_ERROR(node_->get_logger(), "MoveToNode: action server %s not available", "/move_to");
@@ -67,6 +79,15 @@ BT::NodeStatus MoveToNode::onStart()
   if (auto cart = getInput<bool>("use_cartesian"); cart) {
     goal.use_cartesian = *cart;
   }
+  if (auto plan_only = getInput<bool>("plan_only"); plan_only) {
+    goal.plan_only = *plan_only;
+  }
+  if (auto pipeline = getInput<std::string>("planning_pipeline"); pipeline) {
+    goal.planning_pipeline = *pipeline;
+  }
+  if (auto planner = getInput<std::string>("planner_id"); planner) {
+    goal.planner_id = *planner;
+  }
   if (auto es = getInput<double>("eef_step"); es) {
     goal.eef_step = static_cast<float>(*es);
   }
@@ -92,6 +113,21 @@ BT::NodeStatus MoveToNode::onStart()
   }
   if (auto as = getInput<double>("acceleration_scaling"); as) {
     goal.acceleration_scaling = static_cast<float>(*as);
+  }
+  if (auto upright = getInput<bool>("constrain_upright"); upright) {
+    goal.constrain_upright = *upright;
+  }
+  if (auto transport_pitch = getInput<bool>("constrain_transport_pitch"); transport_pitch) {
+    goal.constrain_transport_pitch = *transport_pitch;
+  }
+  if (auto roll_tol = getInput<double>("upright_roll_tolerance"); roll_tol) {
+    goal.upright_roll_tolerance = static_cast<float>(*roll_tol);
+  }
+  if (auto pitch_tol = getInput<double>("upright_pitch_tolerance"); pitch_tol) {
+    goal.upright_pitch_tolerance = static_cast<float>(*pitch_tol);
+  }
+  if (auto yaw_tol = getInput<double>("upright_yaw_tolerance"); yaw_tol) {
+    goal.upright_yaw_tolerance = static_cast<float>(*yaw_tol);
   }
   if (auto wv = getInput<std::vector<double>>("waypoint_velocity_scaling"); wv && !wv->empty()) {
     goal.waypoint_velocity_scaling.assign(wv->begin(), wv->end());
@@ -124,18 +160,6 @@ BT::NodeStatus MoveToNode::onStart()
       RCLCPP_INFO(node_->get_logger(), "MoveToNode: goal accepted by server");
     }
   };
-  opts.result_callback = [this](const rclcpp_action::ClientGoalHandle<MoveTo>::WrappedResult &res){
-    std::string code;
-    switch (res.code) {
-      case rclcpp_action::ResultCode::SUCCEEDED: code = "SUCCEEDED"; break;
-      case rclcpp_action::ResultCode::ABORTED: code = "ABORTED"; break;
-      case rclcpp_action::ResultCode::CANCELED: code = "CANCELED"; break;
-      default: code = "UNKNOWN"; break;
-    }
-    RCLCPP_INFO(node_->get_logger(), "MoveToNode: result code=%s success=%s msg=%s",
-                code.c_str(), (res.result && res.result->success) ? "true" : "false",
-                res.result ? res.result->message.c_str() : "<none>");
-  };
   send_future_ = client_->async_send_goal(goal, opts);
   return BT::NodeStatus::RUNNING;
 }
@@ -158,6 +182,16 @@ BT::NodeStatus MoveToNode::onRunning()
 
   if (result_future_.valid() && result_future_.wait_for(0s) == std::future_status::ready) {
     auto res = result_future_.get();
+    std::string code;
+    switch (res.code) {
+      case rclcpp_action::ResultCode::SUCCEEDED: code = "SUCCEEDED"; break;
+      case rclcpp_action::ResultCode::ABORTED: code = "ABORTED"; break;
+      case rclcpp_action::ResultCode::CANCELED: code = "CANCELED"; break;
+      default: code = "UNKNOWN"; break;
+    }
+    RCLCPP_INFO(node_->get_logger(), "MoveToNode: result code=%s success=%s msg=%s",
+                code.c_str(), (res.result && res.result->success) ? "true" : "false",
+                res.result ? res.result->message.c_str() : "<none>");
     if (res.result) {
       RCLCPP_INFO(node_->get_logger(), "MoveToNode: result ready success=%s msg=%s",
                   res.result->success ? "true" : "false", res.result->message.c_str());
@@ -177,6 +211,9 @@ void MoveToNode::onHalted()
       (void)client_->async_cancel_goal(goal_handle_);
     }
   } catch (...) {}
+  goal_handle_.reset();
+  send_future_ = {};
+  result_future_ = {};
 }
 
 } // namespace robot_orchestrator

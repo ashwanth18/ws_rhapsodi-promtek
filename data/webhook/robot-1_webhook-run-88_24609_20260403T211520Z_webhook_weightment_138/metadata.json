@@ -1,0 +1,31 @@
+{
+  "bag_path": "/home/ashwanth/ws_rhapsodi-promtek-dev/data/webhook/robot-1_webhook-run-88_24609_20260403T211520Z_webhook_weightment_138/webhook_run",
+  "batch_id": "24609",
+  "episode_index": 1,
+  "ingredient_id": "1327",
+  "location_code": "001",
+  "location_id": "92",
+  "mode": "webhook",
+  "robot_id": "robot-1",
+  "run_folder": "/home/ashwanth/ws_rhapsodi-promtek-dev/data/webhook/robot-1_webhook-run-88_24609_20260403T211520Z_webhook_weightment_138",
+  "run_id": "webhook-run-88",
+  "source": "webhook",
+  "target_weight_g": 200.0,
+  "webhook_metadata": {
+    "batch_id": "24609",
+    "expected_lot": "",
+    "ingredient_id": "1327",
+    "location_code": "001",
+    "location_id": "92",
+    "mode": "webhook",
+    "pickup_target_name": "MoveToScoopingContainer",
+    "return_target_name": "ReturnHome",
+    "robot_id": "robot-1",
+    "run_id": "webhook-run-88",
+    "target_weight_g": "200.0",
+    "tolerance_g": "0.5",
+    "weigh_target_name": "MoveToWeighingContainer",
+    "weightment_id": "138"
+  },
+  "weightment_id": "138"
+}

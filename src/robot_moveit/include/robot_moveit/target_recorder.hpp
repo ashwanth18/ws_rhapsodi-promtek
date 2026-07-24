@@ -23,6 +23,7 @@ private:
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
   std::string end_effector_link_;
+  std::string record_frame_;
   std::string pose_source_; // 'tf' | 'moveit' | 'auto'
 
   void deferred_init();

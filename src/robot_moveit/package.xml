@@ -15,10 +15,15 @@
   <depend>std_srvs</depend>
   <depend>control_msgs</depend>
   <depend>trajectory_msgs</depend>
+  <depend>tf2_eigen</depend>
   <depend>tf2_geometry_msgs</depend>
+  <depend>tf2_ros</depend>
   <depend>robot_common_msgs</depend>
 
   <!-- MoveIt -->
+  <depend>moveit_core</depend>
+  <depend>moveit_msgs</depend>
+  <depend>moveit_ros_planning</depend>
   <depend>moveit_ros_planning_interface</depend>
   <depend>yaml-cpp</depend>
 

@@ -1,0 +1,31 @@
+{
+  "bag_path": "/data/webhook/robot-1_webhook-run-2_24826_20260407T202238Z_webhook_weightment_2/webhook_run",
+  "batch_id": "24826",
+  "episode_index": 1,
+  "ingredient_id": "1327",
+  "location_code": "003",
+  "location_id": "94",
+  "mode": "webhook",
+  "robot_id": "robot-1",
+  "run_folder": "/data/webhook/robot-1_webhook-run-2_24826_20260407T202238Z_webhook_weightment_2",
+  "run_id": "webhook-run-2",
+  "source": "webhook",
+  "target_weight_g": 200.0,
+  "webhook_metadata": {
+    "batch_id": "24826",
+    "expected_lot": "",
+    "ingredient_id": "1327",
+    "location_code": "003",
+    "location_id": "94",
+    "mode": "webhook",
+    "pickup_target_name": "MoveToScoopingContainer",
+    "return_target_name": "ReturnHome",
+    "robot_id": "robot-1",
+    "run_id": "webhook-run-2",
+    "target_weight_g": "200.0",
+    "tolerance_g": "0.5",
+    "weigh_target_name": "MoveToWeighingContainer",
+    "weightment_id": "2"
+  },
+  "weightment_id": "2"
+}

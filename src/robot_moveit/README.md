@@ -40,7 +40,7 @@ scale:
     position: {x: 0.40, y: 0.00, z: 0.20}
     orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
 ```
-Note: restart `move_to_server_node` after editing `targets.yaml` so it reloads.
+Note: `move_to_server_node` reloads `targets.yaml` automatically when a goal uses `target_name` or `waypoint_names`.
 
 ## MoveTo action server
 
@@ -95,7 +95,7 @@ Start:
 ros2 run robot_moveit target_recorder_node --ros-args \
   -p planning_group:=arm \
   -p targets_yaml:=/absolute/path/to/targets.yaml \
-  -p eef_link:=tool_link \
+  -p eef_link:=tcp_link \
   -p pose_source:=auto   # tf | moveit | auto
 ```
 Parameters:
@@ -121,7 +121,7 @@ ros2 service call /record_target robot_common_msgs/srv/RecordTarget \
 ## BT integration
 
 - The orchestrator uses `/move_to` to navigate among named targets (e.g., containers, `scale`, `tap_off`).
-- The post‑pour cleanup uses a `Vibrate` BT node (publishes Int32 to `/motor_speed`), independent of MoveIt.
+- The post‑pour cleanup uses a `Vibrate` BT node (publishes Float64 to `/vibration/intensity` with keepalive republishing), independent of MoveIt.
 
 ## Troubleshooting
 

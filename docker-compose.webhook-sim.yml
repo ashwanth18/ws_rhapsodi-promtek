@@ -1,0 +1,230 @@
+name: rhapsodi-promtek-webhook-sim
+
+x-ros-sim-service: &ros-sim-service
+  image: ${ROS_LOCAL_IMAGE:-rhapsodi-promtek:ros-prod-local}
+  build:
+    context: .
+    dockerfile: docker/ros/Dockerfile.prod
+    args:
+      COLCON_PARALLEL_WORKERS: ${COLCON_PARALLEL_WORKERS:-8}
+  network_mode: host
+  ipc: host
+  environment:
+    ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+    ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+    RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+    RHAPSODI_DEVICE_CONFIG: ${RHAPSODI_DEVICE_CONFIG:-/ws/config/device.yaml}
+  volumes:
+    - ./data:/data
+    - ./data/ros_home:/root/.ros
+    - ./config:/ws/config:ro
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: robot_data
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - webhook_sim_db_data:/var/lib/postgresql/data
+
+  mes_mock:
+    image: ${MES_MOCK_LOCAL_IMAGE:-rhapsodi-promtek:mes-mock-local}
+    build:
+      context: ./src/backend/mock_mes_service
+    ports:
+      - "5002:5002"
+    volumes:
+      - ./data:/data
+
+  backend:
+    image: ${BACKEND_LOCAL_IMAGE:-rhapsodi-promtek:backend-local}
+    build:
+      context: ./src/backend
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/robot_data
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000,http://localhost:8080
+      WEIGHMENT_URL: http://mes_mock:5002/batch/weighment
+      BATCH_END_URL: http://mes_mock:5002/batch/end
+      TIMESERIES_URL: http://mes_mock:5002/timeseries
+      PATH_MAP_FROM: ${WORKSPACE_ROOT:-/home/ashwanth/ws_rhapsodi-promtek-dev}/data
+      PATH_MAP_TO: /data
+      ROBOT_START_ADAPTER_URL: http://host.docker.internal:8010/start_webhook_weightment
+      ROBOT_RUNNING_TIMEOUT_SECONDS: ${ROBOT_RUNNING_TIMEOUT_SECONDS:-300}
+      ROSBRIDGE_HOST: host.docker.internal
+      ROSBRIDGE_PORT: 9090
+      ROBOT_LOCATION_TARGETS_JSON: ${ROBOT_LOCATION_TARGETS_JSON:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - db
+      - mes_mock
+
+  processing:
+    image: ${PROCESSING_LOCAL_IMAGE:-rhapsodi-promtek:processing-local}
+    build:
+      context: ./src/backend/processing
+    environment:
+      BACKEND_URL: http://backend:8000
+      PATH_MAP_FROM: /data
+      PATH_MAP_TO: /data
+    volumes:
+      - ./data:/data
+    depends_on:
+      - backend
+    ports:
+      - "8002:8002"
+
+  webhook_service:
+    image: ${WEBHOOK_LOCAL_IMAGE:-rhapsodi-promtek:webhook-local}
+    build:
+      context: ./src/backend/webhook_service
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/robot_data
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/data
+    depends_on:
+      - db
+
+  dashboard:
+    image: ${DASHBOARD_LOCAL_IMAGE:-rhapsodi-promtek:dashboard-local}
+    build:
+      context: .
+      dockerfile: docker/dashboard.Dockerfile
+      args:
+        VITE_ROSBRIDGE_URL: ${VITE_ROSBRIDGE_URL:-ws://localhost:9090}
+        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:8000}
+        VITE_MICROROS_HEARTBEAT_TOPIC: ${VITE_MICROROS_HEARTBEAT_TOPIC:-/microros/heartbeat}
+    ports:
+      - "${DASHBOARD_PORT:-8080}:80"
+    depends_on:
+      - backend
+
+  rosbridge:
+    <<: *ros-sim-service
+    command:
+      [
+        "ros2",
+        "launch",
+        "niryo_robot_simulation_client",
+        "rosbridge_websocket_fixed.launch.py",
+        "address:=0.0.0.0",
+        "port:=9090",
+      ]
+    restart: unless-stopped
+
+  robot_start_adapter:
+    <<: *ros-sim-service
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+      FASTDDS_BUILTIN_TRANSPORTS: UDPv4
+      ROBOT_START_SERVICE_NAME: /bt_start_webhook_weightment
+      ROBOT_START_SERVICE_WAIT_TIMEOUT_SECONDS: 5
+      ROBOT_START_SERVICE_CALL_TIMEOUT_SECONDS: 15
+    command:
+      [
+        "bash",
+        "-lc",
+        "cd /ws/src/backend/robot_adapter && uvicorn main:app --host 0.0.0.0 --port 8010",
+      ]
+    restart: unless-stopped
+
+  weight_sim:
+    <<: *ros-sim-service
+    command:
+      [
+        "ros2",
+        "run",
+        "data_collection_manager",
+        "weight_sim",
+        "--ros-args",
+        "-p",
+        "topic:=/weight",
+        "-p",
+        "publish_when_active:=false",
+        "-p",
+        "rate_hz:=20.0",
+        "-p",
+        "baseline:=0.0",
+        "-p",
+        "target:=400.0",
+        "-p",
+        "gate_on_phase:=true",
+        "-p",
+        "phase_topic:=/webhook_run/phase",
+        "-p",
+        "phase_start:=pour_start",
+        "-p",
+        "phase_end:=pour_end",
+        "-p",
+        "use_metadata_target:=false",
+      ]
+    restart: unless-stopped
+
+  data_collection:
+    <<: *ros-sim-service
+    # robot_id / processing_url default from config/device.yaml via
+    # rhapsodi_common.device_config; no longer hardcoded here.
+    command:
+      [
+        "ros2",
+        "run",
+        "data_collection_manager",
+        "data_collection_manager",
+        "--ros-args",
+        "-p",
+        "output_root:=/data/webhook",
+      ]
+    depends_on:
+      - processing
+    restart: unless-stopped
+
+  pouring_controller:
+    <<: *ros-sim-service
+    command:
+      [
+        "ros2",
+        "run",
+        "pouring_controller",
+        "pour_server_node",
+        "--ros-args",
+        "-p",
+        "weight_topic:=/weight",
+        "-p",
+        "vibration_topic:=/vibration/intensity",
+        "-p",
+        "joint_state_topic:=/joint_states",
+      ]
+    depends_on:
+      - weight_sim
+    restart: unless-stopped
+
+  orchestrator:
+    <<: *ros-sim-service
+    command:
+      [
+        "ros2",
+        "run",
+        "robot_orchestrator",
+        "orchestrator_node",
+        "--ros-args",
+        "-p",
+        "tree_file:=/ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml",
+      ]
+    depends_on:
+      - pouring_controller
+    restart: unless-stopped
+
+volumes:
+  webhook_sim_db_data:

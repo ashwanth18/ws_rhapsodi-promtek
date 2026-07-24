@@ -151,16 +151,17 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="file:///home/ashwanth/ned3pro_simulation/install/niryo_robot_description/share/niryo_robot_description/meshes/ned3pro/stl/scoop_link.STL"/>
+        <mesh filename="file:///home/ashwanth/ned3pro_simulation/install/niryo_robot_description/share/niryo_robot_description/meshes/ned3pro/stl/niryo_scoop_v4-ros.STL"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="file:///home/ashwanth/ned3pro_simulation/install/niryo_robot_description/share/niryo_robot_description/meshes/ned3pro/stl/scoop_link.STL"/>
+        <mesh filename="file:///home/ashwanth/ned3pro_simulation/install/niryo_robot_description/share/niryo_robot_description/meshes/ned3pro/stl/niryo_scoop_v4-ros.STL"/>
       </geometry>
     </collision>
     </link>
+  <link name="tcp_link"/>
   <!-- Joints -->
   <joint name="joint_world" type="fixed">
     <parent link="world"/>
@@ -213,6 +214,11 @@
     <parent link="hand_link"/>
     <child link="tool_link"/>
     <origin rpy="0 0 0" xyz="0 0 0.0275"/>
+  </joint>
+  <joint name="tool_tcp_joint" type="fixed">
+    <parent link="tool_link"/>
+    <child link="tcp_link"/>
+    <origin rpy="0 0 0" xyz="0.15825 0 -0.09356"/>
   </joint>
   <joint name="joint_led_ring" type="fixed">
     <parent link="world"/>

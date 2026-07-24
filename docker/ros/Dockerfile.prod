@@ -1,0 +1,91 @@
+FROM ros:jazzy-ros-base AS underlay
+
+SHELL ["/bin/bash", "-c"]
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_BREAK_SYSTEM_PACKAGES=1
+
+COPY docker/ros/apt-packages.txt /tmp/apt-packages.txt
+
+RUN apt-get update \
+    && xargs -r apt-get install -y --no-install-recommends < /tmp/apt-packages.txt \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -f /tmp/apt-packages.txt
+
+RUN if [ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]; then rosdep init; fi \
+    && rosdep update
+
+WORKDIR /tmp/ws
+
+COPY src/ /tmp/ws/src/
+
+RUN if [ -f /tmp/ws/src/ros2.repos ] && ! grep -qE '^repositories:\\s*\\{\\}\\s*$' /tmp/ws/src/ros2.repos; then \
+      vcs import /tmp/ws/src < /tmp/ws/src/ros2.repos; \
+    fi
+
+RUN python3 -m venv --system-site-packages /opt/venv \
+    && /opt/venv/bin/pip install -r /tmp/ws/src/requirements.txt \
+    && if [ -f /tmp/ws/src/backend/requirements.txt ]; then /opt/venv/bin/pip install -r /tmp/ws/src/backend/requirements.txt; fi
+
+RUN apt-get update \
+    && rosdep install \
+        --from-paths /tmp/ws/src \
+        --ignore-src \
+        -r -y \
+        --rosdistro jazzy \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN rm -rf /tmp/ws
+
+FROM underlay AS builder
+
+WORKDIR /ws
+
+COPY src/ /ws/src/
+
+RUN if [ -f /ws/src/ros2.repos ] && ! grep -qE '^repositories:\\s*\\{\\}\\s*$' /ws/src/ros2.repos; then \
+      vcs import /ws/src < /ws/src/ros2.repos; \
+    fi
+
+ARG COLCON_PARALLEL_WORKERS=8
+ARG CMAKE_BUILD_TYPE=Release
+ARG CMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG"
+# TARGETARCH is injected by BuildKit (amd64/arm64) and scopes cache mounts per arch.
+ARG TARGETARCH
+
+ENV MAKEFLAGS="-j${COLCON_PARALLEL_WORKERS}" \
+    CMAKE_BUILD_PARALLEL_LEVEL="${COLCON_PARALLEL_WORKERS}" \
+    CCACHE_DIR=/root/.cache/ccache \
+    CCACHE_MAXSIZE=20G
+
+# Persist colcon build trees + ccache across image builds so unchanged packages
+# are not recompiled from scratch every time.
+RUN --mount=type=cache,target=/ws/build,id=colcon-build-${TARGETARCH} \
+    --mount=type=cache,target=/ws/log,id=colcon-log-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/ccache,id=ccache-${TARGETARCH} \
+    source /opt/ros/jazzy/setup.bash \
+    && mkdir -p /ws/build /ws/log /ws/install \
+    && colcon build \
+        --merge-install \
+        --parallel-workers ${COLCON_PARALLEL_WORKERS} \
+        --packages-skip micro_ros_agent \
+        --cmake-args \
+          -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+          "-DCMAKE_CXX_FLAGS_RELEASE=${CMAKE_CXX_FLAGS_RELEASE}" \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+FROM underlay AS runtime
+
+WORKDIR /ws
+
+COPY --from=builder /ws/install /ws/install
+COPY --from=builder /ws/src/backend/robot_adapter /ws/src/backend/robot_adapter
+COPY docker/entrypoint.sh /entrypoint.sh
+
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["bash"]

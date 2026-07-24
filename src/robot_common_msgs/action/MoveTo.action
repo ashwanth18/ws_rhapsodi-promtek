@@ -15,7 +15,15 @@ float32 acceleration_scaling
 ## fall back to per-goal scaling. Ignored for Cartesian (single trajectory).
 float32[] waypoint_velocity_scaling
 float32[] waypoint_acceleration_scaling
+bool constrain_upright
+bool constrain_transport_pitch
+float32 upright_roll_tolerance
+float32 upright_pitch_tolerance
+float32 upright_yaw_tolerance
+string planning_pipeline
+string planner_id
 bool use_cartesian
+bool plan_only
 float32 eef_step
 float32 jump_threshold
 ---

@@ -1,0 +1,76 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Devices up",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "targets": [
+        { "expr": "count(up{job=\"node\"} == 1)", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "type": "stat",
+      "title": "Devices down",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "targets": [
+        { "expr": "count(up{job=\"node\"} == 0) OR on() vector(0)", "refId": "A" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU usage (1 - idle)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "id": 3,
+      "targets": [
+        {
+          "expr": "1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))",
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory available ratio",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "id": 4,
+      "targets": [
+        {
+          "expr": "node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes",
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Root filesystem free ratio",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}",
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["rhapsodi", "fleet"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "browser",
+  "title": "Rhapsodi Fleet Health",
+  "uid": "rhapsodi-fleet-health",
+  "version": 1
+}

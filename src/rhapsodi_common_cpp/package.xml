@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>rhapsodi_common_cpp</name>
+  <version>0.1.0</version>
+  <description>
+    C++ counterpart to rhapsodi_common: device identity loading and a
+    HealthEvent publisher helper shared by C++ ROS 2 nodes (scale driver,
+    pouring_controller, robot_orchestrator, ...).
+  </description>
+  <maintainer email="ashwanth@todo.todo">ashwanth</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>robot_common_msgs</depend>
+  <depend>yaml-cpp</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -1,7 +1,7 @@
 name: rhapsodi-promtek-lightsout
 
 x-ros-service: &ros-service
-  image: iserenity/rhapsodi-promtek:jazzy
+  image: ${ROS_PROD_IMAGE:-iserenity/rhapsodi-promtek:ros-prod}
   network_mode: host
   ipc: host
   environment:
@@ -11,6 +11,7 @@ x-ros-service: &ros-service
     FASTRTPS_DEFAULT_PROFILES_FILE: /fastdds.xml
     ROBOT_PI: ${ROBOT_PI:-}
     ROBOT_NAMESPACE: ${ROBOT_NAMESPACE:-}
+    RHAPSODI_DEVICE_CONFIG: ${RHAPSODI_DEVICE_CONFIG:-/ws/config/device.yaml}
 
 services:
 
@@ -32,27 +33,64 @@ services:
       - ${WORKSPACE_ROOT:-.}/data/db:/var/lib/postgresql/data
 
   backend:
-    image: iserenity/rhapsodi-promtek:backend
+    image: ${BACKEND_IMAGE:-iserenity/rhapsodi-promtek:backend}
     network_mode: host
     environment:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/robot_data
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000,http://localhost:8080,http://10.42.0.72:8080
+      WEIGHMENT_URL: http://localhost:5002/batch/weighment
+      BATCH_END_URL: http://localhost:5002/batch/end
+      TIMESERIES_URL: http://localhost:5002/timeseries
+      ROBOT_START_ADAPTER_URL: http://localhost:8010/start_webhook_weightment
+      ROBOT_RUNNING_TIMEOUT_SECONDS: ${ROBOT_RUNNING_TIMEOUT_SECONDS:-300}
+      ROSBRIDGE_HOST: localhost
+      ROSBRIDGE_PORT: 9090
+      ROBOT_LOCATION_TARGETS_JSON: ${ROBOT_LOCATION_TARGETS_JSON:-}
     volumes:
       - ${WORKSPACE_ROOT:-.}/data:/data
     depends_on:
       - db
 
+  robot_start_adapter:
+    <<: *ros-service
+    volumes:
+      - ${WORKSPACE_ROOT:-.}/fastdds.xml:/fastdds.xml:ro
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+      FASTRTPS_DEFAULT_PROFILES_FILE: /fastdds.xml
+      FASTDDS_BUILTIN_TRANSPORTS: UDPv4
+      ROBOT_START_SERVICE_NAME: /bt_start_webhook_weightment
+      ROBOT_START_SERVICE_WAIT_TIMEOUT_SECONDS: 5
+      ROBOT_START_SERVICE_CALL_TIMEOUT_SECONDS: 15
+    command:
+      [
+        "bash",
+        "-lc",
+        "cd /ws/src/backend/robot_adapter && uvicorn main:app --host 0.0.0.0 --port 8010",
+      ]
+    restart: unless-stopped
+
   processing:
-    image: iserenity/rhapsodi-promtek:processing
+    image: ${PROCESSING_IMAGE:-iserenity/rhapsodi-promtek:processing}
     network_mode: host
     environment:
       BACKEND_URL: http://localhost:8000
-      PATH_MAP_FROM: /home/ashwanth/ws_rhapsodi-promtek/data
+      PATH_MAP_FROM: ${WORKSPACE_ROOT:-/home/ashwanth/ws_rhapsodi-promtek-dev}/data
       PATH_MAP_TO: /data
     volumes:
       - ${WORKSPACE_ROOT:-.}/data:/data
     depends_on:
       - db
+
+  webhook_service:
+    image: ${WEBHOOK_IMAGE:-iserenity/rhapsodi-promtek:webhook}
+    network_mode: host
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/robot_data
+    volumes:
+      - ${WORKSPACE_ROOT:-.}/data:/data
 
   
 
@@ -92,11 +130,13 @@ services:
     volumes:
       - ${WORKSPACE_ROOT:-.}/fastdds.xml:/fastdds.xml:ro
       - ${WORKSPACE_ROOT:-.}/data:/data
+      - ${WORKSPACE_ROOT:-.}/config:/ws/config:ro
+    # robot_id / processing_url default from config/device.yaml via
+    # rhapsodi_common.device_config; no longer hardcoded here.
     command: >
       ros2 run data_collection_manager data_collection_manager
       --ros-args
       -p output_root:=/data/lightsout
-      -p processing_url:=http://localhost:8002/process
     depends_on:
       - processing
 
@@ -117,14 +157,16 @@ services:
 
   # Rosbridge websocket (exposed to host)
   rosbridge:
-    image: iserenity/rhapsodi-promtek:jazzy
-    network_mode: host
-    ipc: host
-    environment:
-      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
-      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
-      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
-      FASTRTPS_DEFAULT_PROFILES_FILE: /fastdds.xml
+    <<: *ros-service
     volumes:
       - ${WORKSPACE_ROOT:-.}/fastdds.xml:/fastdds.xml:ro
     command: ros2 launch niryo_robot_simulation_client rosbridge_websocket_fixed.launch.py address:=0.0.0.0 port:=9090
+
+  # Publishes /system/health_events on micro-ROS heartbeat staleness/recovery
+  # (see control_heartbeat_method.md for the dashboard-side equivalent check).
+  microros_health_watchdog:
+    <<: *ros-service
+    volumes:
+      - ${WORKSPACE_ROOT:-.}/fastdds.xml:/fastdds.xml:ro
+      - ${WORKSPACE_ROOT:-.}/config:/ws/config:ro
+    command: ros2 run rhapsodi_common microros_health_watchdog

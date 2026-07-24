@@ -2,6 +2,9 @@
 #include "pouring_controller/pid_vibration.hpp"
 #include "pouring_controller/bangbang_trickle.hpp"
 
+#include <algorithm>
+#include <cmath>
+
 using namespace std::chrono_literals;
 
 namespace pouring_controller {
@@ -11,29 +14,41 @@ PourServer::PourServer(const rclcpp::NodeOptions & options)
 {
   // parameters
   this->declare_parameter<std::string>("weight_topic", "/weight");
-  this->declare_parameter<std::string>("vibration_topic", "/motor_speed");
+  this->declare_parameter<std::string>("vibration_topic", "/vibration/intensity");
   this->declare_parameter<std::string>("valve_topic", "/valve_control");
   this->declare_parameter<std::string>("incline_topic", "/incline_control");
   this->declare_parameter<double>("ema_alpha", 0.2);
   this->declare_parameter<double>("sample_rate_hz", 12.0);
   this->declare_parameter<double>("stale_ms", 500.0);
-  this->declare_parameter<double>("coarse_threshold", 0.10);
-  this->declare_parameter<double>("fine_threshold", 0.02);
+  this->declare_parameter<double>("coarse_threshold", 0.40);
+  this->declare_parameter<double>("fine_threshold", 0.05);
+  this->declare_parameter<double>("start_in_fine_below_g", 40.0);
+  this->declare_parameter<double>("start_in_trickle_below_g", 10.0);
   this->declare_parameter<double>("settle_time_s", 2.0);
   this->declare_parameter<int>("hold_within_tol_count", 5);
   this->declare_parameter<double>("final_settle_time_s", 2.0);
+  this->declare_parameter<double>("min_progress_g", 0.5);
+  this->declare_parameter<double>("no_progress_timeout_s", 3.0);
+  this->declare_parameter<double>("no_progress_incline_step_deg", 5.0);
+  this->declare_parameter<double>("max_incline_deg", 20.0);
   this->declare_parameter<std::string>("tilt_joint_name", "");
   this->declare_parameter<std::string>("traj_action_server", "/niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory");
-  this->declare_parameter<double>("coarse_tilt_deg", 0.0);
+  this->declare_parameter<double>("coarse_tilt_deg", 15.0);
   this->declare_parameter<double>("fine_tilt_deg", 0.0);
   this->declare_parameter<double>("trickle_tilt_deg", 0.0);
   this->declare_parameter<double>("joint_move_time_s", 0.5);
   this->declare_parameter<std::string>("control_law_type", "bangbang"); // pid|bangbang
-  // Per-phase vibration raw values (0..255)
-  this->declare_parameter<int>("coarse_vibration_raw", 180);
-  this->declare_parameter<int>("settle_vibration_raw", 178);
-  this->declare_parameter<int>("fine_vibration_raw", 178);
-  this->declare_parameter<int>("trickle_vibration_raw", 166);
+  this->declare_parameter<double>("coarse_vibration_intensity", 0.9);
+  this->declare_parameter<double>("settle_vibration_intensity", 0.0);
+  this->declare_parameter<double>("fine_vibration_intensity", 0.70);
+  this->declare_parameter<double>("trickle_vibration_intensity", 0.5);
+  this->declare_parameter<double>("trickle_pulse_ms", 180.0);
+  this->declare_parameter<double>("trickle_pause_ms", 160.0);
+  this->declare_parameter<double>("pid_kp", 0.02);
+  this->declare_parameter<double>("pid_ki", 0.001);
+  this->declare_parameter<double>("pid_kd", 0.0);
+  this->declare_parameter<double>("pid_feedforward_intensity", 0.0);
+  this->declare_parameter<double>("pid_integral_limit", 200.0);
   this->declare_parameter<std::string>("joint_state_topic", "/joint_states");
 
   ema_alpha_ = this->get_parameter("ema_alpha").as_double();
@@ -41,9 +56,15 @@ PourServer::PourServer(const rclcpp::NodeOptions & options)
   stale_ms_ = this->get_parameter("stale_ms").as_double();
   coarse_thresh_ = this->get_parameter("coarse_threshold").as_double();
   fine_thresh_ = this->get_parameter("fine_threshold").as_double();
+  start_in_fine_below_g_ = this->get_parameter("start_in_fine_below_g").as_double();
+  start_in_trickle_below_g_ = this->get_parameter("start_in_trickle_below_g").as_double();
   settle_time_s_ = this->get_parameter("settle_time_s").as_double();
   hold_within_tol_count_ = this->get_parameter("hold_within_tol_count").as_int();
   final_settle_time_s_ = this->get_parameter("final_settle_time_s").as_double();
+  min_delta_g_ = this->get_parameter("min_progress_g").as_double();
+  no_progress_timeout_s_ = this->get_parameter("no_progress_timeout_s").as_double();
+  no_progress_incline_step_deg_ = this->get_parameter("no_progress_incline_step_deg").as_double();
+  max_incline_deg_ = this->get_parameter("max_incline_deg").as_double();
   tilt_joint_name_ = this->get_parameter("tilt_joint_name").as_string();
   traj_action_server_ = this->get_parameter("traj_action_server").as_string();
   coarse_tilt_deg_ = this->get_parameter("coarse_tilt_deg").as_double();
@@ -51,10 +72,12 @@ PourServer::PourServer(const rclcpp::NodeOptions & options)
   trickle_tilt_deg_ = this->get_parameter("trickle_tilt_deg").as_double();
   joint_move_time_s_ = this->get_parameter("joint_move_time_s").as_double();
   joint_state_topic_ = this->get_parameter("joint_state_topic").as_string();
-  coarse_vibration_raw_ = this->get_parameter("coarse_vibration_raw").as_int();
-  settle_vibration_raw_ = this->get_parameter("settle_vibration_raw").as_int();
-  fine_vibration_raw_ = this->get_parameter("fine_vibration_raw").as_int();
-  trickle_vibration_raw_ = this->get_parameter("trickle_vibration_raw").as_int();
+  coarse_vibration_intensity_ = this->get_parameter("coarse_vibration_intensity").as_double();
+  settle_vibration_intensity_ = this->get_parameter("settle_vibration_intensity").as_double();
+  fine_vibration_intensity_ = this->get_parameter("fine_vibration_intensity").as_double();
+  trickle_vibration_intensity_ = this->get_parameter("trickle_vibration_intensity").as_double();
+  trickle_pulse_ms_ = this->get_parameter("trickle_pulse_ms").as_double();
+  trickle_pause_ms_ = this->get_parameter("trickle_pause_ms").as_double();
 
   auto wt = this->get_parameter("weight_topic").as_string();
   auto vt = this->get_parameter("vibration_topic").as_string();
@@ -62,10 +85,11 @@ PourServer::PourServer(const rclcpp::NodeOptions & options)
   auto it = this->get_parameter("incline_topic").as_string();
 
   weight_sub_ = this->create_subscription<std_msgs::msg::Float64>(wt, 10, std::bind(&PourServer::weightCb, this, std::placeholders::_1));
-  vibration_pub_ = this->create_publisher<std_msgs::msg::Int32>(vt, 10);
+  vibration_pub_ = this->create_publisher<std_msgs::msg::Float64>(vt, 10);
   valve_pub_ = this->create_publisher<std_msgs::msg::Float64>(valvet, 10);
   incline_pub_ = this->create_publisher<std_msgs::msg::Float64>(it, 10);
   pour_status_pub_ = this->create_publisher<robot_common_msgs::msg::PourStatus>("/pour_status", 10);
+  health_ = std::make_unique<rhapsodi_common_cpp::HealthEventPublisher>(this, "pour_server");
 
   // control plugin selection
   const auto law = this->get_parameter("control_law_type").as_string();
@@ -75,6 +99,18 @@ PourServer::PourServer(const rclcpp::NodeOptions & options)
     control_ = std::make_shared<BangBangTrickle>();
   }
   control_->configure(0.0, 1.0);
+  if (auto* bangbang = dynamic_cast<BangBangTrickle*>(control_.get())) {
+    bangbang->coarse_open = std::clamp(coarse_vibration_intensity_, 0.0, 1.0);
+    bangbang->fine_open = std::clamp(fine_vibration_intensity_, 0.0, 1.0);
+    bangbang->trickle_open = std::clamp(trickle_vibration_intensity_, 0.0, 1.0);
+  }
+  if (auto* pid = dynamic_cast<PidVibration*>(control_.get())) {
+    pid->kp = this->get_parameter("pid_kp").as_double();
+    pid->ki = this->get_parameter("pid_ki").as_double();
+    pid->kd = this->get_parameter("pid_kd").as_double();
+    pid->ff_bias = this->get_parameter("pid_feedforward_intensity").as_double();
+    pid->integ_limit = this->get_parameter("pid_integral_limit").as_double();
+  }
 
   // Create action server without shared_from_this() (avoid bad_weak_ptr in constructor)
   action_server_ = rclcpp_action::create_server<PourToTarget>(
@@ -125,7 +161,7 @@ rclcpp_action::GoalResponse PourServer::handle_goal(const rclcpp_action::GoalUUI
 rclcpp_action::CancelResponse PourServer::handle_cancel(const std::shared_ptr<GoalHandle>)
 {
   // Ensure actuators are stopped on cancel
-  std_msgs::msg::Int32 mi; mi.data = 0;
+  std_msgs::msg::Float64 mi; mi.data = 0.0;
   vibration_pub_->publish(mi);
   // Motion outputs disabled (valve/incline)
   RCLCPP_INFO(get_logger(), "Cancel request received");
@@ -142,6 +178,15 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
   const auto goal = goal_handle->get_goal();
   auto feedback = std::make_shared<PourToTarget::Feedback>();
   auto result = std::make_shared<PourToTarget::Result>();
+  auto phase_str = [](int p){
+    switch (p) {
+      case 0: return "COARSE";
+      case 1: return "SETTLE";
+      case 2: return "FINE";
+      case 3: return "TRICKLE";
+    }
+    return "?";
+  };
 
   rclcpp::Rate rate( sample_rate_hz_ );
   const auto start = now();
@@ -150,28 +195,57 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
   const double baseline_g = raw_weight_;
   RCLCPP_INFO(get_logger(), "Pour start: target=%.3f tol=%.3f baseline=%.3f",
               goal->target_weight, goal->tolerance, baseline_g);
+  const double configured_incline_step =
+    no_progress_incline_step_deg_ > 0.0 ? no_progress_incline_step_deg_ : 5.0;
+  const double configured_max_incline =
+    max_incline_deg_ > 0.0 ? max_incline_deg_ : 20.0;
+  RCLCPP_INFO(
+    get_logger(),
+    "Pour incline recovery: step=%.3fdeg max=%.3fdeg coarse_base=%.3fdeg fine_base=%.3fdeg trickle_base=%.3fdeg",
+    configured_incline_step,
+    configured_max_incline,
+    coarse_tilt_deg_,
+    fine_tilt_deg_,
+    trickle_tilt_deg_);
   int within_tol_count = 0;
+  double progress_reference_net_g = 0.0;
+  auto progress_reference_time = now();
+  auto phase_enter_time = now();
+  int no_progress_incline_boosts = 0;
   // Compute percentage-based error bands relative to target
   const double coarse_band = std::abs(goal->target_weight) * coarse_thresh_;
   const double fine_band = std::abs(goal->target_weight) * fine_thresh_;
   enum Phase { COARSE, SETTLE, FINE, TRICKLE } phase = COARSE;
-  auto send_cmd = [&](int vib_raw, double valve, double incline){
-    std_msgs::msg::Int32 ms;
-    ms.data = std::clamp(vib_raw, 0, 255);
+  const double abs_target_g = std::abs(goal->target_weight);
+  if (abs_target_g <= std::max(0.0, start_in_trickle_below_g_)) {
+    phase = TRICKLE;
+  } else if (abs_target_g <= std::max(0.0, start_in_fine_below_g_)) {
+    phase = FINE;
+  }
+  RCLCPP_INFO(
+    get_logger(),
+    "Pour phase start: target=%.3fg coarse_band=%.3fg fine_band=%.3fg initial_phase=%s thresholds(fine<=%.3fg trickle<=%.3fg)",
+    goal->target_weight,
+    coarse_band,
+    fine_band,
+    phase_str(static_cast<int>(phase)),
+    start_in_fine_below_g_,
+    start_in_trickle_below_g_);
+  control_->reset();
+  auto send_cmd = [&](double vibration_intensity, double valve, double incline){
+    std_msgs::msg::Float64 ms;
+    ms.data = std::clamp(vibration_intensity, 0.0, 1.0);
     vibration_pub_->publish(ms);
     std_msgs::msg::Float64 m;
     m.data = valve; valve_pub_->publish(m);
     m.data = incline; incline_pub_->publish(m);
   };
   auto stop_cmd = [&]{ send_cmd(0.0, 0.0, 0.0); };
-  auto publish_status = [&](bool active, const std::string& phase_str_name, double target_kg, double band_kg, double abs_err_val){
+  auto publish_status = [&](bool active, const std::string& phase_str_name, double target_g, double band_g, double abs_err_val){
     robot_common_msgs::msg::PourStatus ps;
     ps.active = active;
     ps.phase = phase_str_name;
-    // convert to grams if values look like kg
-    const double target_g = (target_kg >= 10.0 ? target_kg : target_kg * 1000.0);
-    const double band_g = (band_kg >= 10.0 ? band_kg : band_kg * 1000.0);
-    const double rem_g = (band_kg > 0.0) ? std::max(0.0, abs_err_val - band_kg) * (band_kg >= 10.0 ? 1.0 : 1000.0) : -1.0;
+    const double rem_g = (band_g > 0.0) ? std::max(0.0, abs_err_val - band_g) : -1.0;
     ps.target_g = static_cast<float>(target_g);
     ps.band_threshold_g = static_cast<float>(band_g);
     ps.remaining_to_band_g = static_cast<float>(rem_g);
@@ -200,6 +274,11 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
       result->overshoot = false;
       result->final_weight = filtered_weight_;
       result->message = "Stale weight";
+      health_->error(
+        "pour_stale_weight_abort",
+        "Pour aborted: no fresh weight reading (stale_ms=" + std::to_string(stale_ms_) + ")",
+        "{\"stale_ms\":" + std::to_string(stale_ms_) + ",\"target_weight\":" +
+          std::to_string(goal->target_weight) + "}");
       goal_handle->abort(result);
       return;
     }
@@ -223,57 +302,90 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
     // phase transitions
     Phase old_phase = phase;
     static rclcpp::Time settle_start; // track settle start
-    std::string phase_name = "coarse";
     switch (phase) {
       case COARSE:
         if (abs_err <= coarse_band) { phase = SETTLE; settle_start = now(); }
-        phase_name = "coarse"; break;
+        break;
       case SETTLE:
         // wait settle_time
         if ((now() - settle_start).seconds() > settle_time_s_) { phase = FINE; }
-        phase_name = "settle"; break;
+        break;
       case FINE:
         if (abs_err <= fine_band) { phase = TRICKLE; }
-        phase_name = "fine"; break;
+        break;
       case TRICKLE:
-        phase_name = "trickle"; break;
+        break;
+    }
+    std::string phase_name = "coarse";
+    if (phase == SETTLE) {
+      phase_name = "settle";
+    } else if (phase == FINE) {
+      phase_name = "fine";
+    } else if (phase == TRICKLE) {
+      phase_name = "trickle";
     }
 
     if (phase != old_phase) {
-      auto phase_str = [&](Phase p){
-        switch (p) {
-          case COARSE: return "COARSE";
-          case SETTLE: return "SETTLE";
-          case FINE: return "FINE";
-          case TRICKLE: return "TRICKLE";
-        }
-        return "?";
-      };
       RCLCPP_INFO(get_logger(), "Phase %s -> %s (abs_err=%.4f, coarse_band=%.4f, fine_band=%.4f)",
-                  phase_str(old_phase), phase_str(phase), abs_err, coarse_band, fine_band);
+                  phase_str(static_cast<int>(old_phase)), phase_str(static_cast<int>(phase)), abs_err, coarse_band, fine_band);
+      progress_reference_net_g = net_g;
+      progress_reference_time = now();
+      phase_enter_time = now();
     }
 
     // Joint tilt disabled
 
-    // Phase-based vibration raw
-    int vib_phase = 0;
-    if (phase == COARSE) vib_phase = coarse_vibration_raw_;
-    else if (phase == SETTLE) vib_phase = settle_vibration_raw_;
-    else if (phase == FINE) vib_phase = fine_vibration_raw_;
-    else if (phase == TRICKLE) vib_phase = trickle_vibration_raw_;
+    auto base_incline_for_phase = [&]() {
+      switch (phase) {
+        case COARSE:
+          return coarse_tilt_deg_;
+        case SETTLE:
+          return fine_tilt_deg_;
+        case FINE:
+          return fine_tilt_deg_;
+        case TRICKLE:
+          return trickle_tilt_deg_;
+      }
+      return 0.0;
+    };
+
+    const double max_incline = configured_max_incline;
+    const double incline_step = configured_incline_step;
+    const double base_incline_deg = base_incline_for_phase();
+    const double incline_deg = std::clamp(
+      base_incline_deg + (no_progress_incline_boosts * incline_step),
+      0.0,
+      max_incline);
 
     // control law
     ControlContext ctx; ctx.target_weight = goal->target_weight; ctx.tolerance = goal->tolerance;
-    ctx.filtered_weight = raw_weight_; ctx.raw_weight = raw_weight_; ctx.phase = phase_name;
+    ctx.filtered_weight = net_g; ctx.raw_weight = net_g; ctx.phase = phase_name;
     ctx.dt_s = 1.0 / std::max(1.0, sample_rate_hz_);
     ControlCommand cmd = control_->update(ctx);
-    // Override vibration with phase duty; do not drive valve/incline
-    send_cmd(vib_phase, 0.0, 0.0);
+    double vibration_intensity = std::clamp(cmd.vibration_duty, 0.0, 1.0);
+    if (phase == COARSE) {
+      vibration_intensity = std::max(vibration_intensity, std::clamp(coarse_vibration_intensity_, 0.0, 1.0));
+    } else if (phase == SETTLE) {
+      vibration_intensity = std::clamp(settle_vibration_intensity_, 0.0, 1.0);
+    } else if (phase == FINE) {
+      vibration_intensity = std::min(vibration_intensity, std::clamp(fine_vibration_intensity_, 0.0, 1.0));
+    } else if (phase == TRICKLE) {
+      vibration_intensity = std::min(vibration_intensity, std::clamp(trickle_vibration_intensity_, 0.0, 1.0));
+      const double cycle_ms = std::max(0.0, trickle_pulse_ms_) + std::max(0.0, trickle_pause_ms_);
+      if (cycle_ms > 0.0) {
+        const double phase_elapsed_ms = (now() - phase_enter_time).seconds() * 1000.0;
+        const double cycle_offset_ms = std::fmod(std::max(0.0, phase_elapsed_ms), cycle_ms);
+        if (cycle_offset_ms >= std::max(0.0, trickle_pulse_ms_)) {
+          vibration_intensity = 0.0;
+        }
+      }
+    }
+    send_cmd(vibration_intensity, 0.0, incline_deg);
 
     // feedback
     feedback->current_weight = static_cast<float>(raw_weight_);
     feedback->phase = phase_name;
-    // error to next phase band (kg) and band threshold (kg)
+    // Error to next phase band and band threshold are reported in grams.
     float err_to_band = -1.0f;
     float band_thresh = 0.0f;
     if (phase == COARSE) {
@@ -330,9 +442,72 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
       // No tilt reset (disabled)
       RCLCPP_INFO(get_logger(), "Pour overshoot: final_abs=%.3fg final_net=%.3fg (baseline=%.3f)",
                   result->final_weight, result->final_net_g, baseline_g);
+      health_->warn(
+        "pour_overshoot",
+        "Pour overshot target by " + std::to_string(result->final_net_g - goal->target_weight) + "g",
+        "{\"target_weight\":" + std::to_string(goal->target_weight) +
+          ",\"final_net_g\":" + std::to_string(result->final_net_g) +
+          ",\"baseline_g\":" + std::to_string(baseline_g) + "}");
       goal_handle->succeed(result);
       return;
     }
+
+    const bool progress_watchdog_active =
+      no_progress_timeout_s_ > 0.0 && (phase == COARSE || phase == FINE);
+    if (progress_watchdog_active) {
+      if ((net_g - progress_reference_net_g) >= min_delta_g_) {
+        progress_reference_net_g = net_g;
+        progress_reference_time = now();
+      } else if ((now() - progress_reference_time).seconds() > no_progress_timeout_s_) {
+        const double next_incline_deg = std::clamp(
+          base_incline_deg + ((no_progress_incline_boosts + 1) * incline_step),
+          0.0,
+          max_incline);
+        if (incline_step > 0.0 && next_incline_deg > incline_deg + 1e-6) {
+          ++no_progress_incline_boosts;
+          progress_reference_net_g = net_g;
+          progress_reference_time = now();
+          RCLCPP_WARN(
+            get_logger(),
+            "Pour no-progress: boosting incline to %.3fdeg (boost %d, max %.3fdeg) before rescoop",
+            next_incline_deg,
+            no_progress_incline_boosts,
+            max_incline);
+          continue;
+        }
+        stop_cmd();
+        publish_status(false, "", 0.0, 0.0, 0.0);
+        result->achieved = false;
+        result->timeout = true;
+        result->overshoot = false;
+        result->final_weight = static_cast<float>(raw_weight_);
+        result->final_net_g = static_cast<float>(net_g);
+        result->need_rescoop = true;
+        result->proceed_next = false;
+        result->message = "No progress timeout";
+        RCLCPP_WARN(
+          get_logger(),
+          "Pour no-progress timeout: phase=%s net=%.3fg progress_window=%.3fg dt=%.2fs "
+          "incline=%.3fdeg step=%.3fdeg max=%.3fdeg (baseline=%.3f)",
+          phase_name.c_str(),
+          net_g,
+          net_g - progress_reference_net_g,
+          (now() - progress_reference_time).seconds(),
+          incline_deg,
+          incline_step,
+          max_incline,
+          baseline_g);
+        health_->warn(
+          "pour_no_progress_timeout",
+          "Pour stalled: no progress for " + std::to_string(no_progress_timeout_s_) +
+            "s, needs rescoop",
+          "{\"phase\":\"" + phase_name + "\",\"net_g\":" + std::to_string(net_g) +
+            ",\"incline_deg\":" + std::to_string(incline_deg) + "}");
+        goal_handle->succeed(result);
+        return;
+      }
+    }
+
     if (abs_err <= goal->tolerance) {
       within_tol_count++;
       if (within_tol_count >= hold_within_tol_count_) {
@@ -350,6 +525,10 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
             result->need_rescoop = true;
             result->proceed_next = false;
             result->message = "Stale weight during final settle";
+            health_->error(
+              "pour_stale_weight_during_settle",
+              "Pour aborted during final settle: weight went stale",
+              "{\"target_weight\":" + std::to_string(goal->target_weight) + "}");
             goal_handle->abort(result);
             return;
           }
@@ -389,6 +568,11 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
       // No tilt reset (disabled)
       RCLCPP_INFO(get_logger(), "Pour timeout: final_abs=%.3fg final_net=%.3fg (baseline=%.3f)",
                   result->final_weight, result->final_net_g, baseline_g);
+      health_->warn(
+        "pour_max_time_timeout",
+        "Pour exceeded max_time_s=" + std::to_string(goal->max_time_s) + "s",
+        "{\"target_weight\":" + std::to_string(goal->target_weight) +
+          ",\"final_net_g\":" + std::to_string(result->final_net_g) + "}");
       goal_handle->succeed(result);
       return;
     }

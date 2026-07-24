@@ -1,0 +1,167 @@
+robots:
+  niryo:
+    canonical_name: niryo_ned3pro
+    aliases: [niryo, niryo_ned3pro]
+    moveit_robot_name: niryo_ned3pro
+    planning_group: arm
+    eef_link: tcp_link
+    base_frame: base_link
+    flange_link: hand_link
+    follow_joint_trajectory_controller: niryo_robot_follow_joint_trajectory_controller
+    planning_pipeline: stomp
+    position_only_goal: false
+    targets:
+      package: robot_moveit
+      path: targets.yaml
+    tool:
+      mesh_resource: package://niryo_robot_description/meshes/ned3pro/stl/niryo_scoop_v4-ros.STL
+      tcp_visual_offset_xyz: [0.15825, 0.0, -0.09356]
+    # Canonical per-robot-type data-collection contract (data-collection-v2).
+    # No cross-robot schema unification yet (per-robot-type is fine for
+    # now) — this just declares topic names/types once so a future
+    # unification pass only needs to write a mapping layer, not rediscover
+    # topics per robot. Keep in sync with recording_profiles.yaml.
+    telemetry:
+      proprioception:
+        joint_states: {topic: /joint_states, type: sensor_msgs/msg/JointState}
+      actions:
+        follow_joint_trajectory: {
+          topic: /niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory,
+          type: control_msgs/action/FollowJointTrajectory,
+        }
+      pour_phase:
+        weight: {topic: /weight, type: std_msgs/msg/Float64}
+        vibration_intensity: {topic: /vibration/intensity, type: std_msgs/msg/Float64}
+        incline_control: {topic: /incline_control, type: std_msgs/msg/Float64}
+        valve_control: {topic: /valve_control, type: std_msgs/msg/Float64}
+        pour_status: {topic: /pour_status, type: std_msgs/msg/String}
+      scoop_phase:
+        # Populated once the depth+RGB camera pipeline lands (recording-profiles
+        # todo); left declared-but-empty so the contract shape is stable.
+        rgb: {topic: /camera/color/image_raw/compressed, type: sensor_msgs/msg/CompressedImage}
+        depth: {topic: /camera/depth/image_rect_raw, type: sensor_msgs/msg/Image}
+        camera_info: {topic: /camera/color/camera_info, type: sensor_msgs/msg/CameraInfo}
+      health:
+        events: {topic: /system/health_events, type: robot_common_msgs/msg/HealthEvent}
+    sim:
+      scene:
+        package: scooping_controller
+        path: config/container_scene/niryo_sim.yaml
+      moveit_package: niryo_robot_moveit_interface
+      urdf:
+        package: niryo_robot_description
+        path: urdf/ned3pro/niryo_ned3pro_gazebo.urdf.xacro
+        xacro_args: []
+      controllers:
+        package: niryo_robot_moveit_interface
+        path: config/ros2_controllers.yaml
+      move_group_controller_params:
+        package: scooping_controller
+        path: config/move_group_controller_params.yaml
+      spawn_model_name: niryo_ned3pro
+      publish_world_to_base_tf: true
+      planning_pipelines: [ompl, chomp, pilz_industrial_motion_planner, stomp]
+    real:
+      scene:
+        package: scooping_controller
+        path: config/container_scene/niryo_real.yaml
+      moveit_package: niryo_ned3pro_moveit_config
+      urdf:
+        package: niryo_robot_description
+        path: urdf/ned3pro/niryo_ned3pro.urdf.xacro
+        xacro_args: []
+      move_group_controller_params:
+        package: scooping_controller
+        path: config/move_group_controller_params.yaml
+      driver:
+        package: niryo_ned_ros2_driver
+        path: launch/driver.launch.py
+      timing:
+        move_group_delay: 2.0
+        move_to_delay: 4.0
+        target_recorder_delay: 4.2
+        task_frame_delay: 4.8
+        marker_delay: 5.0
+        container_delay: 5.5
+        collisions_delay: 5.7
+        mtc_delay: 6.0
+        rviz_delay: 7.0
+
+  jaka:
+    canonical_name: jaka_zu5
+    aliases: [jaka, jaka_zu5]
+    moveit_robot_name: jaka_zu5
+    planning_group: jaka_zu5
+    eef_link: tcp_link
+    base_frame: link0
+    flange_link: Link6
+    follow_joint_trajectory_controller: jaka_zu5_controller
+    planning_pipeline: ompl
+    position_only_goal: false
+    targets:
+      package: robot_moveit
+      path: targets/jaka_zu5.yaml
+    tool:
+      mesh_resource: package://niryo_robot_description/meshes/ned3pro/stl/niryo_scoop_v4-ros.STL
+      tcp_visual_offset_xyz: [0.15825, 0.0, -0.09356]
+    # See the niryo entry above for what this block is for.
+    telemetry:
+      proprioception:
+        joint_states: {topic: /joint_states, type: sensor_msgs/msg/JointState}
+      actions:
+        follow_joint_trajectory: {
+          topic: /jaka_zu5_controller/follow_joint_trajectory,
+          type: control_msgs/action/FollowJointTrajectory,
+        }
+      pour_phase:
+        weight: {topic: /weight, type: std_msgs/msg/Float64}
+        vibration_intensity: {topic: /vibration/intensity, type: std_msgs/msg/Float64}
+        incline_control: {topic: /incline_control, type: std_msgs/msg/Float64}
+        valve_control: {topic: /valve_control, type: std_msgs/msg/Float64}
+        pour_status: {topic: /pour_status, type: std_msgs/msg/String}
+      scoop_phase:
+        rgb: {topic: /camera/color/image_raw/compressed, type: sensor_msgs/msg/CompressedImage}
+        depth: {topic: /camera/depth/image_rect_raw, type: sensor_msgs/msg/Image}
+        camera_info: {topic: /camera/color/camera_info, type: sensor_msgs/msg/CameraInfo}
+      health:
+        events: {topic: /system/health_events, type: robot_common_msgs/msg/HealthEvent}
+    sim:
+      scene:
+        package: scooping_controller
+        path: config/container_scene/jaka_sim.yaml
+      moveit_package: jaka_zu5_moveit_config
+      urdf:
+        package: jaka_zu5_moveit_config
+        path: config/jaka_zu5.urdf.xacro
+        xacro_args: ["use_gazebo:=true"]
+      controllers:
+        package: jaka_zu5_moveit_config
+        path: config/ros2_controllers.yaml
+      spawn_model_name: jaka_zu5
+      publish_world_to_base_tf: false
+      planning_pipelines: [ompl]
+    real:
+      scene:
+        package: scooping_controller
+        path: config/container_scene/jaka_real.yaml
+      moveit_package: jaka_zu5_moveit_config
+      urdf:
+        package: jaka_zu5_moveit_config
+        path: config/jaka_zu5.urdf.xacro
+        xacro_args: ["use_rviz_sim:=true"]
+      controllers:
+        package: jaka_zu5_moveit_config
+        path: config/ros2_controllers.yaml
+      driver:
+        package: jaka_driver
+        path: launch/robot_start.launch.py
+      timing:
+        move_group_delay: 5.0
+        move_to_delay: 7.0
+        target_recorder_delay: 7.2
+        task_frame_delay: 7.8
+        marker_delay: 8.0
+        container_delay: 8.5
+        collisions_delay: 8.7
+        mtc_delay: 9.0
+        rviz_delay: 10.0
