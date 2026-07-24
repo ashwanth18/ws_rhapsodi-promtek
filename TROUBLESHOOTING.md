@@ -1,0 +1,116 @@
+# Troubleshooting
+
+Generalized, all-subsystem successor to
+`src/backend/webhook-run-observability.md`'s postmortem log. Sections
+below are auto-drafted from the `incidents` table by
+`src/backend/ingestion/ingestion/kb_draft_job.py`
+(self-updating-kb) - **do not hand-edit the marked sections**, they get
+overwritten on the next drafting pass; edit
+`src/backend/ingestion/ingestion/kb_signatures.py` instead and re-run
+`python -m ingestion.kb_draft_job`. Add hand-written context anywhere
+outside the marked sections and it will be preserved.
+
+
+<!-- kb:begin:pour_overshoot -->
+## Pour overshoot (`pour_overshoot`)
+
+- **Category:** Pouring controller
+- **Symptom:** A pour finishes with `final_net_g` past `target_weight` - reported as a WARN `pour_overshoot` HealthEvent from `pour_server.cpp`, escalated to `pour_overshoot_severe` once the overshoot amount (derived from the event's own `target_weight`/`final_net_g` context) clears `rules.POUR_OVERSHOOT_SEVERE_G` grams.
+- **Root cause:** Vibration/incline dosing control could not decelerate in time for this ingredient/target combination - could be flow-rate tuning, ingredient flow characteristics, or a target weight close to the coarse/fine transition threshold.
+- **Fix:** Not a single fix - a controls-tuning signal. Pull the run's `/weight`, `/vibration/intensity`, `/incline_control` topics from its MCAP (recorded under the `pour` recording-profile) and compare the fine-phase deceleration curve against a non-overshooting run for the same ingredient.
+- **If this appears again, check:**
+  - Check whether overshoot correlates with a specific `ingredient_id` or `target_weight_g` range (query `incidents.evidence_json` across occurrences).
+  - Compare fine-phase vibration/incline curves in the MCAP against a clean run for the same ingredient.
+  - If frequent for one ingredient, consider a per-ingredient fine-phase deceleration tuning override.
+- _Not yet observed in a recorded incident - documented pre-emptively from the known code path._
+<!-- kb:end:pour_overshoot -->
+
+
+<!-- kb:begin:scale_readings_stale -->
+## Weighing scale readings went stale (`scale_readings_stale`)
+
+- **Category:** Weighing scale driver
+- **Symptom:** `weighing_scale_node.cpp` hasn't received a fresh scale reading for longer than its configured threshold and publishes a WARN `scale_readings_stale` HealthEvent; recovery is logged as INFO `scale_readings_resumed`.
+- **Root cause:** Usually downstream of the same microcontroller link issue as `microros_heartbeat_stale` (the scale reading travels over that same micro-ROS link), but can also be a scale-specific hardware fault independent of the microcontroller heartbeat.
+- **Fix:** Check for a correlated `microros_heartbeat_stale` incident first (same root cause, fix that link). If the heartbeat is healthy but the scale specifically is stale, suspect the load cell/scale hardware itself.
+- **If this appears again, check:**
+  - Check for a correlated microros_heartbeat_stale incident on the same device/time window.
+  - If heartbeat is healthy, inspect the scale hardware (load cell connection, amplifier board) directly.
+- _Not yet observed in a recorded incident - documented pre-emptively from the known code path._
+<!-- kb:end:scale_readings_stale -->
+
+
+<!-- kb:begin:sqlalchemy_detached_instance_error -->
+## SQLAlchemy DetachedInstanceError (ORM attribute read after commit) (`sqlalchemy_detached_instance_error`)
+
+- **Category:** Backend / database
+- **Symptom:** A backend route returns `502`/`500`, and its logs show `sqlalchemy.orm.exc.DetachedInstanceError`. In the originally diagnosed case, `POST /processed` returned `processed_row.id`/`processed_row.run_db_id` after session work had completed - the run was often already stored successfully even though the response crashed, which can be misleading when triaging.
+- **Root cause:** SQLAlchemy expires ORM instance attributes on `db.commit()`. Reading an attribute afterward (e.g. in a response body) triggers a fresh `SELECT` against an instance that is no longer safely bound for attribute loading in that request's lifecycle.
+- **Fix:** Capture plain scalar values (e.g. `processed_id = processed_row.id`) *before* `db.commit()`, and return those captured scalars instead of reading ORM attributes after commit.
+- **If this appears again, check:**
+  - Grep the failing route for any ORM attribute access after its `db.commit()` call.
+  - Check whether the underlying row was already written successfully despite the error response - don't assume "500/502" means "nothing was saved".
+- _Not yet observed in a recorded incident - documented pre-emptively from the known code path._
+<!-- kb:end:sqlalchemy_detached_instance_error -->
+
+
+<!-- kb:begin:pour_stalled_abort -->
+## Pour stalled or aborted (`pour_stalled_abort`)
+
+- **Category:** Pouring controller
+- **Symptom:** The pour controller aborts before reaching target - either the no-progress watchdog fires (`pour_no_progress_timeout`: net weight hasn't moved by `min_delta_g` in `no_progress_timeout_s`), or the weight reading goes stale mid-pour or mid-settle (`pour_stale_weight_abort` / `pour_stale_weight_during_settle`).
+- **Root cause:** No-progress: the ingredient stopped flowing (container empty, clog, vibration insufficient) while the controller was still expecting motion. Stale-weight: the weighing scale stopped producing fresh readings - see the `scale_readings_stale` signature for that subsystem's own root cause.
+- **Fix:** No-progress: check the physical hopper/ingredient for the run's `ingredient_id` (empty, clumped, jammed). Stale-weight: treat as a `scale_readings_stale` incident on the same run - fix the scale/microcontroller link first, the pour abort is downstream of that.
+- **If this appears again, check:**
+  - Correlate with `microros_heartbeat_stale` or `scale_readings_stale` incidents on the same run/time window - a stale-weight abort is usually a symptom of one of those, not an independent pour-controller bug.
+  - If no correlated staleness, inspect the physical ingredient container for that run.
+- _Not yet observed in a recorded incident - documented pre-emptively from the known code path._
+<!-- kb:end:pour_stalled_abort -->
+
+
+<!-- kb:begin:postgres_idle_in_transaction -->
+## Postgres session stuck idle in transaction (`postgres_idle_in_transaction`)
+
+- **Category:** Backend / database
+- **Symptom:** A dashboard page (e.g. the webhook weightment detail page) hangs on `Refreshing...`, its `GET` request hangs or times out, the corresponding run row stays stuck in a transient state (e.g. `starting`), and `pg_stat_activity` shows a backend session in `idle in transaction`.
+- **Root cause:** A request handler opened a database transaction (often incidentally, e.g. by touching an expired SQLAlchemy ORM attribute after `db.commit()`) and then performed blocking non-database work (an external HTTP/rosbridge call) while still holding that transaction open.
+- **Fix:** Two-part fix from the original incident: (1) make the blocking external call (rosbridge reset) non-blocking - detach handles immediately, dispose in a background thread; (2) stop touching expired ORM fields after `db.commit()` before making an external call - capture scalar IDs first (same discipline as the DetachedInstanceError fix above).
+- **If this appears again, check:**
+  - Check `pg_stat_activity` for `idle in transaction` sessions and note which query they were last running.
+  - Check whether the latest relevant run row is stuck in a transient status (e.g. `starting`).
+  - Look for a request handler holding a DB session open across an external (HTTP/rosbridge) call, or performing blocking cleanup directly inside the handler.
+- _Not yet observed in a recorded incident - documented pre-emptively from the known code path._
+<!-- kb:end:postgres_idle_in_transaction -->
+
+
+<!-- kb:begin:microros_heartbeat_stale -->
+## micro-ROS heartbeat went stale (`microros_heartbeat_stale`)
+
+- **Category:** micro-ROS link
+- **Symptom:** `microros_health_watchdog` (rhapsodi_common) stops seeing a heartbeat from the microcontroller (scale / vibration / valve actuation side) for longer than its configured threshold and publishes a WARN `microros_heartbeat_stale` HealthEvent; recovery is logged as INFO `microros_heartbeat_recovered`.
+- **Root cause:** Serial/USB link to the microcontroller dropped or the microcontroller itself reset/hung - commonly a loose `/dev/ttyACM0` connection, a microcontroller firmware crash, or a micro-ROS agent restart.
+- **Fix:** Check `docker logs` for the `micro_ros_agent` service and confirm `/dev/ttyACM0` (or configured device) is present and not re-enumerated under a different path. A firmware crash needs a microcontroller-side investigation, not a Pi-side one.
+- **If this appears again, check:**
+  - Confirm the physical USB/serial connection is seated.
+  - Check for `/dev/ttyACM*` re-enumeration (device path changed after a reconnect).
+  - Check micro_ros_agent container logs/restart count.
+  - If it recovers on its own quickly and repeatedly, suspect an intermittent USB/power issue rather than firmware.
+- _Not yet observed in a recorded incident - documented pre-emptively from the known code path._
+<!-- kb:end:microros_heartbeat_stale -->
+
+
+<!-- kb:begin:dds_transport_timeout -->
+## DDS/Fast-DDS transport timeout calling a ROS service from a container (`dds_transport_timeout`)
+
+- **Category:** ROS / DDS transport
+- **Symptom:** A ROS2 service call (e.g. `/bt_start_webhook_weightment` via `robot_start_adapter`) times out from inside a container with a `504 Gateway Timeout` even though service discovery succeeded and the same call from the host completes instantly.
+- **Root cause:** Fast DDS transport/runtime problem affecting request/response traffic specifically from a containerized participant - not the request payload, not the BT/service callback logic itself.
+- **Fix:** Force UDP transport for the affected container: set `FASTDDS_BUILTIN_TRANSPORTS=UDPv4` in its compose service environment (see `robot_start_adapter` in `docker-compose.yml`/`docker-compose.lightsout.yml`).
+- **If this appears again, check:**
+  - Check adapter health: `GET http://localhost:8010/health`.
+  - Check adapter logs for `504 Gateway Timeout`.
+  - Confirm host-side `ros2 service call ...` for the same service still succeeds.
+  - Confirm the same call from inside the affected container hangs (isolates it to transport, not payload).
+  - Confirm `FASTDDS_BUILTIN_TRANSPORTS=UDPv4` is actually present in that container's environment - a missing or reverted env var is the most common regression.
+- _Not yet observed in a recorded incident - documented pre-emptively from the known code path._
+<!-- kb:end:dds_transport_timeout -->
