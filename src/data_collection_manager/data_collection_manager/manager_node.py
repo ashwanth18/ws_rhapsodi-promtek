@@ -12,6 +12,8 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Bool, Float64, Int32, String
 
+from rhapsodi_common.device_config import load_device_config
+
 
 @dataclass
 class EpisodeContext:
@@ -24,6 +26,23 @@ class EpisodeContext:
 class DataCollectionManager(Node):
     def __init__(self) -> None:
         super().__init__('data_collection_manager')
+        # Single source of truth for robot_id / processing_url defaults —
+        # see src/rhapsodi_common/rhapsodi_common/device_config.py and
+        # config/device.yaml. Still overridable per-node via ROS params for
+        # tests/sims.
+        device = load_device_config()
+        if device.is_fallback:
+            self.get_logger().warn(
+                'No config/device.yaml found; using built-in single-robot '
+                f'defaults (robot_id={device.robot_id}). See '
+                'config/device.yaml.example to configure this Pi.'
+            )
+        else:
+            self.get_logger().info(
+                f'Loaded device identity from {device.source_path}: '
+                f'device_id={device.device_id} robot_id={device.robot_id} '
+                f'robot_type={device.robot_type} site_id={device.site_id}'
+            )
         self.declare_parameter('output_root', 'data/lightsout')
         self.declare_parameter(
             'topics',
@@ -75,12 +94,10 @@ class DataCollectionManager(Node):
         self.declare_parameter(
             'webhook_metadata_topic', '/webhook_run/metadata'
         )
-        self.declare_parameter('robot_id', 'robot-1')
+        self.declare_parameter('robot_id', device.robot_id)
         self.declare_parameter('mode', 'lightsout')
         self.declare_parameter('webhook_metadata_wait_seconds', 1.0)
-        self.declare_parameter(
-            'processing_url', 'http://localhost:8002/process'
-        )
+        self.declare_parameter('processing_url', device.processing_url)
 
         self._output_root = Path(self.get_parameter('output_root').value)
         self._topics = list(self.get_parameter('topics').value)

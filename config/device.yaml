@@ -1,0 +1,13 @@
+# Default/local-dev device identity — committed like robot-prod.env so a
+# fresh checkout works out of the box (single Pi, robot-1), matching the
+# historical defaults. Copy config/device.yaml.example per additional robot
+# when deploying more than one Pi; see that file for the full explanation.
+
+device:
+  device_id: robot-1
+  robot_id: robot-1
+  robot_type: niryo
+  site_id: site-1
+  fleet:
+    processing_url: http://localhost:8002/process
+    ingestion_url: http://localhost:8011/ingest

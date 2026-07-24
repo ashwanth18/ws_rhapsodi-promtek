@@ -13,9 +13,11 @@ x-ros-sim-service: &ros-sim-service
     ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
     ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
     RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+    RHAPSODI_DEVICE_CONFIG: ${RHAPSODI_DEVICE_CONFIG:-/ws/config/device.yaml}
   volumes:
     - ./data:/data
     - ./data/ros_home:/root/.ros
+    - ./config:/ws/config:ro
 
 services:
   db:
@@ -172,6 +174,8 @@ services:
 
   data_collection:
     <<: *ros-sim-service
+    # robot_id / processing_url default from config/device.yaml via
+    # rhapsodi_common.device_config; no longer hardcoded here.
     command:
       [
         "ros2",
@@ -181,8 +185,6 @@ services:
         "--ros-args",
         "-p",
         "output_root:=/data/webhook",
-        "-p",
-        "processing_url:=http://localhost:8002/process",
       ]
     depends_on:
       - processing

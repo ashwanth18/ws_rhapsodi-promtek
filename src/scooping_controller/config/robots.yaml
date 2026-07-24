@@ -16,6 +16,33 @@ robots:
     tool:
       mesh_resource: package://niryo_robot_description/meshes/ned3pro/stl/niryo_scoop_v4-ros.STL
       tcp_visual_offset_xyz: [0.15825, 0.0, -0.09356]
+    # Canonical per-robot-type data-collection contract (data-collection-v2).
+    # No cross-robot schema unification yet (per-robot-type is fine for
+    # now) — this just declares topic names/types once so a future
+    # unification pass only needs to write a mapping layer, not rediscover
+    # topics per robot. Keep in sync with recording_profiles.yaml.
+    telemetry:
+      proprioception:
+        joint_states: {topic: /joint_states, type: sensor_msgs/msg/JointState}
+      actions:
+        follow_joint_trajectory: {
+          topic: /niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory,
+          type: control_msgs/action/FollowJointTrajectory,
+        }
+      pour_phase:
+        weight: {topic: /weight, type: std_msgs/msg/Float64}
+        vibration_intensity: {topic: /vibration/intensity, type: std_msgs/msg/Float64}
+        incline_control: {topic: /incline_control, type: std_msgs/msg/Float64}
+        valve_control: {topic: /valve_control, type: std_msgs/msg/Float64}
+        pour_status: {topic: /pour_status, type: std_msgs/msg/String}
+      scoop_phase:
+        # Populated once the depth+RGB camera pipeline lands (recording-profiles
+        # todo); left declared-but-empty so the contract shape is stable.
+        rgb: {topic: /camera/color/image_raw/compressed, type: sensor_msgs/msg/CompressedImage}
+        depth: {topic: /camera/depth/image_rect_raw, type: sensor_msgs/msg/Image}
+        camera_info: {topic: /camera/color/camera_info, type: sensor_msgs/msg/CameraInfo}
+      health:
+        events: {topic: /system/health_events, type: robot_common_msgs/msg/HealthEvent}
     sim:
       scene:
         package: scooping_controller
@@ -77,6 +104,27 @@ robots:
     tool:
       mesh_resource: package://niryo_robot_description/meshes/ned3pro/stl/niryo_scoop_v4-ros.STL
       tcp_visual_offset_xyz: [0.15825, 0.0, -0.09356]
+    # See the niryo entry above for what this block is for.
+    telemetry:
+      proprioception:
+        joint_states: {topic: /joint_states, type: sensor_msgs/msg/JointState}
+      actions:
+        follow_joint_trajectory: {
+          topic: /jaka_zu5_controller/follow_joint_trajectory,
+          type: control_msgs/action/FollowJointTrajectory,
+        }
+      pour_phase:
+        weight: {topic: /weight, type: std_msgs/msg/Float64}
+        vibration_intensity: {topic: /vibration/intensity, type: std_msgs/msg/Float64}
+        incline_control: {topic: /incline_control, type: std_msgs/msg/Float64}
+        valve_control: {topic: /valve_control, type: std_msgs/msg/Float64}
+        pour_status: {topic: /pour_status, type: std_msgs/msg/String}
+      scoop_phase:
+        rgb: {topic: /camera/color/image_raw/compressed, type: sensor_msgs/msg/CompressedImage}
+        depth: {topic: /camera/depth/image_rect_raw, type: sensor_msgs/msg/Image}
+        camera_info: {topic: /camera/color/camera_info, type: sensor_msgs/msg/CameraInfo}
+      health:
+        events: {topic: /system/health_events, type: robot_common_msgs/msg/HealthEvent}
     sim:
       scene:
         package: scooping_controller
