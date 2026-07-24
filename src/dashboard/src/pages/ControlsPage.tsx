@@ -12,8 +12,9 @@
 // - We use refs for the service/action clients to avoid re-creating them on each render
 import { useEffect, useMemo, useRef, useState } from 'react'
 import SidebarLayout from './SidebarLayout'
-import GlassCard from '../components/GlassCard'
 import Button from '../components/ui/button'
+import { SubsystemCard } from '../components/ui/ConfirmDialog'
+import { SectionHeader } from '../components/ui/SectionHeader'
 import { useRos } from '../ros/RosContext'
 import { ROSLIB } from '../ros/roslib'
 
@@ -388,7 +389,7 @@ export default function ControlsPage() {
 
   // MoveTo action removed in favor of service-only approach on this page
 
-  const StatusBadge = ({ status }: { status: SensorStatus | LifecycleStatus }) => {
+  const SensorStatusPill = ({ status }: { status: SensorStatus | LifecycleStatus }) => {
     const classes = status === 'connected'
       ? 'bg-[var(--status-good-bg)] text-[var(--status-good-fg)]'
       : status === 'connecting' || status === 'stale'
@@ -401,134 +402,143 @@ export default function ControlsPage() {
 
   return (
     <SidebarLayout>
-      <div className="px-6 py-6">
-        <div className="flex items-end justify-between mb-4">
-          <div>
-            <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk' }}>Controls & Sensors</h1>
-            <p className="text-[var(--text-secondary)]">Monitor sensor connectivity and control actuators</p>
-          </div>
-        </div>
+      <div className="px-5 py-5 lg:px-6">
+        <SectionHeader
+          title="Controls & Sensors"
+          description="Monitor subsystem connectivity and send low-latency ROS commands."
+        />
 
-        <div className="grid grid-cols-12 gap-4">
-          {/* Weighing Scale */}
-          <div className="col-span-12 md:col-span-4">
-            <GlassCard>
-              <div className="flex flex-col gap-2">
-                <h3 className="text-lg font-semibold">Weighing Scale</h3>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-[var(--text-secondary)]">Data</span>
-                  <StatusBadge status={weightStatus} />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-[var(--text-secondary)]">Lifecycle</span>
-                  <StatusBadge status={scaleLifecycleStatus} />
-                  <span className="text-xs text-[var(--text-faint)]">{scaleLifecycleLabel}</span>
-                </div>
-                <div className="text-xs text-[var(--text-muted)]">Topic: {WEIGHT_TOPIC}</div>
-                <div className="flex items-center gap-2 mt-2">
-                  <Button
-                    onClick={async () => {
-                      if (!ros || scalePending) return
-                      setScaleLifecycleStatus('connecting')
-                      try {
-                        const nextAction = scaleLifecycleLabel === 'active' ? 'stop' : 'start'
-                        setScalePending(nextAction)
-                        await driveScaleLifecycle()
-                      } catch {
-                        setScalePending(null)
-                        setScaleLifecycleStatus('disconnected')
-                      }
-                    }}
-                    disabled={!ros || !!scalePending}
-                  >
-                    {scaleLifecycleLabel === 'active' ? 'Stop' : 'Start'}
-                  </Button>
-                </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <SubsystemCard
+            title="Weighing Scale"
+            statusLabel={weightStatus}
+            statusTone={weightStatus === 'connected' ? 'good' : weightStatus === 'stale' ? 'warn' : 'bad'}
+            lastSeen={lastWeight ? `${Math.round((nowTs - lastWeight) / 1000)}s ago` : 'never'}
+          >
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-[var(--text-muted)]">Lifecycle</span>
+                <SensorStatusPill status={scaleLifecycleStatus} />
+                <span className="text-xs text-[var(--text-faint)]">{scaleLifecycleLabel}</span>
               </div>
-            </GlassCard>
-          </div>
+              <div className="text-xs text-[var(--text-muted)]">Topic: {WEIGHT_TOPIC}</div>
+              <Button
+                onClick={async () => {
+                  if (!ros || scalePending) return
+                  setScaleLifecycleStatus('connecting')
+                  try {
+                    const nextAction = scaleLifecycleLabel === 'active' ? 'stop' : 'start'
+                    setScalePending(nextAction)
+                    await driveScaleLifecycle()
+                  } catch {
+                    setScalePending(null)
+                    setScaleLifecycleStatus('disconnected')
+                  }
+                }}
+                disabled={!ros || !!scalePending}
+              >
+                {scaleLifecycleLabel === 'active' ? 'Stop scale' : 'Start scale'}
+              </Button>
+            </div>
+          </SubsystemCard>
 
-          {/* micro-ROS */}
-          <div className="col-span-12 md:col-span-4">
-            <GlassCard>
-              <div className="flex flex-col gap-2">
-                <h3 className="text-lg font-semibold">micro-ROS</h3>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-[var(--text-secondary)]">Lifecycle</span>
-                  <StatusBadge status={microRosDisplayStatus} />
-                  <span className="text-xs text-[var(--text-faint)]">{microRosDisplayLabel}</span>
-                </div>
-                <div className="text-xs text-[var(--text-muted)]">Node: /micro_ros_launcher</div>
-                <div className="flex items-center gap-2 mt-2">
-                  <Button
-                    onClick={async () => {
-                      if (!ros || microRosPending) return
-                      setMicroRosLifecycleStatus('connecting')
-                      try {
-                        const nextAction = microRosLifecycleLabel === 'active' ? 'stop' : 'start'
-                        setMicroRosPending(nextAction)
-                        await driveMicroRosLifecycle()
-                      } catch {
-                        setMicroRosPending(null)
-                        setMicroRosLifecycleStatus('disconnected')
-                      }
-                    }}
-                    disabled={!ros || !!microRosPending}
-                  >
-                    {microRosLifecycleLabel === 'active' ? 'Stop' : 'Start'}
-                  </Button>
-                </div>
-              </div>
-            </GlassCard>
-          </div>
+          <SubsystemCard
+            title="micro-ROS"
+            statusLabel={microRosDisplayLabel}
+            statusTone={microRosDisplayStatus === 'connected' ? 'good' : microRosDisplayStatus === 'connecting' ? 'warn' : 'bad'}
+            lastSeen={
+              lastMicroRosHeartbeat
+                ? `${Math.round((nowTs - lastMicroRosHeartbeat) / 1000)}s ago`
+                : 'never'
+            }
+          >
+            <div className="space-y-3 text-sm">
+              <div className="text-xs text-[var(--text-muted)]">Node: /micro_ros_launcher</div>
+              <Button
+                onClick={async () => {
+                  if (!ros || microRosPending) return
+                  setMicroRosLifecycleStatus('connecting')
+                  try {
+                    const nextAction = microRosLifecycleLabel === 'active' ? 'stop' : 'start'
+                    setMicroRosPending(nextAction)
+                    await driveMicroRosLifecycle()
+                  } catch {
+                    setMicroRosPending(null)
+                    setMicroRosLifecycleStatus('disconnected')
+                  }
+                }}
+                disabled={!ros || !!microRosPending}
+              >
+                {microRosLifecycleLabel === 'active' ? 'Stop micro-ROS' : 'Start micro-ROS'}
+              </Button>
+            </div>
+          </SubsystemCard>
 
-          {/* Record target (pose/joints) */}
-          <div className="col-span-12 md:col-span-6">
-            <GlassCard>
-              <div className="flex flex-col gap-3">
-                <h3 className="text-lg font-semibold">Record Target</h3>
-                <div className="flex items-center gap-3">
-                  <input placeholder="name" value={recordName} onChange={e => setRecordName(e.target.value)} className="rounded border border-[var(--border)] bg-transparent px-2 py-1 text-[var(--text-primary)]" />
-                  <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                    <input type="checkbox" checked={recordJoints} onChange={e => setRecordJoints(e.target.checked)} /> Joints
-                  </label>
-                  <Button onClick={recordTarget} disabled={!ros || !recordName}>Record</Button>
-                </div>
-                {recordMsg && <div className="text-xs text-[var(--text-muted)]">{recordMsg}</div>}
-              </div>
-            </GlassCard>
-          </div>
+          <SubsystemCard
+            title="Camera"
+            statusLabel={cameraStatus}
+            statusTone={cameraStatus === 'connected' ? 'good' : cameraStatus === 'stale' ? 'warn' : 'bad'}
+            lastSeen={lastCamera ? `${Math.round((nowTs - lastCamera) / 1000)}s ago` : 'never'}
+          >
+            <div className="text-xs text-[var(--text-muted)]">Topic: /scan_qr/camera_info</div>
+          </SubsystemCard>
 
-          {/* Move To controls removed (actions not used via rosbridge) */}
-          {/* Camera */}
-          <div className="col-span-12 md:col-span-4">
-            <GlassCard>
-              <div className="flex flex-col gap-2">
-                <h3 className="text-lg font-semibold">Camera</h3>
-                <div className="flex items-center gap-2"><span className="text-sm text-[var(--text-secondary)]">Status</span> <StatusBadge status={cameraStatus} /></div>
-                <div className="text-xs text-[var(--text-muted)]">Topic: /camera_info</div>
+          <SubsystemCard
+            title="Vibration"
+            statusLabel={vibrationPubStatus}
+            statusTone={vibrationPubStatus === 'connected' ? 'good' : 'bad'}
+            lastSeen={
+              lastVibrationSent
+                ? `${Math.round((nowTs - lastVibrationSent) / 1000)}s ago`
+                : 'never'
+            }
+          >
+            <div className="space-y-3">
+              <div className="font-display text-3xl font-semibold font-tabular">
+                {vibValue.toFixed(2)}
               </div>
-            </GlassCard>
-          </div>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={vibValue}
+                onChange={(e) => setVibValue(parseFloat(e.target.value))}
+                className="w-full"
+              />
+              <div className="flex gap-2">
+                <Button onClick={publishVibration} disabled={!ros}>
+                  Publish
+                </Button>
+                <Button variant="outline" onClick={() => setVibValue(0)} disabled={!ros}>
+                  Stop
+                </Button>
+              </div>
+            </div>
+          </SubsystemCard>
 
-          {/* Vibration Control (publisher only) */}
-          <div className="col-span-12 md:col-span-4">
-            <GlassCard>
-              <div className="flex flex-col gap-3">
-                <h3 className="text-lg font-semibold">Vibration</h3>
-                <div className="flex items-center gap-2"><span className="text-sm text-[var(--text-secondary)]">Status</span> <StatusBadge status={vibrationPubStatus} /></div>
-                <div className="text-xs text-[var(--text-muted)]">Publisher → /vibration/intensity (std_msgs/Float64)</div>
-                <div className="flex items-center gap-3">
-                  <input type="range" min={0} max={1} step={0.01} value={vibValue} onChange={(e) => setVibValue(parseFloat(e.target.value))} className="w-full" />
-                  <span className="w-12 text-right text-sm">{vibValue.toFixed(2)}</span>
-                  <Button onClick={publishVibration} disabled={!ros}>Publish</Button>
-                </div>
-                {lastVibrationSent && (
-                  <div className="text-xs text-[var(--text-muted)]">Last sent: {Math.round((Date.now() - lastVibrationSent)/1000)}s ago</div>
-                )}
-              </div>
-            </GlassCard>
-          </div>
+          <SubsystemCard title="Record Target" statusLabel={ros ? 'ready' : 'offline'} statusTone={ros ? 'info' : 'bad'}>
+            <div className="space-y-3">
+              <input
+                placeholder="Target name"
+                value={recordName}
+                onChange={(e) => setRecordName(e.target.value)}
+                className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm"
+              />
+              <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                <input
+                  type="checkbox"
+                  checked={recordJoints}
+                  onChange={(e) => setRecordJoints(e.target.checked)}
+                />
+                Record joints (not pose)
+              </label>
+              <Button onClick={recordTarget} disabled={!ros || !recordName}>
+                Record
+              </Button>
+              {recordMsg && <div className="text-xs text-[var(--text-muted)]">{recordMsg}</div>}
+            </div>
+          </SubsystemCard>
         </div>
       </div>
     </SidebarLayout>

@@ -3,7 +3,12 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import DateTimeText from '../components/DateTimeText'
 import GlassCard from '../components/GlassCard'
+import RunDetailDrawer from '../components/RunDetailDrawer'
 import Button from '../components/ui/button'
+import ConfirmDialog from '../components/ui/ConfirmDialog'
+import MetricCard from '../components/ui/MetricCard'
+import StatusBadge from '../components/ui/StatusBadge'
+import { SectionHeader } from '../components/ui/SectionHeader'
 import { useRuntimeConfig } from '../config/RuntimeConfig'
 import SidebarLayout from './SidebarLayout'
 
@@ -117,6 +122,8 @@ export default function BatchDetailPage() {
   const [runningId, setRunningId] = useState<number | null>(null)
   const [runningBatch, setRunningBatch] = useState(false)
   const [sendingId, setSendingId] = useState<number | null>(null)
+  const [confirmRunId, setConfirmRunId] = useState<number | null>(null)
+  const [drawerRow, setDrawerRow] = useState<Row | null>(null)
   const [openRobotDetailIds, setOpenRobotDetailIds] = useState<number[]>([])
   const [robotDetailsInitialized, setRobotDetailsInitialized] = useState(false)
   const lastAutoScrolledWeightmentIdRef = useRef<number | null>(null)
@@ -253,6 +260,7 @@ export default function BatchDetailPage() {
       window.alert(message)
     } finally {
       setRunningId(null)
+      setConfirmRunId(null)
     }
   }
 
@@ -340,35 +348,21 @@ export default function BatchDetailPage() {
     )
   }
 
+  const completedCount = rows.filter((r) => r.completed).length
+
   return (
     <SidebarLayout>
-      <div className="px-6 py-6">
-        <div className="mb-4 flex items-end justify-between gap-4">
-          <div>
-            <div className="mb-2">
-              <Link to="/batches" className="text-sm text-sky-300 hover:text-sky-200">
-                ← Back to batches
-              </Link>
-            </div>
-            <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk' }}>
-              Batch Details
-            </h1>
-            <p className="text-[var(--text-secondary)]">
-              Batch `{summary?.batch_id ?? '—'}`
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <span
-              className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                summary?.completed
-                  ? 'bg-[var(--status-good-bg)] text-[var(--status-good-fg)]'
-                  : 'bg-[var(--status-bad-bg)] text-[var(--status-bad-fg)]'
-              }`}
-            >
-              {summary?.completed ? 'Complete' : 'Not Complete'}
-            </span>
-            {!summary?.completed && (
-              <div className="flex flex-col items-end gap-1">
+      <div className="px-5 py-5 lg:px-6">
+        <SectionHeader
+          title="Batch Details"
+          description={`Batch ${summary?.batch_id ?? '—'}`}
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge
+                label={summary?.completed ? 'Complete' : 'In progress'}
+                tone={summary?.completed ? 'good' : 'warn'}
+              />
+              {!summary?.completed && (
                 <Button
                   onClick={() => runFullBatch()}
                   disabled={
@@ -379,23 +373,29 @@ export default function BatchDetailPage() {
                     incompleteRowsMissingLocation.length > 0
                   }
                 >
-                  {runningBatch
-                    ? 'Starting Batch...'
-                    : summary?.batch_auto_run_enabled
-                      ? 'Batch Auto-Run Enabled'
-                      : 'Run Full Batch'}
+                  {runningBatch ? 'Starting…' : 'Run Full Batch'}
                 </Button>
-                {incompleteRowsMissingLocation.length > 0 && (
-                  <span className="text-xs text-[var(--status-bad-fg)]">
-                    Full batch requires locations for every incomplete weightment
-                  </span>
-                )}
-              </div>
-            )}
-            <Button onClick={() => loadRows()} disabled={loading}>
-              {loading ? 'Refreshing…' : 'Refresh'}
-            </Button>
-          </div>
+              )}
+              <Button variant="outline" onClick={() => loadRows()} disabled={loading}>
+                Refresh
+              </Button>
+            </div>
+          }
+        />
+
+        <div className="mb-4">
+          <Link to="/batches" className="text-sm text-[var(--accent)] hover:underline">
+            ← Back to batches
+          </Link>
+        </div>
+
+        <div className="mb-4 grid gap-3 sm:grid-cols-3">
+          <MetricCard label="Weightments" value={rows.length} />
+          <MetricCard label="Completed" value={completedCount} />
+          <MetricCard
+            label="Auto-run"
+            value={summary?.batch_auto_run_enabled ? 'Enabled' : 'Off'}
+          />
         </div>
 
         <GlassCard className="mb-6">
@@ -473,15 +473,18 @@ export default function BatchDetailPage() {
                         {row.actual_weight_kg != null ? row.actual_weight_kg.toFixed(3) : '—'}
                       </td>
                       <td className="py-3 pr-4">
-                        <span
-                          className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
-                            row.completed
-                              ? 'bg-[var(--status-good-bg)] text-[var(--status-good-fg)]'
-                              : 'bg-[var(--status-bad-bg)] text-[var(--status-bad-fg)]'
-                          }`}
-                        >
-                          {row.completed ? 'Complete' : 'Not Complete'}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span
+                            className={`inline-flex w-fit rounded-full px-2 py-1 text-xs font-semibold ${
+                              row.completed
+                                ? 'bg-[var(--status-good-bg)] text-[var(--status-good-fg)]'
+                                : 'bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]'
+                            }`}
+                          >
+                            {row.completed ? 'Complete' : 'Pending'}
+                          </span>
+                          {row.robot_status && <div className="mt-1">{robotStatusChip(row)}</div>}
+                        </div>
                       </td>
                       <td className="py-3 pr-4">{row.stock_item_id ?? '—'}</td>
                       <td className="py-3 pr-4">{row.ingredient_name ?? '—'}</td>
@@ -496,51 +499,56 @@ export default function BatchDetailPage() {
                         {row.energy_kwh != null ? row.energy_kwh.toFixed(3) : '—'}
                       </td>
                       <td className="py-3 text-right">
-                        {!row.completed && (
-                          <div className="flex flex-col items-end gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => runRobot(row.weightment_id)}
-                              disabled={
-                                runningId === row.weightment_id ||
-                                row.location_id == null ||
-                                row.robot_status === 'starting' ||
-                                row.robot_status === 'running' ||
-                                row.robot_status === 'awaiting_processing'
-                              }
-                            >
-                              {runningId === row.weightment_id
-                                ? 'Starting…'
-                                : row.robot_status === 'starting'
+                        <div className="flex flex-col items-end gap-2">
+                          {(row.robot_status || row.robot_trace_run_id) && (
+                            <Button size="sm" variant="outline" onClick={() => setDrawerRow(row)}>
+                              Run details
+                            </Button>
+                          )}
+                          {!row.completed && (
+                            <>
+                              <Button
+                                size="sm"
+                                onClick={() => setConfirmRunId(row.weightment_id)}
+                                disabled={
+                                  runningId === row.weightment_id ||
+                                  row.location_id == null ||
+                                  row.robot_status === 'starting' ||
+                                  row.robot_status === 'running' ||
+                                  row.robot_status === 'awaiting_processing'
+                                }
+                              >
+                                {runningId === row.weightment_id
                                   ? 'Starting…'
-                                  : row.robot_status === 'running'
-                                    ? 'Running…'
-                                    : row.robot_status === 'awaiting_processing'
-                                      ? 'Awaiting Trace…'
-                                      : 'Run Robot'}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => sendWeightment(row.weightment_id)}
-                              disabled={
-                                sendingId === row.weightment_id ||
-                                row.location_id == null ||
-                                row.robot_status === 'starting' ||
-                                row.robot_status === 'running'
-                              }
-                            >
-                              {sendingId === row.weightment_id
-                                ? 'Sending…'
-                                : 'Send To MES'}
-                            </Button>
-                            {row.location_id == null && (
-                              <span className="text-xs text-[var(--status-bad-fg)]">
-                                No matching location id found
-                              </span>
-                            )}
-                          </div>
-                        )}
+                                  : row.robot_status === 'starting'
+                                    ? 'Starting…'
+                                    : row.robot_status === 'running'
+                                      ? 'Running…'
+                                      : row.robot_status === 'awaiting_processing'
+                                        ? 'Awaiting Trace…'
+                                        : 'Run Robot'}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => sendWeightment(row.weightment_id)}
+                                disabled={
+                                  sendingId === row.weightment_id ||
+                                  row.location_id == null ||
+                                  row.robot_status === 'starting' ||
+                                  row.robot_status === 'running'
+                                }
+                              >
+                                {sendingId === row.weightment_id ? 'Sending…' : 'Send To MES'}
+                              </Button>
+                              {row.location_id == null && (
+                                <span className="text-xs text-[var(--status-bad-fg)]">
+                                  No matching location id found
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -550,105 +558,16 @@ export default function BatchDetailPage() {
           </div>
         </GlassCard>
 
-        {robotDetailRows.length > 0 && (
-          <div className="mt-6 space-y-4">
-            <div className="text-sm text-[var(--text-secondary)]">Robot Run Details</div>
-            {robotDetailRows.map((row) => (
-              <GlassCard key={`robot-details-${row.weightment_id}`}>
-                <div className="flex flex-col gap-4">
-                  <div
-                    id={`robot-detail-${row.weightment_id}`}
-                    className="flex flex-wrap items-center justify-between gap-3"
-                  >
-                    <div>
-                      <div className="text-sm font-semibold text-[var(--text-primary)]">
-                        Weightment {row.weightment_id}
-                      </div>
-                      <div className="text-xs text-[var(--text-faint)]">
-                        Ingredient {row.ingredient_name ?? row.stock_item_id ?? '—'}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {robotStatusChip(row)}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => toggleRobotDetail(row.weightment_id)}
-                        aria-label={
-                          openRobotDetailIds.includes(row.weightment_id)
-                            ? `Collapse robot details for weightment ${row.weightment_id}`
-                            : `Expand robot details for weightment ${row.weightment_id}`
-                        }
-                      >
-                        <ChevronIcon open={openRobotDetailIds.includes(row.weightment_id)} />
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div
-                    className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                      openRobotDetailIds.includes(row.weightment_id)
-                        ? 'max-h-[1000px] opacity-100'
-                        : 'max-h-0 opacity-0'
-                    }`}
-                  >
-                    <div className="flex flex-col gap-4 pt-1">
-                      <div className="grid grid-cols-1 gap-3 text-sm text-[var(--text-secondary)] md:grid-cols-3">
-                        <div>
-                          <div className="text-[var(--text-faint)]">Requested</div>
-                          <DateTimeText value={row.robot_requested_at} />
-                        </div>
-                        <div>
-                          <div className="text-[var(--text-faint)]">Started</div>
-                          <DateTimeText value={row.robot_started_at} />
-                        </div>
-                        <div>
-                          <div className="text-[var(--text-faint)]">Finished</div>
-                          <DateTimeText value={row.robot_finished_at} />
-                        </div>
-                        <div>
-                          <div className="text-[var(--text-faint)]">Trace Run ID</div>
-                          <div>{row.robot_trace_run_id ?? '—'}</div>
-                        </div>
-                        <div>
-                          <div className="text-[var(--text-faint)]">Log ID</div>
-                          <div>{row.robot_processed_id ?? '—'}</div>
-                        </div>
-                        <div>
-                          <div className="text-[var(--text-faint)]">Final Weight</div>
-                          <div>{formatNumber(row.robot_processed_final_weight_kg)} kg</div>
-                        </div>
-                      </div>
-
-                      {(row.robot_processed_pour_duration_s != null ||
-                        row.robot_processed_scoop_duration_s != null ||
-                        row.robot_processed_settle_time_s != null ||
-                        row.robot_processed_overshoot_g != null) && (
-                        <div className="text-sm text-[var(--text-secondary)]">
-                          Metrics: scoop {formatNumber(row.robot_processed_scoop_duration_s, 2)}s,
-                          pour {formatNumber(row.robot_processed_pour_duration_s, 2)}s, settle{' '}
-                          {formatNumber(row.robot_processed_settle_time_s, 2)}s, final error{' '}
-                          {formatNumber(row.robot_processed_overshoot_g, 1)} g
-                        </div>
-                      )}
-
-                      {row.robot_status === 'awaiting_processing' && (
-                        <div className="text-sm text-[var(--status-warn-fg)]">
-                          Waiting for processed MCAP before MES send
-                        </div>
-                      )}
-
-                      {row.robot_error && (
-                        <div className="text-sm text-[var(--status-bad-fg)]">{row.robot_error}</div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </GlassCard>
-            ))}
-          </div>
-        )}
-
+        <ConfirmDialog
+          open={confirmRunId != null}
+          title="Start robot run?"
+          message={`Start robot execution for weightment ${confirmRunId}?`}
+          confirmLabel="Run Robot"
+          loading={runningId != null}
+          onConfirm={() => confirmRunId != null && void runRobot(confirmRunId)}
+          onCancel={() => setConfirmRunId(null)}
+        />
+        <RunDetailDrawer row={drawerRow} onClose={() => setDrawerRow(null)} />
       </div>
     </SidebarLayout>
   )

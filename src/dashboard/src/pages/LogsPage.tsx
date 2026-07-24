@@ -5,6 +5,8 @@ import DateTimeText from '../components/DateTimeText'
 import DateTimeRangeField from '../components/DateTimeRangeField'
 import GlassCard from '../components/GlassCard'
 import Button from '../components/ui/button'
+import MetricCard from '../components/ui/MetricCard'
+import { SectionHeader } from '../components/ui/SectionHeader'
 import {
   Bar,
   BarChart,
@@ -383,46 +385,53 @@ export default function LogsPage() {
     percent: +overshootHistogram.percentages[idx].toFixed(2),
   }))
 
+  const inToleranceRate = (() => {
+    const eligible = plotRows.filter(
+      (row) => row.target_weight_g != null && row.final_weight_g != null
+    )
+    if (!eligible.length) return null
+    const within = eligible.filter((row) => {
+      const tol = (row.target_weight_g as number) * 0.02
+      return Math.abs((row.final_weight_g as number) - (row.target_weight_g as number)) <= tol
+    }).length
+    return (within / eligible.length) * 100
+  })()
+
+  const avgPourDuration = averageOf(plotRows, (row) => row.pour_duration_s)
+  const meanAbsOvershoot = overshootValues.length
+    ? overshootValues.reduce((s, v) => s + Math.abs(v), 0) / overshootValues.length
+    : null
+
   return (
     <SidebarLayout>
-      <div className="px-6 py-6">
-        <div className="flex items-end justify-between mb-4">
-          <div>
-            <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk' }}>Run History</h1>
-            <p className="text-[var(--text-secondary)]">Processed robot traces and derived metrics</p>
-          </div>
-          <div className="flex items-center gap-2">
+      <div className="px-5 py-5 lg:px-6">
+        <SectionHeader
+          title="Run History"
+          description="Processed robot traces and derived pour/scoop metrics."
+          action={
             <Button onClick={() => loadRows({ manual: true })} disabled={loading}>
-              {manualRefreshing ? (
-                <span className="inline-flex items-center gap-2">
-                  <svg
-                    className="h-4 w-4 animate-spin"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                    aria-hidden="true"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                    />
-                  </svg>
-                  Refreshing…
-                </span>
-              ) : (
-                'Refresh'
-              )}
+              {manualRefreshing ? 'Refreshing…' : 'Refresh'}
             </Button>
-          </div>
+          }
+        />
+
+        <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard label="Runs" value={totalEpisodes} />
+          <MetricCard
+            label="Mean |error|"
+            value={meanAbsOvershoot != null ? meanAbsOvershoot.toFixed(1) : '—'}
+            unit="g"
+          />
+          <MetricCard
+            label="Mean pour"
+            value={avgPourDuration != null ? avgPourDuration.toFixed(1) : '—'}
+            unit="s"
+          />
+          <MetricCard
+            label="In tolerance"
+            value={inToleranceRate != null ? inToleranceRate.toFixed(0) : '—'}
+            unit="%"
+          />
         </div>
         <GlassCard>
           <div className="mb-4 flex items-end justify-between gap-3">
