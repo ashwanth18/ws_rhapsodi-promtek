@@ -1,0 +1,8 @@
+web/node_modules
+web/dist
+web/.vite
+static/assets
+**/__pycache__
+*.pyc
+.venv
+README.md

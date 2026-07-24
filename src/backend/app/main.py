@@ -214,9 +214,114 @@ def health() -> dict:
     return {'status': 'ok'}
 
 
+def _load_device_identity() -> dict[str, str | None]:
+    """Resolve device identity for fleet polling.
+
+    Preference order for each field:
+    1. Explicit env overrides (DEVICE_ID / ROBOT_TYPE / SITE_ID / ROBOT_ID)
+    2. Mounted config/device.yaml (RHAPSODI_DEVICE_CONFIG or /ws/config/device.yaml)
+    3. None (caller decides fallbacks)
+    """
+    identity: dict[str, str | None] = {
+        'device_id': os.environ.get('DEVICE_ID') or None,
+        'robot_id': os.environ.get('ROBOT_ID') or None,
+        'robot_type': os.environ.get('ROBOT_TYPE') or None,
+        'site_id': os.environ.get('SITE_ID') or None,
+    }
+    if all(identity.values()):
+        return identity
+
+    candidates = []
+    env_path = os.environ.get('RHAPSODI_DEVICE_CONFIG')
+    if env_path:
+        candidates.append(env_path)
+    candidates.extend(
+        [
+            '/ws/config/device.yaml',
+            '/config/device.yaml',
+            'config/device.yaml',
+        ]
+    )
+    for path in candidates:
+        try:
+            if not os.path.isfile(path):
+                continue
+            # Minimal YAML parse for the known device.yaml shape (no PyYAML dep).
+            device_block: dict[str, str] = {}
+            in_device = False
+            with open(path, encoding='utf-8') as fh:
+                for raw in fh:
+                    line = raw.rstrip('\n')
+                    if not line.strip() or line.lstrip().startswith('#'):
+                        continue
+                    if line.startswith('device:'):
+                        in_device = True
+                        continue
+                    if in_device and line and not line.startswith(' ') and not line.startswith('\t'):
+                        break
+                    if not in_device:
+                        continue
+                    stripped = line.strip()
+                    if ':' not in stripped or stripped.endswith(':'):
+                        continue
+                    key, _, value = stripped.partition(':')
+                    key = key.strip()
+                    value = value.strip().strip("'\"")
+                    if key in ('device_id', 'robot_id', 'robot_type', 'site_id') and value:
+                        device_block[key] = value
+            for key in identity:
+                if not identity[key] and key in device_block:
+                    identity[key] = device_block[key]
+            break
+        except OSError:
+            continue
+    return identity
+
+
+def _load_image_tag() -> str | None:
+    """Resolve the deployed image tag for fleet version reporting."""
+    env_tag = (os.environ.get('IMAGE_TAG') or '').strip()
+    if env_tag:
+        return env_tag
+    for path in (
+        os.environ.get('RHAPSODI_VERSION_FILE') or '',
+        '/etc/rhapsodi-version',
+        '/ws/.rhapsodi-version',
+    ):
+        if not path:
+            continue
+        try:
+            if not os.path.isfile(path):
+                continue
+            raw = open(path, encoding='utf-8').read().strip()
+            if not raw:
+                continue
+            if raw.startswith('{'):
+                try:
+                    payload = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                tag = str(payload.get('image_tag') or '').strip()
+                if tag:
+                    return tag
+            else:
+                return raw
+        except OSError:
+            continue
+    return None
+
+
 @app.get('/host_info')
 def host_info() -> dict:
-    return {'hostname': socket.gethostname()}
+    identity = _load_device_identity()
+    return {
+        'hostname': socket.gethostname(),
+        'device_id': identity.get('device_id'),
+        'robot_id': identity.get('robot_id'),
+        'robot_type': identity.get('robot_type'),
+        'site_id': identity.get('site_id'),
+        'image_tag': _load_image_tag(),
+    }
 
 
 def parse_json_text(value: str | None) -> Any:

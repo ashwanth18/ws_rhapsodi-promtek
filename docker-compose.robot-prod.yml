@@ -47,10 +47,14 @@ services:
       ROSBRIDGE_HOST: host.docker.internal
       ROSBRIDGE_PORT: 9090
       ROBOT_LOCATION_TARGETS_JSON: ${ROBOT_LOCATION_TARGETS_JSON:-}
+      # Fleet Console /host_info identity + version (IMAGE_TAG from robot-prod.env)
+      IMAGE_TAG: ${IMAGE_TAG:-}
+      RHAPSODI_DEVICE_CONFIG: /ws/config/device.yaml
     ports:
       - "8000:8000"
     volumes:
       - ./data:/data
+      - ./config:/ws/config:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

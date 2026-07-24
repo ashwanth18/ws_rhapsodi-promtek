@@ -158,6 +158,15 @@
         executable: /bin/bash
       no_log: true
 
+    - name: Write .rhapsodi-version for /host_info polling
+      ansible.builtin.copy:
+        dest: "{{ workspace_dir }}/.rhapsodi-version"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+        content: |
+          {"image_tag": "{{ image_tag }}", "deployed_at": "{{ ansible_date_time.iso8601 }}"}
+
     - name: Docker Hub login for private image pulls
       ansible.builtin.shell: |
         set -euo pipefail

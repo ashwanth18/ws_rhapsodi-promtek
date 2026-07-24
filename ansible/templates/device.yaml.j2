@@ -1,0 +1,13 @@
+# Rhapsodi edge device identity — templated by ansible/provision.yml.
+# Per-device state: Ansible never overwrites this file on later deploys
+# (deploy.yml uses force: false when copying from the example).
+
+device:
+  device_id: {{ device_id | default(inventory_hostname) }}
+  robot_id: {{ robot_id | default(device_id | default(inventory_hostname)) }}
+  robot_type: {{ robot_type }}
+  site_id: {{ site_id | default('site-1') }}
+
+  fleet:
+    processing_url: {{ processing_url | default('http://localhost:8002/process') }}
+    ingestion_url: {{ ingestion_url | default('http://localhost:8011/ingest') }}

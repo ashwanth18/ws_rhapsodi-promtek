@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
-# Bootstrap a new Rhapsodi edge device (Pi / Jetson / etc.).
+# Bootstrap a brand-new Rhapsodi edge device BEFORE it is on Tailscale.
 # Idempotent where practical. Requires root (sudo).
 #
+# After the device has joined the Tailnet (tag:robot), prefer the Ansible
+# flash-install path used by the Fleet Console:
+#   ansible-playbook -i ansible/inventory/tailscale.py ansible/provision.yml \
+#     --limit <hostname> -e robot_type=niryo -e site_id=site-1 -e image_tag=<sha>
+#
+# This script remains the manual fallback for the first Tailscale join.
 # Devices get a *slim* checkout of the orphan `deploy` branch (compose +
 # env.example + config.example + exporters only) — not the full monorepo.
 #
@@ -14,6 +20,8 @@
 #   GIT_REPO            — git URL (default: git@github.com:ashwanth18/ws_rhapsodi-promtek.git)
 #   DEPLOY_BRANCH       — slim bundle branch (default: deploy)
 #   IMAGE_TAG           — optional git-sha pin (checks out deploy-<sha> tag)
+#   ROBOT_TYPE          — written into config/device.yaml (default: niryo)
+#   SITE_ID             — written into config/device.yaml (default: site-1)
 #   DOCKERHUB_USER      — for private image pulls (optional; Ansible also logs in)
 #   DOCKERHUB_TOKEN     — Docker Hub access token / password
 #   POSTGRES_PASSWORD   — overrides default in robot-prod.env
@@ -37,6 +45,8 @@ WORKSPACE_DIR="${WORKSPACE_DIR:-/opt/rhapsodi/ws_rhapsodi-promtek}"
 GIT_REPO="${GIT_REPO:-git@github.com:ashwanth18/ws_rhapsodi-promtek.git}"
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-deploy}"
 IMAGE_TAG="${IMAGE_TAG:-}"
+ROBOT_TYPE="${ROBOT_TYPE:-niryo}"
+SITE_ID="${SITE_ID:-site-1}"
 DOCKERHUB_USER="${DOCKERHUB_USER:-}"
 DOCKERHUB_TOKEN="${DOCKERHUB_TOKEN:-}"
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
@@ -144,13 +154,34 @@ chown -R "${INSTALL_USER}:${INSTALL_USER}" "${WORKSPACE_DIR}" || true
 if [[ ! -f "${WORKSPACE_DIR}/robot-prod.env" ]]; then
   cp "${WORKSPACE_DIR}/robot-prod.env.example" "${WORKSPACE_DIR}/robot-prod.env"
 fi
+mkdir -p "${WORKSPACE_DIR}/config"
+DEVICE_ID_VALUE="$(hostname)"
 if [[ ! -f "${WORKSPACE_DIR}/config/device.yaml" ]]; then
-  mkdir -p "${WORKSPACE_DIR}/config"
-  cp "${WORKSPACE_DIR}/config/device.yaml.example" "${WORKSPACE_DIR}/config/device.yaml"
+  cat > "${WORKSPACE_DIR}/config/device.yaml" <<EOF
+device:
+  device_id: ${DEVICE_ID_VALUE}
+  robot_id: ${DEVICE_ID_VALUE}
+  robot_type: ${ROBOT_TYPE}
+  site_id: ${SITE_ID}
+  fleet:
+    processing_url: http://localhost:8002/process
+    ingestion_url: http://localhost:8011/ingest
+EOF
+fi
+# Ensure version file exists as a regular file (compose bind-mount).
+if [[ -n "${IMAGE_TAG}" ]]; then
+  printf '{"image_tag":"%s","robot_type":"%s","site_id":"%s"}\n' \
+    "${IMAGE_TAG}" "${ROBOT_TYPE}" "${SITE_ID}" \
+    > "${WORKSPACE_DIR}/.rhapsodi-version"
+else
+  printf '{"image_tag":"","robot_type":"%s","site_id":"%s"}\n' \
+    "${ROBOT_TYPE}" "${SITE_ID}" \
+    > "${WORKSPACE_DIR}/.rhapsodi-version"
 fi
 chown "${INSTALL_USER}:${INSTALL_USER}" \
   "${WORKSPACE_DIR}/robot-prod.env" \
-  "${WORKSPACE_DIR}/config/device.yaml" || true
+  "${WORKSPACE_DIR}/config/device.yaml" \
+  "${WORKSPACE_DIR}/.rhapsodi-version" || true
 
 pin_images() {
   local tag="$1"

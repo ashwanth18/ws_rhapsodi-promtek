@@ -85,25 +85,55 @@ ansible-playbook -i ansible/inventory/tailscale.py ansible/deploy.yml \
 
 ## Provision a new device
 
-1. Publish a deploy bundle for the sha you want (`publish_deploy_bundle.sh`).
-2. Create a Tailscale auth key tagged `tag:robot`.
-3. Copy `scripts/provision_device.sh` onto the device (from `main`), then:
+### Path A — Fleet Console flash install (preferred after Tailscale join)
+
+1. Publish images + deploy bundle for the sha you want.
+2. Join the device to Tailscale with `tag:robot` (one-time; ACL tag ownership).
+3. Open the Fleet Console (`http://<jetson>:8090`) → select the device → **Flash install**.
+4. Pick `robot_type` (`niryo` | `jaka`), `site_id`, and `image_tag`, then confirm.
+
+This runs `ansible/provision.yml`, which:
+
+1. Installs Docker (if needed) and ensures the deploy user is in the `docker` group
+2. Shallow-checks out `deploy-<image_tag>`
+3. Templates `config/device.yaml` with the chosen `robot_type` / `site_id` / `device_id`
+4. Pins images, starts exporters + the robot stack, waits for `/health`
+5. Writes `.rhapsodi-version` so `/host_info` reports the running version
+
+**Jaka / arm64 constraint:** `robot_type=jaka` is rejected on `aarch64`/`arm64` hosts. The vendor `libjakaAPI.so` is x86_64-only; ARM64 ROS images skip `jaka_driver` / `jaka_planner`. Use `niryo` on Raspberry Pi / Jetson, or provision Jaka on an amd64 host.
+
+CLI equivalent:
+
+```bash
+cd ansible
+ansible-playbook -i inventory/tailscale.py provision.yml \
+  --limit rhapsodi-pi5 \
+  -e robot_type=niryo -e site_id=site-1 -e image_tag=abc1234
+```
+
+### Path B — Manual bootstrap (before Tailscale)
+
+Use only for the first Tailscale join on a brand-new image:
 
 ```bash
 sudo TAILSCALE_AUTHKEY=tskey-auth-... \
   DEVICE_HOSTNAME=rhapsodi-site2-pi5 \
   IMAGE_TAG=abc1234 \
+  ROBOT_TYPE=niryo \
+  SITE_ID=site-1 \
   DOCKERHUB_USER=iserenity \
   DOCKERHUB_TOKEN=... \
   POSTGRES_PASSWORD=... \
-  bash provision_device.sh
+  bash scripts/provision_device.sh
 ```
 
-This joins Tailscale (with `--ssh`), installs Docker, shallow-clones the slim `deploy-<sha>` tag (or floating `deploy` branch), starts `node_exporter` (:9100) + `cadvisor` (:9190), and boots `docker-compose.robot-prod.yml`.
+After the device appears in Tailscale inventory, prefer Path A / Fleet Console for all further installs and updates.
 
-Edit `config/device.yaml` on the device for `device_id` / `robot_id` / `site_id`.
+## Deploy updates (Ansible or Fleet Console)
 
-## Deploy updates (Ansible) — always manual
+Fleet Console → device detail → **Deploy update** (streams Ansible logs over SSE).
+
+CLI:
 
 ```bash
 cd ansible
@@ -123,9 +153,10 @@ Each deploy:
 1. Checks out `deploy-<image_tag>` on the device
 2. `docker login` with vaulted credentials
 3. Pins image refs + Postgres password in `robot-prod.env`
-4. `docker compose pull && up -d`
-5. Waits for `http://127.0.0.1:8000/health`
-6. Rolls back to the previous tag if health fails
+4. Writes `.rhapsodi-version` for Fleet Console `/host_info` polling
+5. `docker compose pull && up -d`
+6. Waits for `http://127.0.0.1:8000/health`
+7. Rolls back to the previous tag if health fails
 
 ## CI auto-build (optional)
 
@@ -152,6 +183,24 @@ docker compose -f docker-compose.monitoring.yml up -d
   - **Rhapsodi Pi Overview** — per-device RAM / temp / disk / CPU / container restarts (pick device in the top dropdown)
 - Prometheus: `http://<jetson>:9091`
 - Alertmanager: `http://<jetson>:9093`
+
+## Fleet Console (Jetson)
+
+Central web UI + API for device inventory, flash install, updates, live Ansible logs, and deploy history. See [`src/fleet_console/README.md`](../src/fleet_console/README.md).
+
+```bash
+cd monitoring
+cp fleet-console.env.example fleet-console.env   # optional token / paths
+# Requires: ansible/.vault_pass, SSH keys to robots, Tailscale on the host
+docker compose -f docker-compose.fleet-console.yml --env-file fleet-console.env up -d --build
+```
+
+- UI / API: `http://<jetson>:8090`
+- Status model:
+  - **Alive** — Prometheus `up{job="node"}` (falls back to Tailscale online + reachable `/host_info`)
+  - **Active** — robot currently has an active weightment run (`GET /robot_weightment_runs/active`)
+  - **Version** — `GET /host_info` → `image_tag` / `robot_type` / `site_id` / `device_id`
+- Deployment history is stored in a SQLite DB inside the `fleet_console_data` volume.
 
 ## Fault checks / Cursor agent
 

@@ -1,0 +1,53 @@
+# Fleet Console — central UI + API for provision / deploy / observe.
+# Run on the Jetson (or any always-on Tailscale node) alongside monitoring.
+#
+# Prerequisites:
+#   - Monorepo checkout at REPO_ROOT (default: parent of monitoring/)
+#   - ansible/.vault_pass present
+#   - Tailscale CLI on the host (network_mode: host + /usr/bin/tailscale)
+#   - SSH agent / keys usable by the ansible_user for robot hosts
+#
+# Usage:
+#   cd monitoring
+#   docker compose -f docker-compose.fleet-console.yml up -d --build
+#
+# UI: http://<jetson-tailscale-ip>:8090
+
+name: rhapsodi-fleet-console
+
+services:
+  fleet-console:
+    build:
+      context: ../src/fleet_console
+      dockerfile: Dockerfile
+    image: ${FLEET_CONSOLE_IMAGE:-iserenity/rhapsodi-promtek:fleet-console}
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      FLEET_API_TOKEN: ${FLEET_API_TOKEN:-}
+      PROMETHEUS_URL: ${PROMETHEUS_URL:-http://127.0.0.1:9091}
+      GRAFANA_PI_OVERVIEW_URL: ${GRAFANA_PI_OVERVIEW_URL:-http://127.0.0.1:3001/d/pi-overview/rhapsodi-pi-overview}
+      DEFAULT_IMAGE_TAG: ${DEFAULT_IMAGE_TAG:-}
+      REPO_ROOT: /repo
+      ANSIBLE_DIR: /repo/ansible
+      ANSIBLE_CONFIG: /repo/ansible/ansible.cfg
+      FLEET_DATA_DIR: /data
+      FLEET_LOG_DIR: /data/logs
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      # Optional Tailscale API fallback if host `tailscale` binary is unavailable
+      TAILSCALE_API_KEY: ${TAILSCALE_API_KEY:-}
+      TAILNET: ${TAILNET:-}
+      TAILSCALE_ROBOT_TAG: ${TAILSCALE_ROBOT_TAG:-tag:robot}
+      TAILSCALE_BUILDER_TAG: ${TAILSCALE_BUILDER_TAG:-tag:builder}
+    volumes:
+      # Full monorepo (ansible playbooks, inventory, vault.yml + .vault_pass).
+      - ${REPO_ROOT:-..}:/repo:ro
+      - fleet_console_data:/data
+      # Host Tailscale CLI + sockets for inventory discovery
+      - /usr/bin/tailscale:/usr/bin/tailscale:ro
+      - /var/run/tailscale:/var/run/tailscale
+      # SSH keys for ansible → robots (ensure known_hosts / identities exist)
+      - ${HOME}/.ssh:/root/.ssh:ro
+
+volumes:
+  fleet_console_data:
