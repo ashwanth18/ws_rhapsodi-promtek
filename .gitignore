@@ -28,6 +28,10 @@ Thumbs.db
 .buildx-cache/
 .buildx-cache-new/
 
+# Ansible vault password (never commit)
+ansible/.vault_pass
+.vault_pass
+
 # Data/artifacts that usually shouldn't be committed
 src/robot_data.db
 **/*.bag

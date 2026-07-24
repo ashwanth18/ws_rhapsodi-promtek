@@ -1,0 +1,15 @@
+# Placeholder secrets for ansible/group_vars/all/vault.yml
+#
+# Create / edit the encrypted vault:
+#   cd ansible
+#   echo 'your-strong-vault-password' > .vault_pass
+#   chmod 600 .vault_pass
+#   ansible-vault create group_vars/all/vault.yml
+#   # or, if replacing placeholders:
+#   ansible-vault edit group_vars/all/vault.yml
+#
+# Required keys:
+---
+vault_dockerhub_username: "iserenity"
+vault_dockerhub_token: "REPLACE_WITH_DOCKERHUB_ACCESS_TOKEN"
+vault_postgres_password: "REPLACE_WITH_STRONG_POSTGRES_PASSWORD"

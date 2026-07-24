@@ -1,0 +1,5 @@
+---
+# Non-secret mappings from vaulted values. Loaded automatically for all hosts.
+dockerhub_username: "{{ vault_dockerhub_username }}"
+dockerhub_token: "{{ vault_dockerhub_token }}"
+postgres_password: "{{ vault_postgres_password }}"
