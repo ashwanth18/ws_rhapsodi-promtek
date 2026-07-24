@@ -10,7 +10,7 @@ Schema follows the plan's tiering directly:
 - Tier 0 (``metadata.json``, ``features.parquet``, ``events.jsonl``): small,
   always kept, synced first. Never pruned by this module.
 - Tier 1 (``run.mcap`` and friends, ``vision/``): bulky, pruned only once
-  the (future) uplink daemon has recorded a `tier1_acked_at` for the run,
+  `uplink_daemon` has recorded a `tier1_acked_at` for the run,
   oldest-first, with anomaly-flagged runs exempt.
 
 This module owns only the SQLite index. It does not talk to the network

@@ -1,13 +1,14 @@
 """Store-and-forward uplink daemon (uplink-daemon).
 
-Watches `manifest.sqlite` and pushes data to the (future)
-`central-ingestion-service`, edge -> cloud, in priority order: fleet
-health log first, then Tier-0 (features/metadata/events), then Tier-1
-(raw MCAP/vision) — matching the plan's "small local storage +
-intermittent connectivity" deployment target. Never deletes anything
-locally itself; it only sets `tier0_synced_at`/`tier1_acked_at` in the
-manifest once the server has actually acknowledged the data, which is
-what unblocks `retention_watchdog`'s Tier-1 pruning.
+Watches `manifest.sqlite` and pushes data to `central-ingestion-service`
+(see `src/backend/ingestion/ingestion/main.py`), edge -> cloud, in
+priority order: fleet health log first, then Tier-0
+(features/metadata/events), then Tier-1 (raw MCAP/vision) — matching
+the plan's "small local storage + intermittent connectivity" deployment
+target. Never deletes anything locally itself; it only sets
+`tier0_synced_at`/`tier1_acked_at` in the manifest once the server has
+actually acknowledged the data, which is what unblocks
+`retention_watchdog`'s Tier-1 pruning.
 
 Runs as its own supervised unit (independent restart from the recorder
 and from retention_watchdog), same rationale as recorder-v2: a stuck
@@ -31,6 +32,7 @@ from data_collection_manager.uplink_client import UplinkClient, UplinkError
 _TIER0_FIELD_NAMES = {
     'metadata.json': 'metadata_json',
     'events.jsonl': 'events_jsonl',
+    'features.parquet': 'features_parquet',
 }
 
 

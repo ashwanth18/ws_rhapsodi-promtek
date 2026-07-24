@@ -7,15 +7,15 @@ retention policy against the filesystem:
   touched here — small, always kept, synced first by the future uplink
   daemon.
 - Tier 1 (`run.mcap` and its directory, `vision/`): deleted only once a
-  run has been marked `tier1_acked_at` (by the future uplink daemon, once
-  it exists), oldest-first, with anomaly-flagged runs exempt.
+  run has been marked `tier1_acked_at` by `uplink_daemon`, oldest-first,
+  with anomaly-flagged runs exempt.
 
-Until the uplink daemon exists, no run will ever have `tier1_acked_at`
-set, so this watchdog is a safe no-op for deletion by construction —
-its job today is (a) to be the enforcement point ready for when acks
-start arriving, and (b) to surface local storage backlog as a health
-event so an unattended Pi filling up its SD card is visible fleet-wide
-instead of silently failing the next recording.
+If `uplink_daemon` is down, misconfigured, or hasn't caught up yet, no
+run will have `tier1_acked_at` set, so this watchdog is a safe no-op
+for deletion by construction — its job is (a) to enforce pruning the
+instant acks do arrive, and (b) to surface local storage backlog as a
+health event so an unattended Pi filling up its SD card is visible
+fleet-wide instead of silently failing the next recording.
 
 The actual policy logic (`run_retention_pass`) is a plain function over a
 `RunManifest`, independent of rclpy, so it can be unit-tested without

@@ -1,9 +1,9 @@
 """HTTP client for the store-and-forward uplink (uplink-daemon).
 
 Talks to the Rhapsodi ingestion service (`central-ingestion-service`,
-built next) over a small versioned wire protocol designed for the
-"small local storage + intermittent connectivity" edge deployment target
-called out in the plan:
+see `src/backend/ingestion/ingestion/main.py`) over a small versioned
+wire protocol designed for the "small local storage + intermittent
+connectivity" edge deployment target called out in the plan:
 
 - Fleet-wide append-only log (``health.jsonl``): tailed incrementally by
   byte offset, no checksum needed — a resend of a few already-seen lines
@@ -18,9 +18,9 @@ called out in the plan:
   corrupted transfer is caught before the local copy is ever deleted.
 
 This module only implements the *client* side of the protocol; see
-`central-ingestion-service` for the matching FastAPI receiver. Every
-method raises `UplinkError` on failure (never a bare `urllib`/socket
-exception) so callers have one exception type to catch.
+`src/backend/ingestion/ingestion/main.py` for the matching FastAPI
+receiver. Every method raises `UplinkError` on failure (never a bare
+`urllib`/socket exception) so callers have one exception type to catch.
 """
 from __future__ import annotations
 
