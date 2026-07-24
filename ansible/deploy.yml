@@ -100,6 +100,9 @@
         dest: "{{ env_file }}"
         remote_src: true
         force: false
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
 
     - name: Ensure config/device.yaml exists from example
       ansible.builtin.copy:
@@ -107,6 +110,21 @@
         dest: "{{ workspace_dir }}/config/device.yaml"
         remote_src: true
         force: false
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+
+    # If robot-prod.env is still root-owned from an old provision run, fix once:
+    #   sudo chown admin:admin /opt/rhapsodi/ws_rhapsodi-promtek/robot-prod.env
+    - name: Ensure per-device env is writable by deploy user
+      ansible.builtin.file:
+        path: "{{ env_file }}"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0644"
+      become: true
+      become_flags: "-n"
+      ignore_errors: true
 
     - name: Pin IMAGE_TAG, image refs, and Postgres password in robot-prod.env
       ansible.builtin.shell: |

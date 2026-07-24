@@ -140,6 +140,7 @@ fi
 chown -R "${INSTALL_USER}:${INSTALL_USER}" "${WORKSPACE_DIR}" || true
 
 # Per-device state: copy examples once; never overwrite existing files.
+# Owned by INSTALL_USER so later Ansible deploys can rewrite IMAGE_TAG without root.
 if [[ ! -f "${WORKSPACE_DIR}/robot-prod.env" ]]; then
   cp "${WORKSPACE_DIR}/robot-prod.env.example" "${WORKSPACE_DIR}/robot-prod.env"
 fi
@@ -147,6 +148,9 @@ if [[ ! -f "${WORKSPACE_DIR}/config/device.yaml" ]]; then
   mkdir -p "${WORKSPACE_DIR}/config"
   cp "${WORKSPACE_DIR}/config/device.yaml.example" "${WORKSPACE_DIR}/config/device.yaml"
 fi
+chown "${INSTALL_USER}:${INSTALL_USER}" \
+  "${WORKSPACE_DIR}/robot-prod.env" \
+  "${WORKSPACE_DIR}/config/device.yaml" || true
 
 pin_images() {
   local tag="$1"
