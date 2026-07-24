@@ -265,6 +265,17 @@ services:
     depends_on:
       - processing
 
+  # Enforces manifest.sqlite's Tier 0/Tier 1 retention policy (local-manifest-retention):
+  # Tier 1 (run.mcap, vision/) is only pruned once the (future) uplink daemon
+  # acks a run, oldest-first, anomaly-flagged runs exempt. Runs independently
+  # of data_collection so a stuck recorder never blocks retention enforcement.
+  retention_watchdog:
+    <<: *ros-robot-service
+    command: >
+      ros2 run data_collection_manager retention_watchdog
+      --ros-args
+      -p output_root:=/data/webhook
+
   orchestrator:
     <<: *ros-robot-service
     command: >

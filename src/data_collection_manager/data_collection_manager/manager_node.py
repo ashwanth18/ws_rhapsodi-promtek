@@ -14,7 +14,9 @@ from std_msgs.msg import Bool, Float64, Int32, String
 
 from rhapsodi_common.device_config import load_device_config
 from rhapsodi_common.health import HealthEventPublisher
+from rhapsodi_common.health_log import HealthEventLogger
 
+from data_collection_manager.manifest import TIER_0, TIER_1, RunManifest
 from data_collection_manager.recorder_v2 import RecorderStartError, RecorderV2
 
 
@@ -139,8 +141,25 @@ class DataCollectionManager(Node):
         self._processing_url = str(
             self.get_parameter('processing_url').value or ''
         ).strip()
-        self._health = HealthEventPublisher(self, 'data_collection_manager')
+        self.declare_parameter('manifest_path', '')
+        manifest_path_param = str(
+            self.get_parameter('manifest_path').value or ''
+        ).strip()
+        self._manifest_path = (
+            Path(manifest_path_param)
+            if manifest_path_param
+            else self._output_root / 'manifest.sqlite'
+        )
+        self._device_id = device.device_id
+        self._health = HealthEventPublisher(
+            self, 'data_collection_manager', device_id=self._device_id
+        )
+        self._health_log = HealthEventLogger(
+            self, fleet_log_path=self._output_root / 'health.jsonl'
+        )
         self._recorder = RecorderV2(health=self._health)
+        self._manifest = RunManifest(self._manifest_path)
+        self._run_key: Optional[str] = None
         self._lightsout_active = False
         self._current_episode: Optional[EpisodeContext] = None
         self._run_folder: Optional[Path] = None
@@ -242,11 +261,40 @@ class DataCollectionManager(Node):
             )
         return payload
 
+    def _register_run(self, ctx: EpisodeContext) -> None:
+        """Ensure `manifest.sqlite` and the per-run events.jsonl are wired
+        up for a freshly-created run folder. Idempotent — safe to call once
+        per run (upsert_run no-ops if the run_key already exists).
+        """
+        self._run_key = ctx.folder.name
+        self._manifest.upsert_run(
+            run_key=self._run_key,
+            robot_id=self._robot_id,
+            run_folder=ctx.folder,
+            source=ctx.source,
+            mode=self._run_mode or self._mode,
+            device_id=self._device_id,
+        )
+        self._health_log.set_run_log(ctx.folder / 'events.jsonl')
+        self._manifest.record_artifact(
+            self._run_key, TIER_0, ctx.folder / 'events.jsonl'
+        )
+
+    def _close_run_registration(self) -> None:
+        if self._run_key is not None:
+            self._manifest.mark_run_complete(self._run_key)
+        self._run_key = None
+        self._health_log.clear_run_log()
+
     def _write_metadata(self, ctx: EpisodeContext) -> None:
         metadata_path = ctx.folder / 'metadata.json'
         metadata_path.write_text(
             json.dumps(self._metadata_payload(ctx), indent=2, sort_keys=True)
         )
+        if self._run_key is not None:
+            self._manifest.record_artifact(
+                self._run_key, TIER_0, metadata_path
+            )
 
     def _start_bag(self, ctx: EpisodeContext) -> None:
         """Start native MCAP recording for `ctx`. Raises RecorderStartError
@@ -259,12 +307,36 @@ class DataCollectionManager(Node):
             f'topics={self._topics}'
         )
         self._recorder.start(ctx.bag_path, self._topics)
+        # bag_path is a directory (rosbag2_py writes N .mcap chunks +
+        # metadata.yaml under it) — tracked as one Tier-1 artifact so
+        # retention prunes/measures the whole thing as a unit.
+        if self._run_key is not None:
+            self._manifest.record_artifact(
+                self._run_key, TIER_1, ctx.bag_path
+            )
 
     def _stop_bag(self) -> None:
         if not self._recorder.is_recording:
             return
         self.get_logger().info('Stopping MCAP recording')
         self._recorder.stop()
+
+    def _register_parquet_if_present(self, ctx: EpisodeContext) -> None:
+        """Best-effort: the `processing` service writes
+        `<mcap_stem>.parquet` next to the MCAP it read (see
+        `src/backend/processing/main.py::_write_parquet`) once it responds
+        successfully. Pick it up as a Tier-0 artifact if present — a miss
+        here is not an error, just nothing to register yet.
+        """
+        if self._run_key is None:
+            return
+        for candidate_dir in {ctx.bag_path, ctx.folder}:
+            if not candidate_dir.is_dir():
+                continue
+            for parquet_path in candidate_dir.glob('*.parquet'):
+                self._manifest.record_artifact(
+                    self._run_key, TIER_0, parquet_path
+                )
 
     def _post_process(self, ctx: EpisodeContext) -> None:
         if not self._processing_url:
@@ -360,6 +432,7 @@ class DataCollectionManager(Node):
         if self._current_episode is not None:
             self._finalize_episode('episode_rollover')
         self._recording_source = 'lightsout'
+        is_new_run = self._run_folder is None
         if self._run_folder is None:
             self._run_folder = self._output_root / self._safe_run_folder()
             self._run_folder.mkdir(parents=True, exist_ok=True)
@@ -371,6 +444,8 @@ class DataCollectionManager(Node):
             bag_path=bag_path,
             source='lightsout',
         )
+        if is_new_run:
+            self._register_run(ctx)
         self._write_metadata(ctx)
         try:
             self._start_bag(ctx)
@@ -388,6 +463,7 @@ class DataCollectionManager(Node):
         if self._current_episode is not None:
             return
         self._recording_source = 'webhook'
+        is_new_run = self._run_folder is None
         if self._run_folder is None:
             self._run_folder = self._output_root / self._safe_run_folder()
             self._run_folder.mkdir(parents=True, exist_ok=True)
@@ -399,6 +475,8 @@ class DataCollectionManager(Node):
             bag_path=bag_path,
             source='webhook',
         )
+        if is_new_run:
+            self._register_run(ctx)
         self._write_metadata(ctx)
         try:
             self._start_bag(ctx)
@@ -444,6 +522,7 @@ class DataCollectionManager(Node):
         ctx = self._current_episode
         self._stop_bag()
         self._post_process(ctx)
+        self._register_parquet_if_present(ctx)
         self._current_episode = None
 
     def _finish_active(self) -> None:
@@ -454,6 +533,7 @@ class DataCollectionManager(Node):
         if not self._lightsout_active:
             self._finish_active()
             self._run_folder = None
+            self._close_run_registration()
             if self._recording_source == 'lightsout':
                 self._recording_source = None
 
@@ -526,6 +606,7 @@ class DataCollectionManager(Node):
         if self._current_episode and self._current_episode.source == 'webhook':
             self._finalize_episode('webhook_run_end')
             self._run_folder = None
+            self._close_run_registration()
             self._recording_source = None
         self._webhook_start_pending = False
         self._webhook_active_started_at = None
@@ -570,8 +651,14 @@ def main() -> None:
 
     try:
         rclpy.spin(node)
+    except rclpy.executors.ExternalShutdownException:
+        # Can race with the custom SIGTERM handler above if rclpy's own
+        # default signal handling wins the race — still a normal shutdown,
+        # not a crash.
+        pass
     finally:
         node._finish_active()
+        node._manifest.close()
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

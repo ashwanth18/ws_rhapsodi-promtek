@@ -190,6 +190,22 @@ services:
       - processing
     restart: unless-stopped
 
+  # Enforces manifest.sqlite's Tier 0/Tier 1 retention policy (local-manifest-retention);
+  # see docker-compose.robot-prod.yml for the full rationale.
+  retention_watchdog:
+    <<: *ros-sim-service
+    command:
+      [
+        "ros2",
+        "run",
+        "data_collection_manager",
+        "retention_watchdog",
+        "--ros-args",
+        "-p",
+        "output_root:=/data/webhook",
+      ]
+    restart: unless-stopped
+
   pouring_controller:
     <<: *ros-sim-service
     command:
