@@ -30,6 +30,9 @@ GIT_SHA="$(git rev-parse --short HEAD)"
 DEPLOY_TAG="deploy-${GIT_SHA}"
 DEPLOY_BRANCH="deploy"
 REMOTE="${REMOTE:-origin}"
+# Resolve the real push URL up front. A --local clone would otherwise keep
+# origin pointed at this working tree and never reach GitHub.
+REMOTE_URL="$(git remote get-url "${REMOTE}")"
 
 BUNDLE_FILES=(
   docker-compose.robot-prod.yml
@@ -50,9 +53,12 @@ cleanup() { rm -rf "${TMP_DIR}"; }
 trap cleanup EXIT
 
 echo "Preparing slim deploy bundle @ ${GIT_SHA}"
+echo "Remote: ${REMOTE_URL}"
 git clone --local --no-hardlinks --shared "${ROOT_DIR}" "${TMP_DIR}/repo" >/dev/null 2>&1 \
   || git clone --local "${ROOT_DIR}" "${TMP_DIR}/repo" >/dev/null
 cd "${TMP_DIR}/repo"
+git remote set-url origin "${REMOTE_URL}"
+
 
 # Orphan branch with only the bundle files.
 git checkout --orphan "${DEPLOY_BRANCH}" >/dev/null 2>&1

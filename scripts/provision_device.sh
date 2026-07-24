@@ -48,8 +48,12 @@ export DEBIAN_FRONTEND=noninteractive
 log() { echo "==> $*"; }
 
 if [[ -z "${TAILSCALE_AUTHKEY}" ]]; then
-  echo "TAILSCALE_AUTHKEY is required (create a tagged key with tag:robot in the Tailscale admin console)." >&2
-  exit 1
+  if command -v tailscale >/dev/null 2>&1 && tailscale status --self >/dev/null 2>&1; then
+    log "TAILSCALE_AUTHKEY unset but this host is already on the tailnet — continuing"
+  else
+    echo "TAILSCALE_AUTHKEY is required (create a tagged key with tag:robot in the Tailscale admin console)." >&2
+    exit 1
+  fi
 fi
 
 if [[ -n "${DEVICE_HOSTNAME}" ]]; then
@@ -90,12 +94,16 @@ if ! command -v tailscale >/dev/null 2>&1; then
   curl -fsSL https://tailscale.com/install.sh | sh
 fi
 # --ssh enables Tailscale SSH for Cursor agent / operators
-tailscale up \
-  --auth-key="${TAILSCALE_AUTHKEY}" \
-  --ssh \
-  --accept-routes \
-  --hostname="$(hostname)" \
-  || tailscale up --ssh --accept-routes
+if [[ -n "${TAILSCALE_AUTHKEY}" ]]; then
+  tailscale up \
+    --auth-key="${TAILSCALE_AUTHKEY}" \
+    --ssh \
+    --accept-routes \
+    --hostname="$(hostname)" \
+    || tailscale up --ssh --accept-routes
+else
+  tailscale up --ssh --accept-routes || true
+fi
 
 log "Shallow-cloning slim deploy bundle at ${WORKSPACE_DIR}"
 mkdir -p "$(dirname "${WORKSPACE_DIR}")"
