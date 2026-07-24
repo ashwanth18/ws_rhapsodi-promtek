@@ -1,8 +1,16 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, ExternalLink } from 'lucide-react'
-import { api, type Deployment, type Device, type Profile } from '../lib/api'
+import {
+  api,
+  formatDuration,
+  type Branch,
+  type Deployment,
+  type Device,
+  type Profile,
+  type Release,
+} from '../lib/api'
 import LogViewer from '../components/LogViewer'
 import {
   Button,
@@ -14,58 +22,134 @@ import {
   deployTone,
 } from '../components/ui'
 
+function agentTone(status?: string | null): 'good' | 'bad' | 'warn' | 'info' | 'neutral' {
+  if (!status) return 'neutral'
+  if (status === 'success' || status === 'converged') return 'good'
+  if (status === 'applying') return 'info'
+  if (status === 'rolled_back') return 'warn'
+  if (status === 'failed') return 'bad'
+  return 'neutral'
+}
+
 export default function DeviceDetailPage() {
   const { deviceId = '' } = useParams()
   const [device, setDevice] = useState<Device | null>(null)
   const [profiles, setProfiles] = useState<Profile[]>([])
+  const [robotTypes, setRobotTypes] = useState<string[]>([])
+  const [branches, setBranches] = useState<Branch[]>([])
+  const [releases, setReleases] = useState<Release[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [imageTag, setImageTag] = useState('')
-  const [robotType, setRobotType] = useState<'niryo' | 'jaka'>('niryo')
+  const [releaseId, setReleaseId] = useState<number | ''>('')
+  const [robotType, setRobotType] = useState('')
   const [siteId, setSiteId] = useState('site-1')
   const [profileId, setProfileId] = useState('prod-niryo')
   const [trackedBranch, setTrackedBranch] = useState('main')
-  const [tags, setTags] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [confirm, setConfirm] = useState<
-    'provision' | 'deploy' | 'deploy-latest' | 'build-deploy' | null
+    'provision' | 'deploy' | 'build' | null
   >(null)
   const [activeDeploymentId, setActiveDeploymentId] = useState<number | null>(null)
+  const [buildInfo, setBuildInfo] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { syncForm?: boolean }) => {
     if (!deviceId) return
+    const syncForm = opts?.syncForm ?? false
     try {
       const payload = await api.getDevice(deviceId)
       setDevice(payload.device)
       setError(null)
-      const rt = payload.device.robot_type
-      if (rt === 'jaka' || rt === 'niryo') setRobotType(rt)
-      if (payload.device.site_id) setSiteId(payload.device.site_id)
-      if (payload.device.desired_profile_id) setProfileId(payload.device.desired_profile_id)
-      if (payload.device.desired_branch) setTrackedBranch(payload.device.desired_branch)
-      if (payload.device.latest_sha && !imageTag) setImageTag(payload.device.latest_sha)
+      if (syncForm) {
+        const rt = payload.device.robot_type || payload.device.target?.robot_type
+        if (rt) setRobotType(rt)
+        if (payload.device.site_id) setSiteId(payload.device.site_id)
+        if (payload.device.desired_profile_id) {
+          setProfileId(payload.device.desired_profile_id)
+        }
+        if (payload.device.desired_branch) setTrackedBranch(payload.device.desired_branch)
+        if (payload.device.target?.release_id) {
+          setReleaseId(payload.device.target.release_id)
+        } else if (payload.device.desired_release?.id) {
+          setReleaseId(payload.device.desired_release.id)
+        }
+      }
+      const agentDone = ['converged', 'success', 'failed', 'rolled_back'].includes(
+        String(payload.device.agent_status || ''),
+      )
       const running = payload.device.deployments?.find((d) => d.status === 'running')
-      if (running) setActiveDeploymentId(running.id)
-      else if (payload.device.last_deployment) {
-        setActiveDeploymentId((prev) => prev ?? payload.device.last_deployment!.id)
+      // Prefer a truly running job only while the agent is still applying.
+      // After converge, stale "running" reconcile rows must not stick in the UI.
+      if (running && !agentDone) {
+        setActiveDeploymentId(running.id)
+      } else if (payload.device.last_deployment) {
+        const last = payload.device.last_deployment
+        setActiveDeploymentId((prev) => {
+          if (prev == null) return last.id
+          // If we were watching a stale running job, jump to latest finished.
+          const stillRunning = payload.device.deployments?.find(
+            (d) => d.id === prev && d.status === 'running',
+          )
+          if (stillRunning && agentDone) return last.id
+          return prev
+        })
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
-  }, [deviceId, imageTag])
+  }, [deviceId])
+
+  const onJobStatus = useCallback(
+    (status: string) => {
+      // Only refresh device metadata when a job finishes — never while streaming.
+      if (status === 'running' || status === 'connecting') return
+      void load({ syncForm: false })
+    },
+    [load],
+  )
 
   useEffect(() => {
-    load()
-    api.imageTags().then((p) => setTags(p.image_tags)).catch(() => undefined)
-    const id = window.setInterval(load, 10000)
+    void load({ syncForm: true })
+    api.listRobotTypes().then((p) => setRobotTypes(p.robot_types)).catch(() => undefined)
+    api.listBranches().then((p) => setBranches(p.branches)).catch(() => undefined)
+    // Poll device status quietly; do not reset form fields or the active log job.
+    const id = window.setInterval(() => void load({ syncForm: false }), 15000)
     return () => window.clearInterval(id)
   }, [load])
 
   useEffect(() => {
     api
-      .listProfiles(robotType)
+      .listProfiles(robotType || undefined)
       .then((p) => setProfiles(p.profiles))
       .catch(() => setProfiles([]))
   }, [robotType])
+
+  const loadReleases = useCallback(async (sync = true) => {
+    try {
+      // Show all successful releases (not only the tracked branch) so real
+      // deploy-* tags appear even if CI reported a different branch label.
+      const payload = await api.listReleases({ status: 'success', sync })
+      setReleases(payload.releases)
+      setReleaseId((current) => {
+        if (current && payload.releases.some((r) => r.id === current)) return current
+        // Prefer a real sha over the demo "deadbee" seed if present.
+        const preferred =
+          payload.releases.find((r) => r.git_sha !== 'deadbee') || payload.releases[0]
+        return preferred ? preferred.id : ''
+      })
+    } catch {
+      setReleases([])
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadReleases(true)
+  }, [loadReleases])
+
+  const selectedRelease = useMemo(
+    () => releases.find((r) => r.id === releaseId) || device?.desired_release || null,
+    [releases, releaseId, device],
+  )
+
+  const robotTypeLocked = Boolean(device?.robot_type || device?.target?.robot_type)
 
   const saveTarget = async () => {
     if (!device) return
@@ -74,8 +158,9 @@ export default function DeviceDetailPage() {
       await api.updateTarget(device.id, {
         tracked_branch: trackedBranch,
         profile_id: profileId,
-        robot_type: robotType,
+        release_id: typeof releaseId === 'number' ? releaseId : undefined,
         site_id: siteId,
+        ...(robotTypeLocked ? {} : { robot_type: robotType }),
       })
       await load()
     } catch (err) {
@@ -89,31 +174,32 @@ export default function DeviceDetailPage() {
     if (!device || !confirm) return
     setBusy(true)
     setError(null)
+    setBuildInfo(null)
     try {
       let deployment: Deployment
       if (confirm === 'provision') {
+        if (typeof releaseId !== 'number') throw new Error('Select a verified release')
+        if (!robotType) throw new Error('Select a robot type')
         const resp = await api.provision(device.id, {
           robot_type: robotType,
           site_id: siteId,
-          image_tag: imageTag,
+          release_id: releaseId,
           profile_id: profileId,
           tracked_branch: trackedBranch,
         })
         deployment = resp.deployment
-      } else if (confirm === 'build-deploy') {
-        const resp = await api.build(device.id, {
-          branch: trackedBranch,
-          deploy_after: true,
-          profile_id: profileId,
-        })
+      } else if (confirm === 'build') {
+        const resp = await api.build(device.id, { branch: trackedBranch })
         deployment = resp.deployment
+        if (resp.workflow?.actions_url) {
+          setBuildInfo(
+            `CI dispatched for ${trackedBranch}. Watch ${String(resp.workflow.actions_url)} — a successful Release will appear in the picker.`,
+          )
+        }
       } else {
-        const tag =
-          confirm === 'deploy-latest'
-            ? device.latest_sha || imageTag
-            : imageTag
+        if (typeof releaseId !== 'number') throw new Error('Select a verified release')
         const resp = await api.deploy(device.id, {
-          image_tag: tag,
+          release_id: releaseId,
           profile_id: profileId,
           tracked_branch: trackedBranch,
         })
@@ -131,13 +217,16 @@ export default function DeviceDetailPage() {
 
   const onSubmit = (e: FormEvent, kind: typeof confirm) => {
     e.preventDefault()
-    if (kind === 'build-deploy') {
+    if (kind === 'build') {
       setConfirm(kind)
       return
     }
-    const tag = kind === 'deploy-latest' ? device?.latest_sha || imageTag : imageTag
-    if (!tag?.trim()) {
-      setError('image_tag is required (or use Build & deploy)')
+    if (typeof releaseId !== 'number') {
+      setError('Select a verified Release from the list (built by CI)')
+      return
+    }
+    if (kind === 'provision' && !robotType) {
+      setError('Select a robot type')
       return
     }
     setConfirm(kind)
@@ -179,6 +268,33 @@ export default function DeviceDetailPage() {
         </div>
       ) : null}
 
+      {buildInfo ? (
+        <div className="mb-4 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-1)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+          {buildInfo}
+        </div>
+      ) : null}
+
+      {device?.update_available && device.latest_release ? (
+        <div className="mb-4 rounded-[var(--radius-md)] border border-[var(--status-warn-fg)]/40 bg-[var(--status-warn-bg)] px-4 py-3 text-sm text-[var(--status-warn-fg)]">
+          Deployable update:{' '}
+          <code>{device.latest_release.git_sha}</code>
+          {device.latest_release.subject
+            ? ` — ${device.latest_release.subject}`
+            : ''}
+          . Select it in Release below, then Deploy.
+        </div>
+      ) : null}
+
+      {device?.needs_build && !device?.update_available ? (
+        <div className="mb-4 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-1)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+          Branch tip <code>{device.branch_tip_sha}</code>
+          {device.branch_tip_message ? ` (“${device.branch_tip_message}”)` : ''}{' '}
+          is ahead of the running image, but there is no CI Release for it yet —
+          so it cannot appear in the picker. Use <strong>Build CI</strong>, wait
+          for success, then Refresh list.
+        </div>
+      ) : null}
+
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           label="Alive"
@@ -191,13 +307,13 @@ export default function DeviceDetailPage() {
           }
         />
         <MetricCard
-          label="Update"
+          label="Agent"
           value={
-            device?.update_available ? (
-              <StatusBadge label={`→ ${device.latest_sha}`} tone="warn" pulse />
-            ) : (
-              <StatusBadge label="current" tone="good" />
-            )
+            <StatusBadge
+              label={device?.agent_status || 'unknown'}
+              tone={agentTone(device?.agent_status)}
+              pulse={device?.agent_status === 'applying'}
+            />
           }
         />
         <MetricCard
@@ -207,34 +323,64 @@ export default function DeviceDetailPage() {
         <MetricCard label="Running profile" value={device?.running_profile_id || '—'} />
       </div>
 
+      {device?.agent_message ? (
+        <p className="mb-4 text-xs text-[var(--text-muted)]">
+          Agent: {device.agent_message}
+          {device.agent_reported_at
+            ? ` · ${new Date(device.agent_reported_at).toLocaleString()}`
+            : ''}
+        </p>
+      ) : null}
+
       <div className="mb-8 grid gap-6 lg:grid-cols-2">
         <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--card-surface)] p-4">
           <h3 className="font-display text-base font-semibold">Desired state</h3>
           <p className="mt-1 text-sm text-[var(--text-muted)]">
-            Tracked branch (updates) and profile (runtime layout/mode) are independent.
+            Only Releases with images on Docker Hub appear here. Deploy writes
+            desired state; the on-device agent pulls and converges.
           </p>
 
           <div className="mt-4 space-y-3">
             <label className="block text-xs text-[var(--text-muted)]">
               Tracked branch
-              <input
+              <select
                 className="mt-1 w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-1)] px-3 py-2 text-sm"
                 value={trackedBranch}
                 onChange={(e) => setTrackedBranch(e.target.value)}
-                placeholder="main"
-              />
+              >
+                {branches.length === 0 ? (
+                  <option value={trackedBranch}>{trackedBranch}</option>
+                ) : (
+                  branches.map((b) => (
+                    <option key={b.name} value={b.name}>
+                      {b.name}
+                      {b.sha ? ` (${b.sha})` : ''}
+                    </option>
+                  ))
+                )}
+              </select>
             </label>
 
             <label className="block text-xs text-[var(--text-muted)]">
               Robot type
               <select
-                className="mt-1 w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-1)] px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-1)] px-3 py-2 text-sm disabled:opacity-60"
                 value={robotType}
-                onChange={(e) => setRobotType(e.target.value as 'niryo' | 'jaka')}
+                disabled={robotTypeLocked && Boolean(device?.provisioned)}
+                onChange={(e) => setRobotType(e.target.value)}
               >
-                <option value="niryo">niryo</option>
-                <option value="jaka">jaka (amd64 only)</option>
+                <option value="">Select…</option>
+                {robotTypes.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
               </select>
+              {robotTypeLocked && device?.provisioned ? (
+                <span className="mt-1 block text-[10px] text-[var(--text-muted)]">
+                  Locked after first provision
+                </span>
+              ) : null}
             </label>
 
             <label className="block text-xs text-[var(--text-muted)]">
@@ -262,19 +408,82 @@ export default function DeviceDetailPage() {
             </label>
 
             <label className="block text-xs text-[var(--text-muted)]">
-              Image tag (git short SHA)
-              <input
-                list="image-tags"
+              <span className="flex items-center justify-between gap-2">
+                Release (on Docker Hub)
+                <button
+                  type="button"
+                  className="text-[11px] text-[var(--accent)] hover:underline"
+                  onClick={() => void loadReleases(true)}
+                >
+                  Refresh list
+                </button>
+              </span>
+              <select
                 className="mt-1 w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-1)] px-3 py-2 text-sm"
-                value={imageTag}
-                onChange={(e) => setImageTag(e.target.value)}
-                placeholder="e.g. ccce58f"
-              />
-              <datalist id="image-tags">
-                {tags.map((t) => (
-                  <option key={t} value={t} />
-                ))}
-              </datalist>
+                value={releaseId === '' ? '' : String(releaseId)}
+                onChange={(e) =>
+                  setReleaseId(e.target.value ? Number(e.target.value) : '')
+                }
+              >
+                <option value="">Select a release…</option>
+                {releases.map((r) => {
+                  const marks: string[] = []
+                  if (r.demo || r.git_sha === 'deadbee') marks.push('demo — skip')
+                  if (r.status && r.status !== 'success') marks.push(r.status)
+                  if (device?.image_tag && r.git_sha === device.image_tag) {
+                    marks.push('running')
+                  }
+                  if (
+                    device?.desired_image_tag &&
+                    r.git_sha === device.desired_image_tag
+                  ) {
+                    marks.push('desired')
+                  }
+                  const subject = r.subject ? ` — ${r.subject}` : ''
+                  const when = r.reported_at
+                    ? ` · ${new Date(r.reported_at).toLocaleString()}`
+                    : ''
+                  const dur = formatDuration(r.duration_seconds)
+                  const build = dur ? ` · build ${dur}` : ''
+                  const mark = marks.length ? ` [${marks.join(', ')}]` : ''
+                  return (
+                    <option key={r.id} value={r.id}>
+                      {r.git_sha} · {r.branch}
+                      {subject}
+                      {when}
+                      {build}
+                      {mark}
+                    </option>
+                  )
+                })}
+              </select>
+              {selectedRelease?.subject || selectedRelease?.duration_seconds != null ? (
+                <span className="mt-1 block text-[11px] text-[var(--text-secondary)]">
+                  {selectedRelease?.subject || ''}
+                  {selectedRelease?.duration_seconds != null
+                    ? `${selectedRelease?.subject ? ' · ' : ''}CI build ${formatDuration(selectedRelease.duration_seconds)}`
+                    : ''}
+                </span>
+              ) : null}
+              {selectedRelease?.workflow_run_url ? (
+                <a
+                  href={selectedRelease.workflow_run_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 inline-flex items-center gap-1 text-[11px] text-[var(--accent)]"
+                >
+                  CI run <ExternalLink className="h-3 w-3" />
+                </a>
+              ) : null}
+              <span className="mt-1 block text-[10px] text-[var(--text-muted)]">
+                Local commits (e.g. fleet-console work) do not appear until CI
+                builds them into a Release / deploy-* tag.
+              </span>
+              {releases.length === 0 ? (
+                <span className="mt-1 block text-[10px] text-[var(--status-warn-fg)]">
+                  No releases yet — click Refresh list (imports deploy-* git tags) or Build CI.
+                </span>
+              ) : null}
             </label>
 
             <div className="flex flex-wrap gap-2 pt-1">
@@ -288,23 +497,14 @@ export default function DeviceDetailPage() {
               ) : (
                 <>
                   <Button type="button" onClick={(e) => onSubmit(e, 'deploy')}>
-                    Deploy
+                    Deploy (set desired)
                   </Button>
-                  {device?.update_available ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={(e) => onSubmit(e, 'deploy-latest')}
-                    >
-                      Deploy latest ({device.latest_sha})
-                    </Button>
-                  ) : null}
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={(e) => onSubmit(e, 'build-deploy')}
+                    onClick={(e) => onSubmit(e, 'build')}
                   >
-                    Build & deploy branch
+                    Build branch (CI)
                   </Button>
                 </>
               )}
@@ -322,17 +522,31 @@ export default function DeviceDetailPage() {
         </div>
 
         <div>
-          <h3 className="mb-2 font-display text-base font-semibold">Live job logs</h3>
+          <h3 className="mb-2 font-display text-base font-semibold">
+            Job console
+          </h3>
+          <p className="mb-2 text-xs text-[var(--text-muted)]">
+            Deploy stays running until fleet-agent on the device applies the
+            release and reports back (lines appear here as AGENT […] updates).
+            Flash install still streams Ansible. If a deploy never advances,
+            re-provision so the agent is installed.
+          </p>
           <LogViewer
             deploymentId={activeDeploymentId}
-            onStatus={() => {
-              load()
-            }}
+            deployment={
+              device?.deployments?.find((d) => d.id === activeDeploymentId) ||
+              device?.last_deployment ||
+              null
+            }
+            onStatus={onJobStatus}
           />
         </div>
       </div>
 
-      <SectionHeader title="Job history" description="Provision / deploy / build jobs for this device." />
+      <SectionHeader
+        title="Job history"
+        description="Provision, desired-state deploys, CI builds, and agent reconciles."
+      />
       <DataTable
         rows={device?.deployments || []}
         rowKey={(d) => d.id}
@@ -356,10 +570,13 @@ export default function DeviceDetailPage() {
           },
           {
             key: 'tag',
-            header: 'Tag / branch',
+            header: 'Release / branch',
             render: (d) => (
               <div className="text-xs">
-                <code className="text-[var(--accent)]">{d.image_tag || '—'}</code>
+                <code className="text-[var(--accent)]">
+                  {d.release_id ? `#${d.release_id} ` : ''}
+                  {d.image_tag || '—'}
+                </code>
                 <div className="text-[var(--text-muted)]">{d.tracked_branch || ''}</div>
               </div>
             ),
@@ -392,25 +609,23 @@ export default function DeviceDetailPage() {
         title={
           confirm === 'provision'
             ? 'Flash install this device?'
-            : confirm === 'build-deploy'
-              ? 'Build branch and deploy?'
-              : confirm === 'deploy-latest'
-                ? 'Deploy latest from tracked branch?'
-                : 'Deploy update?'
+            : confirm === 'build'
+              ? 'Trigger CI build for branch?'
+              : 'Set desired state (agent will pull)?'
         }
         message={
-          confirm === 'build-deploy'
-            ? `This will build images for branch ${trackedBranch}, publish the deploy bundle, then deploy to ${deviceId} with profile=${profileId}. Builds can take a long time.`
+          confirm === 'build'
+            ? `Dispatch GitHub Actions build-and-release for branch ${trackedBranch}. When it finishes, a verified Release appears in the picker.`
             : confirm === 'provision'
-              ? `ansible/provision.yml on ${deviceId}: robot_type=${robotType}, profile=${profileId}, image_tag=${imageTag}.`
-              : `ansible/deploy.yml on ${deviceId}: profile=${profileId}, image_tag=${confirm === 'deploy-latest' ? device?.latest_sha : imageTag}.`
+              ? `ansible/provision.yml on ${deviceId}: robot_type=${robotType}, profile=${profileId}, release=#${releaseId} (${selectedRelease?.git_sha || '?'}). Installs fleet-agent.`
+              : `Set desired release=#${releaseId} (${selectedRelease?.git_sha || '?'}) profile=${profileId}. Agent on ${deviceId} will pull and converge.`
         }
         confirmLabel={
-          confirm === 'build-deploy'
-            ? 'Build & deploy'
+          confirm === 'build'
+            ? 'Trigger CI'
             : confirm === 'provision'
               ? 'Flash install'
-              : 'Deploy'
+              : 'Set desired'
         }
         loading={busy}
         onCancel={() => setConfirm(null)}

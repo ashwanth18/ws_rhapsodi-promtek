@@ -1,8 +1,11 @@
 # Rhapsodi Fleet Console
 
-Central UI + API for provisioning and updating Rhapsodi edge devices over Tailscale.
+Central UI + API for a **pull-based** fleet: CI produces verified Releases,
+operators set desired `release_id` + `profile_id` per device, and each device's
+`fleet-agent` pulls, applies, health-checks, and rolls back locally.
 
-Runs on the Jetson (alongside Prometheus/Grafana). Operators open it over the Tailnet, pick a device, flash-install (robot type + site + image tag) or deploy an update, and watch Ansible logs stream live.
+Ansible is used only for **first-boot flash install** (Docker + slim bundle +
+agent). Routine updates do not SSH-push.
 
 ## Local development
 
@@ -14,6 +17,7 @@ pip install -r requirements.txt
 export REPO_ROOT="$(git rev-parse --show-toplevel)"
 export ANSIBLE_DIR="$REPO_ROOT/ansible"
 export FLEET_DATA_DIR=/tmp/fleet-data
+export CI_REPORT_TOKEN=dev-ci-token
 uvicorn app.main:app --reload --port 8090
 
 # UI (separate terminal)
@@ -27,35 +31,46 @@ npm run dev   # http://localhost:5174  (proxies /api → :8090)
 ```bash
 cd monitoring
 # ensure ../ansible/.vault_pass exists
+cp fleet-console.env.example fleet-console.env   # set tokens / GITHUB_TOKEN
 docker compose -f docker-compose.fleet-console.yml --env-file fleet-console.env up -d --build
 ```
 
 Open `http://<jetson-tailscale-ip>:8090`.
 
-## Version + profile axes
+## Desired state
 
-Each device has a **desired target** (SQLite `device_targets`):
+Each device has a SQLite `device_targets` row:
 
-- `tracked_branch` — which git branch to follow for updates
-- `profile_id` — runtime behavior from `config/profiles.yaml` (prod, lights-out, site layout, …)
-- `pinned_image_tag` — last successfully deployed SHA
+- `tracked_branch` — which git branch to follow for new CI builds
+- `profile_id` — runtime behavior from `config/profiles.yaml`
+- `release_id` — FK to a **verified** `releases` row (never a free-text SHA)
+- `agent_token` — minted at provision; used by on-device fleet-agent
 
-These are independent: e.g. track `main` with profile `lightsout-training`.
+Robot type is chosen once at flash install (from distinct `robot_type` values
+in `config/profiles.yaml`) and is immutable afterward.
 
 ## API surface
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/api/devices` | Tailscale robots + Prometheus + `/host_info` + drift + update badges |
-| GET | `/api/devices/{id}` | Device detail + target + version_check + history |
-| PUT | `/api/devices/{id}/target` | Set tracked_branch / profile_id |
-| GET | `/api/devices/{id}/version_check` | Compare deployed SHA vs GitHub branch HEAD |
+| GET | `/api/devices` | Tailscale robots + metrics + desired/running + agent status |
+| GET | `/api/devices/{id}` | Device detail + target + history |
+| PUT | `/api/devices/{id}/target` | Set branch / profile / release_id |
+| GET | `/api/releases` | Verified CI builds (selectable) |
+| POST | `/api/releases/report` | CI reports a build (`CI_REPORT_TOKEN`) |
+| GET | `/api/branches` | Real GitHub branches |
+| GET | `/api/robot_types` | From `config/profiles.yaml` |
 | GET | `/api/profiles` | Runtime profile catalog |
-| POST | `/api/devices/{id}/provision` | `ansible-playbook provision.yml` (+ profile) |
-| POST | `/api/devices/{id}/deploy` | `ansible-playbook deploy.yml` (+ profile) |
-| POST | `/api/devices/{id}/build` | buildx + publish bundle for a branch (optional deploy_after) |
-| GET | `/api/deployments` | Global history |
-| GET | `/api/deployments/{id}/logs/stream` | SSE job log tail |
+| POST | `/api/devices/{id}/provision` | Ansible flash install + agent |
+| POST | `/api/devices/{id}/deploy` | Set desired state (agent converges) |
+| POST | `/api/devices/{id}/build` | `workflow_dispatch` CI build |
+| GET | `/api/agent/target` | Agent polls desired release+profile |
+| POST | `/api/agent/report` | Agent reports reconcile outcome |
 
-Auth: optional `FLEET_API_TOKEN` bearer (also `?access_token=` for EventSource).
-Set `GITHUB_TOKEN` for update-available / build-from-branch.
+Auth:
+
+- Browser: optional `FLEET_API_TOKEN` bearer
+- CI: `CI_REPORT_TOKEN` (falls back to `FLEET_API_TOKEN`)
+- Agent: per-device `agent_token`
+
+Set `GITHUB_TOKEN` with Actions:write for branch listing + CI dispatch.

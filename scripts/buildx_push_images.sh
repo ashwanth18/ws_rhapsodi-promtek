@@ -12,6 +12,7 @@ VITE_API_BASE="${VITE_API_BASE:-http://localhost:8000}"
 VITE_ROSBRIDGE_URL="${VITE_ROSBRIDGE_URL:-ws://localhost:9090}"
 VITE_MICROROS_HEARTBEAT_TOPIC="${VITE_MICROROS_HEARTBEAT_TOPIC:-/microros/heartbeat}"
 PUSH_SHA_TAGS="${PUSH_SHA_TAGS:-1}"
+TIMINGS_FILE="${TIMINGS_FILE:-build-timings.json}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
@@ -35,6 +36,10 @@ mkdir -p "${BUILD_CACHE_DIR}"
 TMP_CACHE_DIR="${BUILD_CACHE_DIR}-new"
 rm -rf "${TMP_CACHE_DIR}"
 
+# role=seconds lines collected for JSON export
+TIMING_LINES=()
+BUILD_STARTED_AT="$(date +%s)"
+
 # Tags: always push the role tag; optionally also push :<role>-<git-sha> for pin/rollback.
 image_tags() {
   local role="$1"
@@ -49,7 +54,10 @@ build_with_cache() {
   local role="$1"
   shift
   local -a tags
+  local start end elapsed
   mapfile -t tags < <(image_tags "${role}")
+  start="$(date +%s)"
+  echo "=== Building ${role} (platforms=${PLATFORMS}) ==="
   docker buildx build \
     --builder "${BUILDER_NAME}" \
     --platform "${PLATFORMS}" \
@@ -58,6 +66,10 @@ build_with_cache() {
     "${tags[@]}" \
     --push \
     "$@"
+  end="$(date +%s)"
+  elapsed=$((end - start))
+  TIMING_LINES+=("${role}=${elapsed}")
+  echo "TIMING role=${role} seconds=${elapsed}"
   rm -rf "${BUILD_CACHE_DIR}"
   mv "${TMP_CACHE_DIR}" "${BUILD_CACHE_DIR}"
 }
@@ -90,7 +102,32 @@ build_with_cache \
   condor-agent \
   -f docker/condor-agent.Dockerfile .
 
+BUILD_FINISHED_AT="$(date +%s)"
+TOTAL_SECONDS=$((BUILD_FINISHED_AT - BUILD_STARTED_AT))
+
+# Write machine-readable timings for CI summary + Fleet Console report.
+python3 - "${TIMINGS_FILE}" "${GIT_SHA}" "${BUILDER_NAME}" "${PLATFORMS}" "${TOTAL_SECONDS}" "${TIMING_LINES[@]}" <<'PY'
+import json, sys
+path, git_sha, builder, platforms, total = sys.argv[1:6]
+roles = {}
+for item in sys.argv[6:]:
+    role, secs = item.split("=", 1)
+    roles[role] = int(secs)
+payload = {
+    "git_sha": git_sha,
+    "builder": builder,
+    "platforms": platforms,
+    "total_seconds": int(total),
+    "roles": roles,
+}
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(payload, fh, indent=2)
+    fh.write("\n")
+PY
+
 echo
+echo "TIMING total_seconds=${TOTAL_SECONDS}"
+echo "Wrote timings to ${TIMINGS_FILE}"
 echo "Pushed role tags and sha tags ending in -${GIT_SHA}"
 echo "Pin a robot with IMAGE_TAG=${GIT_SHA} in robot-prod.env (see robot-prod.env.example)."
 echo "Then publish the slim deploy bundle: bash scripts/publish_deploy_bundle.sh"

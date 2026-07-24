@@ -1,5 +1,9 @@
 ---
-# Rolling / canary deploy of Rhapsodi robot stack over Tailscale.
+# BREAK-GLASS manual push deploy of Rhapsodi robot stack over Tailscale.
+#
+# Normal path: Fleet Console sets desired release_id + profile_id; the on-device
+# fleet-agent pulls and converges (with local rollback). Use this playbook only
+# when the agent/control-plane path is unavailable.
 #
 # Prerequisites on the controller:
 #   echo 'your-vault-password' > ansible/.vault_pass && chmod 600 ansible/.vault_pass

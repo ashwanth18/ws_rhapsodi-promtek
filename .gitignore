@@ -30,9 +30,10 @@ src/fleet_console/static/
 .DS_Store
 Thumbs.db
 
-# Buildx local cache
+# Buildx local cache / CI timing artifact
 .buildx-cache/
 .buildx-cache-new/
+build-timings.json
 
 # Ansible vault password (never commit)
 ansible/.vault_pass

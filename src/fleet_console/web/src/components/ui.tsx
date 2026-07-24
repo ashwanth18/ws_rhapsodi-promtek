@@ -229,12 +229,16 @@ export function deployTone(
 ): 'good' | 'warn' | 'bad' | 'info' | 'neutral' {
   switch (status) {
     case 'success':
+    case 'converged':
       return 'good'
     case 'running':
+    case 'connecting':
+    case 'applying':
       return 'info'
     case 'failed':
       return 'bad'
     case 'rolled_back':
+    case 'cancelled':
       return 'warn'
     default:
       return 'neutral'

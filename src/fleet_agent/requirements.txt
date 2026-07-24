@@ -1,0 +1,2 @@
+# fleet-agent uses only the Python stdlib (urllib, json, pathlib, subprocess).
+# No third-party deps required for the reconcile loop.

@@ -1,11 +1,32 @@
 # Edge build & fleet operations
 
-This repo uses a two-layer edge strategy:
+This repo uses a three-layer edge strategy:
 
 1. **Fast builds** — native ARM64 on the Jetson Orin Nano via `docker buildx`, plus BuildKit cache mounts + `ccache` so ROS package changes do not rebuild the whole workspace from scratch.
-2. **Fleet platform** — Tailscale + Ansible + Prometheus/Grafana for provisioning, canary/rolling updates, health monitoring, and SSH-based fault checks (including Cursor agents).
+2. **Verified Releases** — GitHub Actions builds images + slim deploy bundle for a branch, then reports a Release row to the Fleet Console. Only successful Releases are selectable.
+3. **Pull-based fleet** — each robot runs `fleet-agent`, which polls the Fleet Console for desired `release_id` + `profile_id`, applies locally, health-checks, and rolls back without SSH.
 
-Pi / robot devices run a **slim deploy bundle** (compose + env example + device config example + exporters). They do **not** clone the full ROS monorepo.
+Ansible is used for **first-boot provisioning only** (Docker, slim checkout, device identity, agent install). Routine updates do not push over SSH. `ansible/deploy.yml` remains as a documented break-glass fallback.
+
+Pi / robot devices run a **slim deploy bundle** (compose + env example + device config example + exporters + profiles). They do **not** clone the full ROS monorepo.
+
+## Architecture
+
+```
+CI (build-and-release.yml)
+  → buildx multi-arch images + deploy-<sha> tag
+  → POST /api/releases/report  (CI_REPORT_TOKEN over Tailscale)
+
+Fleet Console (Jetson)
+  → stores Release + DeviceTarget(desired release_id, profile_id)
+  → UI: pick Release + Profile → "Deploy (set desired)"
+
+fleet-agent (each robot, systemd)
+  → GET /api/agent/target
+  → checkout deploy-<sha>, render robot-prod.env, compose pull/up
+  → health check → local rollback to .rhapsodi-last-good on failure
+  → POST /api/agent/report
+```
 
 ## One-time: Jetson as ARM64 builder
 
@@ -25,14 +46,7 @@ BUILDER_NAME=multiarch bash scripts/buildx_push_images.sh
 bash scripts/publish_deploy_bundle.sh
 ```
 
-CI can do the same on every merge to `main` via [`.github/workflows/build-and-release.yml`](../.github/workflows/build-and-release.yml) (build + bundle only — **not** an automatic fleet rollout).
-
-Verify caching wiring (fast) or time an incremental rebuild:
-
-```bash
-bash scripts/verify_incremental_ros_build.sh
-RUN_BUILD=1 PLATFORM=linux/amd64 bash scripts/verify_incremental_ros_build.sh
-```
+CI does the same via [`.github/workflows/build-and-release.yml`](../.github/workflows/build-and-release.yml) on push to `main` or `workflow_dispatch` with an arbitrary branch. After a successful build it reports a Release to the Fleet Console (secrets: `FLEET_CONSOLE_URL`, `CI_REPORT_TOKEN`).
 
 ## Slim deploy bundle
 
@@ -41,66 +55,45 @@ RUN_BUILD=1 PLATFORM=linux/amd64 bash scripts/verify_incremental_ros_build.sh
 - `docker-compose.robot-prod.yml`
 - `robot-prod.env.example`
 - `config/device.yaml.example`
+- `config/profiles.yaml` + `config/profiles/**`
 - `monitoring/exporters/docker-compose.exporters.yml`
 
-Edge devices shallow-checkout that branch/tag. Per-device state (`robot-prod.env`, `config/device.yaml`) is created once from the examples and never overwritten by bundle updates.
+Edge devices shallow-checkout that branch/tag. Per-device state (`robot-prod.env`, `config/device.yaml`) is created once and never overwritten by bundle updates except by the agent when converging.
 
 ## Secrets (Ansible Vault)
 
 Fleet secrets live in `ansible/group_vars/all/vault.yml` (AES256 encrypted). See `vault.yml.example` for required keys:
 
 - `vault_dockerhub_username` / `vault_dockerhub_token` — private image pulls
-- `vault_postgres_password` — templated into each device's `robot-prod.env`
+- `vault_postgres_password` — seeded into each device's `robot-prod.env` at provision
 
 ```bash
 cd ansible
 echo 'changeme' > .vault_pass   # placeholder vault password; change after editing secrets
 chmod 600 .vault_pass
 ansible-vault edit group_vars/all/vault.yml
-# then rekey to a strong password:
-ansible-vault rekey group_vars/all/vault.yml
 ```
 
-`.vault_pass` is gitignored. Playbooks read it via `ansible.cfg` (`vault_password_file = .vault_pass`), or pass `--ask-vault-pass`.
+## Profiles
 
-## Pin / rollback images on a robot
-
-In `robot-prod.env` (or let Ansible rewrite these during deploy):
-
-```bash
-IMAGE_TAG=abc1234   # short sha printed by buildx_push_images.sh
-ROS_PROD_IMAGE=iserenity/rhapsodi-promtek:ros-prod-abc1234
-BACKEND_IMAGE=iserenity/rhapsodi-promtek:backend-abc1234
-# ... same for processing/webhook/dashboard/condor-agent
-```
-
-If a deploy's backend health check fails, `ansible/deploy.yml` automatically re-pins the previous `IMAGE_TAG`, redeploys, and still fails the play so you are alerted.
-
-Manual rollback:
-
-```bash
-ansible-playbook -i ansible/inventory/tailscale.py ansible/deploy.yml \
-  --limit rhapsodi-pi5 -e image_tag=<previous-sha> -e serial_batch=1
-```
+Runtime behavior is selected via [`config/profiles.yaml`](../config/profiles.yaml) (e.g. `prod-niryo`, `lightsout-training`, `jaka-site2-layout`). Profiles choose compose file + env (`BT_TREE`, pose/scene YAML paths, data root). The Fleet Console filters profiles by the device's `robot_type`. Layout overrides live under `config/profiles/<id>/`.
 
 ## Provision a new device
 
 ### Path A — Fleet Console flash install (preferred after Tailscale join)
 
-1. Publish images + deploy bundle for the sha you want.
-2. Join the device to Tailscale with `tag:robot` (one-time; ACL tag ownership).
-3. Open the Fleet Console (`http://<jetson>:8090`) → select the device → **Flash install**.
-4. Pick `robot_type` (`niryo` | `jaka`), `site_id`, and `image_tag`, then confirm.
+1. Ensure CI (or a local build + `POST /api/releases/report`) has produced a successful Release.
+2. Join the device to Tailscale with `tag:robot`.
+3. Open Fleet Console → device → pick **robot type** (from profiles catalog), **profile**, **Release**, site.
+4. **Flash install** — runs `ansible/provision.yml`, which:
+   1. Installs Docker (if needed)
+   2. Shallow-checks out `deploy-<sha>`
+   3. Templates `config/device.yaml`
+   4. Seeds Postgres password + Docker Hub login
+   5. Installs `fleet-agent` (systemd) with a minted per-device token
+   6. Starts the agent — it pulls the desired Release on first reconcile
 
-This runs `ansible/provision.yml`, which:
-
-1. Installs Docker (if needed) and ensures the deploy user is in the `docker` group
-2. Shallow-checks out `deploy-<image_tag>`
-3. Templates `config/device.yaml` with the chosen `robot_type` / `site_id` / `device_id`
-4. Pins images, starts exporters + the robot stack, waits for `/health`
-5. Writes `.rhapsodi-version` so `/host_info` reports the running version
-
-**Jaka / arm64 constraint:** `robot_type=jaka` is rejected on `aarch64`/`arm64` hosts. The vendor `libjakaAPI.so` is x86_64-only; ARM64 ROS images skip `jaka_driver` / `jaka_planner`. Use `niryo` on Raspberry Pi / Jetson, or provision Jaka on an amd64 host.
+**Jaka / arm64 constraint:** `robot_type=jaka` is rejected on `aarch64`/`arm64` hosts.
 
 CLI equivalent:
 
@@ -108,67 +101,44 @@ CLI equivalent:
 cd ansible
 ansible-playbook -i inventory/tailscale.py provision.yml \
   --limit rhapsodi-pi5 \
-  -e robot_type=niryo -e site_id=site-1 -e image_tag=abc1234
+  -e robot_type=niryo -e site_id=site-1 -e image_tag=abc1234 \
+  -e agent_token=<minted> -e fleet_console_url=http://jetson:8090
 ```
+
+(Prefer the Fleet Console path — it mints and injects `agent_token` automatically.)
 
 ### Path B — Manual bootstrap (before Tailscale)
 
-Use only for the first Tailscale join on a brand-new image:
+Use only for the first Tailscale join on a brand-new image (`scripts/provision_device.sh`), then finish with Path A so the agent is installed.
 
-```bash
-sudo TAILSCALE_AUTHKEY=tskey-auth-... \
-  DEVICE_HOSTNAME=rhapsodi-site2-pi5 \
-  IMAGE_TAG=abc1234 \
-  ROBOT_TYPE=niryo \
-  SITE_ID=site-1 \
-  DOCKERHUB_USER=iserenity \
-  DOCKERHUB_TOKEN=... \
-  POSTGRES_PASSWORD=... \
-  bash scripts/provision_device.sh
-```
+## Deploy updates (normal path — pull)
 
-After the device appears in Tailscale inventory, prefer Path A / Fleet Console for all further installs and updates.
+1. Develop on a branch → **Build branch (CI)** in the console (or push to `main`).
+2. Wait for a successful Release to appear in the Release picker.
+3. Select Release + Profile → **Deploy (set desired)**.
+4. Watch **Agent** status: `applying` → `success` / `converged`, or `rolled_back` on health failure.
 
-## Deploy updates (Ansible or Fleet Console)
+No Ansible SSH is involved. Drift and agent reports show on the devices list.
 
-Fleet Console → device detail → **Deploy update** (streams Ansible logs over SSE).
-
-CLI:
+### Break-glass push (optional)
 
 ```bash
 cd ansible
-# ensure .vault_pass exists and vault secrets are real
-ansible-inventory -i inventory/tailscale.py --list
 ansible-playbook -i inventory/tailscale.py deploy.yml \
-  -e image_tag=$(git -C .. rev-parse --short HEAD) \
-  -e serial_batch=1          # canary one device
-# then
-ansible-playbook -i inventory/tailscale.py deploy.yml \
-  -e image_tag=$(git -C .. rev-parse --short HEAD) \
-  -e serial_batch=25%
+  --limit rhapsodi-pi5 \
+  -e image_tag=abc1234 -e profile=lightsout-training -e serial_batch=1
 ```
 
-Each deploy:
+## CI auto-build
 
-1. Checks out `deploy-<image_tag>` on the device
-2. `docker login` with vaulted credentials
-3. Pins image refs + Postgres password in `robot-prod.env`
-4. Writes `.rhapsodi-version` for Fleet Console `/host_info` polling
-5. `docker compose pull && up -d`
-6. Waits for `http://127.0.0.1:8000/health`
-7. Rolls back to the previous tag if health fails
+[`.github/workflows/build-and-release.yml`](../.github/workflows/build-and-release.yml):
 
-## CI auto-build (optional)
+1. Checkout the requested branch (`workflow_dispatch.inputs.branch` or push ref)
+2. Tailscale join → Jetson buildx node
+3. `buildx_push_images.sh` + `publish_deploy_bundle.sh`
+4. `POST /api/releases/report` success (or failure) to Fleet Console
 
-[`.github/workflows/build-and-release.yml`](../.github/workflows/build-and-release.yml) runs on push to `main` / `workflow_dispatch`:
-
-1. Tailscale join (so the runner can reach the Jetson builder)
-2. Multi-arch `buildx_push_images.sh` (including `condor-agent`)
-3. `publish_deploy_bundle.sh`
-
-Configure GitHub secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `TAILSCALE_AUTHKEY`, `JETSON_SSH_HOST`, `JETSON_SSH_USER`.
-
-Fleet rollout remains the manual Ansible command above.
+GitHub secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `TAILSCALE_AUTHKEY`, `JETSON_SSH_HOST`, `JETSON_SSH_USER`, `FLEET_CONSOLE_URL`, `CI_REPORT_TOKEN`.
 
 ## Monitoring (Jetson)
 
@@ -178,47 +148,31 @@ cd monitoring
 docker compose -f docker-compose.monitoring.yml up -d
 ```
 
-- Grafana: `http://<jetson>:3001` (default admin/admin — change it)
-  - **Rhapsodi Fleet Health** — all devices overview
-  - **Rhapsodi Pi Overview** — per-device RAM / temp / disk / CPU / container restarts (pick device in the top dropdown)
+- Grafana: `http://<jetson>:3001`
 - Prometheus: `http://<jetson>:9091`
 - Alertmanager: `http://<jetson>:9093`
 
 ## Fleet Console (Jetson)
 
-Central web UI + API for device inventory, flash install, updates, live Ansible logs, and deploy history. See [`src/fleet_console/README.md`](../src/fleet_console/README.md).
-
 ```bash
 cd monitoring
-cp fleet-console.env.example fleet-console.env   # optional token / paths
-# Requires: ansible/.vault_pass, SSH keys to robots, Tailscale on the host
-# Optional: GITHUB_TOKEN for update-available badges + build-from-branch
+cp fleet-console.env.example fleet-console.env
 docker compose -f docker-compose.fleet-console.yml --env-file fleet-console.env up -d --build
 ```
 
 - UI / API: `http://<jetson>:8090`
 - Status model:
-  - **Alive** — Prometheus `up{job="node"}` (falls back to Tailscale online + reachable `/host_info`)
-  - **Active** — robot currently has an active weightment run (`GET /robot_weightment_runs/active`)
-  - **Version** — `GET /host_info` → `image_tag` / `profile_id` / `robot_type` / `site_id` / `device_id`
-- Two independent axes per device:
-  - **Version** — `tracked_branch` + pinned `image_tag` (code). Console polls GitHub for new commits and shows **Update available**.
-  - **Profile** — runtime behavior from [`config/profiles.yaml`](../config/profiles.yaml) (e.g. `prod-niryo`, `lightsout-training`, `jaka-site2-layout`). Applied by Ansible into `robot-prod.env`.
-- Desired-vs-running drift is shown on the devices list.
-- **Build & deploy branch** runs `buildx_push_images.sh` + `publish_deploy_bundle.sh` for the tracked branch, then deploys.
-- Deployment history + desired targets are stored in SQLite (`fleet_console_data` volume).
+  - **Alive** — Prometheus `up{job="node"}` (falls back to Tailscale + `/host_info`)
+  - **Active** — active weightment run
+  - **Agent** — last reconcile report (`converged` / `applying` / `rolled_back` / `failed`)
+  - **Version / profile** — desired vs running (+ drift)
+- Builds are triggered via GitHub Actions `workflow_dispatch` (not local buildx on the console host).
 
-### Profiles
+See [`src/fleet_console/README.md`](../src/fleet_console/README.md) and [`src/fleet_agent/README.md`](../src/fleet_agent/README.md).
 
-```bash
-# Deploy a specific profile to one device
-ansible-playbook -i ansible/inventory/tailscale.py ansible/deploy.yml \
-  --limit rhapsodi-pi5 \
-  -e image_tag=abc1234 \
-  -e profile=lightsout-training
-```
+## Migrating already-provisioned devices
 
-Layout overrides live under `config/profiles/<id>/` and ship in the slim deploy bundle.
+Re-run flash install / provision (idempotent) so `fleet-agent` is installed and an `agent_token` is written. After that, stop using Ansible for routine deploys.
 
 ## Fault checks / Cursor agent
 

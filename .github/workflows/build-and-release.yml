@@ -1,5 +1,6 @@
-# Build multi-arch images + publish slim deploy bundle on merge to main.
-# Does NOT auto-rollout to robots — fleet deploy stays a manual Ansible command.
+# Build multi-arch images + publish slim deploy bundle, then report a verified
+# Release to the Fleet Console. Does NOT auto-rollout to robots — devices pull
+# via fleet-agent when their desired release_id is set in the console.
 #
 # Required GitHub secrets:
 #   DOCKERHUB_USERNAME
@@ -7,9 +8,12 @@
 #   TAILSCALE_AUTHKEY   — ephemeral/reusable key that can reach the Jetson
 #   JETSON_SSH_HOST     — e.g. jetson-local (Tailscale MagicDNS name)
 #   JETSON_SSH_USER     — e.g. ashwanth
+#   FLEET_CONSOLE_URL   — e.g. http://jetson:8090
+#   CI_REPORT_TOKEN     — token accepted by POST /api/releases/report
 #
 # Optional repository variable:
 #   BUILDER_NAME (default: multiarch)
+#   IMAGE_REGISTRY (default: iserenity/rhapsodi-promtek)
 
 name: Build and release
 
@@ -17,6 +21,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch / ref to build (defaults to the dispatch ref)
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   group: build-and-release
@@ -30,9 +40,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
+      - name: Resolve checkout ref
+        id: ref
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.branch }}" ]]; then
+            echo "ref=${{ inputs.branch }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ steps.ref.outputs.ref }}
           fetch-depth: 0
           # Needed so publish_deploy_bundle.sh can force-push the orphan deploy branch.
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -80,30 +101,143 @@ jobs:
           docker buildx inspect --bootstrap
 
       - name: Build and push multi-arch images
+        id: build
         env:
           BUILDER_NAME: ${{ vars.BUILDER_NAME }}
           PLATFORMS: linux/amd64,linux/arm64
         run: |
+          set -euo pipefail
           export BUILDER_NAME="${BUILDER_NAME:-multiarch}"
+          START=$(date +%s)
           bash scripts/buildx_push_images.sh
+          END=$(date +%s)
+          echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "branch=${{ steps.ref.outputs.ref }}" >> "$GITHUB_OUTPUT"
+          echo "wall_seconds=$((END - START))" >> "$GITHUB_OUTPUT"
+          if [[ -f build-timings.json ]]; then
+            TOTAL=$(python3 -c "import json; print(json.load(open('build-timings.json')).get('total_seconds',''))")
+            echo "total_seconds=${TOTAL}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Publish slim deploy bundle
+        id: bundle
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          START=$(date +%s)
           bash scripts/publish_deploy_bundle.sh
+          END=$(date +%s)
+          echo "TIMING step=publish_deploy_bundle seconds=$((END - START))"
+          echo "seconds=$((END - START))" >> "$GITHUB_OUTPUT"
+
+      - name: Report successful release to Fleet Console
+        if: success()
+        env:
+          FLEET_CONSOLE_URL: ${{ secrets.FLEET_CONSOLE_URL }}
+          CI_REPORT_TOKEN: ${{ secrets.CI_REPORT_TOKEN }}
+          IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${FLEET_CONSOLE_URL:-}" || -z "${CI_REPORT_TOKEN:-}" ]]; then
+            echo "FLEET_CONSOLE_URL / CI_REPORT_TOKEN not set; skipping release report."
+            exit 0
+          fi
+          SHA="$(git rev-parse --short HEAD)"
+          BRANCH="${{ steps.ref.outputs.ref }}"
+          REG="${IMAGE_REGISTRY:-iserenity/rhapsodi-promtek}"
+          URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          BODY=$(
+            BRANCH="$BRANCH" SHA="$SHA" REG="$REG" URL="$URL" python3 -c '
+          import json, os
+          from pathlib import Path
+          sha = os.environ["SHA"]
+          reg = os.environ["REG"]
+          roles = ["ros-prod", "backend", "processing", "webhook", "dashboard", "condor-agent"]
+          timings = {}
+          duration = None
+          path = Path("build-timings.json")
+          if path.is_file():
+              timings = json.loads(path.read_text())
+              duration = timings.get("total_seconds")
+          print(json.dumps({
+              "branch": os.environ["BRANCH"],
+              "git_sha": sha,
+              "status": "success",
+              "image_registry": reg,
+              "images": {r: f"{reg}:{r}-{sha}" for r in roles},
+              "workflow_run_url": os.environ["URL"],
+              "duration_seconds": duration,
+              "build_timings": timings,
+          }))
+          '
+          )
+          START=$(date +%s)
+          curl -fsS -X POST "${FLEET_CONSOLE_URL%/}/api/releases/report" \
+            -H "Authorization: Bearer ${CI_REPORT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "${BODY}"
+          END=$(date +%s)
+          echo "TIMING step=report_release seconds=$((END - START))"
+
+      - name: Report failed release to Fleet Console
+        if: failure()
+        env:
+          FLEET_CONSOLE_URL: ${{ secrets.FLEET_CONSOLE_URL }}
+          CI_REPORT_TOKEN: ${{ secrets.CI_REPORT_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${FLEET_CONSOLE_URL:-}" || -z "${CI_REPORT_TOKEN:-}" ]]; then
+            echo "FLEET_CONSOLE_URL / CI_REPORT_TOKEN not set; skipping failed release report."
+            exit 0
+          fi
+          SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+          BRANCH="${{ steps.ref.outputs.ref }}"
+          URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          curl -fsS -X POST "${FLEET_CONSOLE_URL%/}/api/releases/report" \
+            -H "Authorization: Bearer ${CI_REPORT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"branch\":\"${BRANCH}\",\"git_sha\":\"${SHA}\",\"status\":\"failed\",\"workflow_run_url\":\"${URL}\",\"error_message\":\"build-and-release failed\",\"images\":{}}" \
+            || true
 
       - name: Summarize
+        if: always()
         run: |
-          SHA="$(git rev-parse --short HEAD)"
+          set -euo pipefail
+          SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+          BRANCH="${{ steps.ref.outputs.ref }}"
           {
-            echo "## Release ready"
+            echo "## Release"
             echo ""
+            echo "- Branch: \`${BRANCH}\`"
             echo "- Image tag: \`${SHA}\`"
             echo "- Deploy tag: \`deploy-${SHA}\`"
-            echo "- Manual fleet rollout:"
+            echo "- Fleet Console: set device desired release (from Releases list) — agent pulls."
+            echo "- Break-glass Ansible (optional):"
             echo "  \`\`\`bash"
             echo "  ansible-playbook -i ansible/inventory/tailscale.py ansible/deploy.yml -e image_tag=${SHA} -e serial_batch=1"
             echo "  \`\`\`"
+            echo ""
+            echo "## Build timings"
+            echo ""
+            if [[ -f build-timings.json ]]; then
+              python3 -c '
+          import json
+          from pathlib import Path
+          data = json.loads(Path("build-timings.json").read_text())
+          roles = data.get("roles") or {}
+          total = data.get("total_seconds")
+          print(f"- **Total image build:** {total}s")
+          print("")
+          print("| Image | Seconds |")
+          print("| --- | ---: |")
+          for role, secs in roles.items():
+              print(f"| `{role}` | {secs} |")
+          '
+            else
+              echo "_No build-timings.json (build step may have failed before writing it)._"
+            fi
+            echo ""
+            echo "- Bundle publish: ${{ steps.bundle.outputs.seconds || 'n/a' }}s"
+            echo "- Build step wall clock: ${{ steps.build.outputs.wall_seconds || 'n/a' }}s"
           } >> "$GITHUB_STEP_SUMMARY"

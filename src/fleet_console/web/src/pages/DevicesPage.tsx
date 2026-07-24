@@ -45,13 +45,14 @@ export default function DevicesPage() {
 
   const aliveCount = devices.filter((d) => d.alive).length
   const updates = devices.filter((d) => d.update_available).length
+  const needsBuild = devices.filter((d) => d.needs_build).length
   const driftCount = devices.filter((d) => d.drift?.any).length
 
   return (
     <div>
       <SectionHeader
         title="Fleet devices"
-        description="Version (branch/SHA) and profile (runtime behavior) are independent axes."
+        description="Only CI-built Releases can be deployed. Unbuilt git commits will not appear in the picker until you run Build CI."
         action={
           <Button variant="outline" onClick={load} disabled={loading}>
             <RefreshCw className="h-4 w-4" />
@@ -63,8 +64,20 @@ export default function DevicesPage() {
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label="Devices" value={devices.length} />
         <MetricCard label="Alive" value={aliveCount} />
-        <MetricCard label="Updates available" value={updates} help="Tracked branch moved" />
-        <MetricCard label="Drift" value={driftCount} help="Desired ≠ running" />
+        <MetricCard
+          label="Deployable updates"
+          value={updates}
+          help="Newer Release image than desired/running"
+        />
+        <MetricCard
+          label={needsBuild ? 'Needs CI build' : 'Drift'}
+          value={needsBuild || driftCount}
+          help={
+            needsBuild
+              ? 'Branch tip has commits with no Release yet'
+              : 'Desired ≠ running / agent'
+          }
+        />
       </div>
 
       {error ? (
@@ -111,11 +124,11 @@ export default function DevicesPage() {
             header: 'Desired',
             render: (d) => (
               <div className="text-xs">
-                <div className="text-[var(--text-secondary)]">
-                  {d.desired_branch || 'main'}
-                </div>
+                <code className="text-[var(--accent)]">
+                  {d.desired_image_tag || '—'}
+                </code>
                 <div className="text-[var(--text-muted)]">
-                  {d.desired_profile_id || '—'}
+                  {d.desired_branch || 'main'} · {d.desired_profile_id || '—'}
                 </div>
               </div>
             ),
@@ -128,25 +141,71 @@ export default function DevicesPage() {
                 <code className="text-[var(--accent)]">{d.image_tag || '—'}</code>
                 <div className="text-[var(--text-muted)]">
                   {d.running_profile_id || (d.provisioned ? '—' : 'unprovisioned')}
+                  {d.running_source === 'agent' ? ' · via agent' : ''}
                 </div>
               </div>
             ),
           },
           {
+            key: 'agent',
+            header: 'Agent',
+            render: (d) => {
+              const s = d.agent_status
+              const tone =
+                s === 'success' || s === 'converged'
+                  ? 'good'
+                  : s === 'applying'
+                    ? 'info'
+                    : s === 'rolled_back'
+                      ? 'warn'
+                      : s === 'failed'
+                        ? 'bad'
+                        : 'neutral'
+              return (
+                <StatusBadge
+                  label={s || '—'}
+                  tone={tone}
+                  pulse={s === 'applying'}
+                />
+              )
+            },
+          },
+          {
             key: 'update',
             header: 'Update',
-            render: (d) =>
-              d.update_available ? (
-                <StatusBadge
-                  label={`→ ${d.latest_sha || 'new'}`}
-                  tone="warn"
-                  pulse
-                />
-              ) : d.drift?.any ? (
-                <StatusBadge label="drift" tone="warn" />
-              ) : (
-                <StatusBadge label="current" tone="good" />
-              ),
+            render: (d) => {
+              if (d.update_available) {
+                return (
+                  <div className="text-xs">
+                    <StatusBadge
+                      label={`deploy ${d.latest_sha || 'new'}`}
+                      tone="warn"
+                      pulse
+                    />
+                    <div className="mt-1 text-[var(--text-muted)]">
+                      {d.latest_release?.subject || 'newer Release ready'}
+                    </div>
+                  </div>
+                )
+              }
+              if (d.needs_build) {
+                return (
+                  <div className="text-xs">
+                    <StatusBadge
+                      label={`build ${d.branch_tip_sha || 'tip'}`}
+                      tone="info"
+                    />
+                    <div className="mt-1 max-w-[12rem] truncate text-[var(--text-muted)]">
+                      {d.branch_tip_message || 'branch tip not built yet'}
+                    </div>
+                  </div>
+                )
+              }
+              if (d.drift?.any) {
+                return <StatusBadge label="drift" tone="warn" />
+              }
+              return <StatusBadge label="current" tone="good" />
+            },
           },
           {
             key: 'metrics',

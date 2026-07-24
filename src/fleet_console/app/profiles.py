@@ -64,3 +64,15 @@ def get_profile(profile_id: str) -> dict[str, Any] | None:
         'compose_file': definition.get('compose_file'),
         'env': definition.get('env') or {},
     }
+
+
+def list_robot_types() -> list[str]:
+    """Distinct robot_type values from the profiles catalog."""
+    types: set[str] = set()
+    for definition in load_profiles().values():
+        if not isinstance(definition, dict):
+            continue
+        rtype = definition.get('robot_type')
+        if rtype:
+            types.add(str(rtype))
+    return sorted(types)

@@ -25,9 +25,11 @@ services:
     network_mode: host
     environment:
       FLEET_API_TOKEN: ${FLEET_API_TOKEN:-}
+      CI_REPORT_TOKEN: ${CI_REPORT_TOKEN:-}
+      FLEET_CONSOLE_URL: ${FLEET_CONSOLE_URL:-http://127.0.0.1:8090}
       PROMETHEUS_URL: ${PROMETHEUS_URL:-http://127.0.0.1:9091}
       GRAFANA_PI_OVERVIEW_URL: ${GRAFANA_PI_OVERVIEW_URL:-http://127.0.0.1:3001/d/pi-overview/rhapsodi-pi-overview}
-      DEFAULT_IMAGE_TAG: ${DEFAULT_IMAGE_TAG:-}
+      IMAGE_REGISTRY: ${IMAGE_REGISTRY:-iserenity/rhapsodi-promtek}
       REPO_ROOT: /repo
       ANSIBLE_DIR: /repo/ansible
       ANSIBLE_CONFIG: /repo/ansible/ansible.cfg
@@ -39,7 +41,7 @@ services:
       TAILNET: ${TAILNET:-}
       TAILSCALE_ROBOT_TAG: ${TAILSCALE_ROBOT_TAG:-tag:robot}
       TAILSCALE_BUILDER_TAG: ${TAILSCALE_BUILDER_TAG:-tag:builder}
-      # GitHub (branch tracking / update-available + optional build-from-branch)
+      # GitHub (branch listing + workflow_dispatch for builds)
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPO: ${GITHUB_REPO:-ashwanth18/ws_rhapsodi-promtek}
     volumes:

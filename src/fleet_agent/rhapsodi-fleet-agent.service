@@ -1,0 +1,20 @@
+[Unit]
+Description=Rhapsodi fleet-agent (pull desired release/profile and converge)
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=admin
+Group=admin
+EnvironmentFile=-/opt/rhapsodi/fleet-agent.env
+WorkingDirectory=/opt/rhapsodi/fleet-agent
+ExecStart=/opt/rhapsodi/fleet-agent/venv/bin/python /opt/rhapsodi/fleet-agent/agent.py
+Restart=always
+RestartSec=10
+# Allow docker group access without a login shell.
+SupplementaryGroups=docker
+
+[Install]
+WantedBy=multi-user.target

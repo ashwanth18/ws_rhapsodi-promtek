@@ -37,14 +37,57 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return resp.json() as Promise<T>
 }
 
+export type Release = {
+  id: number
+  branch: string
+  git_sha: string
+  status: string
+  images?: Record<string, string>
+  image_registry?: string | null
+  workflow_run_url?: string | null
+  error_message?: string | null
+  reported_at?: string | null
+  subject?: string | null
+  demo?: boolean
+  duration_seconds?: number | null
+  build_timings?: {
+    total_seconds?: number
+    roles?: Record<string, number>
+    builder?: string
+    platforms?: string
+  } | null
+}
+
+export function formatDuration(seconds?: number | null): string {
+  if (seconds == null || Number.isNaN(seconds)) return ''
+  const s = Math.max(0, Math.round(seconds))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const r = s % 60
+  if (h > 0) return `${h}h ${m}m ${r}s`
+  if (m > 0) return `${m}m ${String(r).padStart(2, '0')}s`
+  return `${r}s`
+}
+
+export type Branch = {
+  name: string
+  sha?: string
+  protected?: boolean
+}
+
 export type DeviceTarget = {
   device_id: string
   tracked_branch: string
   profile_id: string
-  pinned_image_tag?: string | null
+  release_id?: number | null
   auto_update?: boolean
   robot_type?: string | null
   site_id?: string | null
+  agent_status?: string | null
+  agent_message?: string | null
+  agent_applied_release_id?: number | null
+  agent_reported_at?: string | null
+  has_agent_token?: boolean
 }
 
 export type Profile = {
@@ -70,13 +113,24 @@ export type Device = {
   robot_id?: string | null
   image_tag?: string | null
   running_profile_id?: string | null
+  running_source?: 'host_info' | 'agent' | string | null
   desired_branch?: string | null
   desired_profile_id?: string | null
   desired_image_tag?: string | null
+  desired_release?: Release | null
+  latest_release?: Release | null
   update_available?: boolean | null
   latest_sha?: string | null
+  update_kind?: 'release' | 'needs_build' | string | null
+  needs_build?: boolean | null
+  branch_tip_sha?: string | null
+  branch_tip_message?: string | null
   drift?: { profile: boolean; version: boolean; any: boolean }
   target?: DeviceTarget
+  agent_status?: string | null
+  agent_message?: string | null
+  agent_reported_at?: string | null
+  agent_applied_release?: Release | null
   version_check?: Record<string, unknown>
   metrics?: { cpu_pct?: number | null; mem_pct?: number | null; disk_pct?: number | null }
   last_deployment?: Deployment | null
@@ -89,11 +143,12 @@ export type Device = {
 export type Deployment = {
   id: number
   device_id: string
-  action: 'provision' | 'deploy' | 'build' | string
+  action: 'provision' | 'deploy' | 'build' | 'reconcile' | string
   robot_type?: string | null
   site_id?: string | null
   profile_id?: string | null
   tracked_branch?: string | null
+  release_id?: number | null
   image_tag: string
   status: 'running' | 'success' | 'failed' | 'rolled_back' | string
   requested_by?: string | null
@@ -109,7 +164,36 @@ export const api = {
     const qs = robotType ? `?robot_type=${encodeURIComponent(robotType)}` : ''
     return request<{ profiles: Profile[] }>(`/api/profiles${qs}`)
   },
-  updateTarget: (id: string, body: Partial<DeviceTarget>) =>
+  listRobotTypes: () => request<{ robot_types: string[] }>('/api/robot_types'),
+  listBranches: () => request<{ branches: Branch[] }>('/api/branches'),
+  listReleases: (params?: { branch?: string; status?: string; sync?: boolean }) => {
+    const qs = new URLSearchParams()
+    if (params?.branch) qs.set('branch', params.branch)
+    if (params?.status) qs.set('status', params.status)
+    if (params?.sync) qs.set('sync', 'true')
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return request<{ releases: Release[]; synced?: number }>(`/api/releases${suffix}`)
+  },
+  syncReleases: () =>
+    request<{ created: number; releases: Release[] }>('/api/releases/sync', {
+      method: 'POST',
+    }),
+  cancelDeployment: (id: number) =>
+    request<{ deployment: Deployment; signalled: boolean }>(
+      `/api/deployments/${id}/cancel`,
+      { method: 'POST' },
+    ),
+  updateTarget: (
+    id: string,
+    body: {
+      tracked_branch?: string
+      profile_id?: string
+      release_id?: number | null
+      auto_update?: boolean
+      robot_type?: string
+      site_id?: string
+    },
+  ) =>
     request<{ target: DeviceTarget }>(`/api/devices/${id}/target`, {
       method: 'PUT',
       body: JSON.stringify(body),
@@ -129,13 +213,12 @@ export const api = {
     request<{ deployment_id: number; log: string; status: string }>(
       `/api/deployments/${id}/logs`,
     ),
-  imageTags: () => request<{ image_tags: string[] }>('/api/image_tags'),
   provision: (
     id: string,
     body: {
-      robot_type: 'niryo' | 'jaka'
+      robot_type: string
       site_id: string
-      image_tag: string
+      release_id: number
       profile_id: string
       tracked_branch: string
     },
@@ -146,20 +229,23 @@ export const api = {
     }),
   deploy: (
     id: string,
-    body: { image_tag: string; profile_id?: string; tracked_branch?: string },
+    body: { release_id: number; profile_id?: string; tracked_branch?: string },
   ) =>
-    request<{ deployment: Deployment }>(`/api/devices/${id}/deploy`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  build: (
-    id: string,
-    body: { branch?: string; deploy_after?: boolean; profile_id?: string },
-  ) =>
-    request<{ deployment: Deployment }>(`/api/devices/${id}/build`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
+    request<{ deployment: Deployment; target: DeviceTarget }>(
+      `/api/devices/${id}/deploy`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      },
+    ),
+  build: (id: string, body: { branch?: string }) =>
+    request<{ deployment: Deployment; workflow?: Record<string, unknown> }>(
+      `/api/devices/${id}/build`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      },
+    ),
 }
 
 export function logsStreamUrl(deploymentId: number): string {
