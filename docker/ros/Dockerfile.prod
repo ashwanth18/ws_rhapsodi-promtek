@@ -62,15 +62,21 @@ ENV MAKEFLAGS="-j${COLCON_PARALLEL_WORKERS}" \
 
 # Persist colcon build trees + ccache across image builds so unchanged packages
 # are not recompiled from scratch every time.
+# Jaka vendor lib (libjakaAPI.so) is x86_64-only, so skip those packages on arm64
+# (Pi / Jetson Niryo deployments do not need them).
 RUN --mount=type=cache,target=/ws/build,id=colcon-build-${TARGETARCH} \
     --mount=type=cache,target=/ws/log,id=colcon-log-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/ccache,id=ccache-${TARGETARCH} \
     source /opt/ros/jazzy/setup.bash \
     && mkdir -p /ws/build /ws/log /ws/install \
+    && SKIP_PKGS="micro_ros_agent" \
+    && if [ "${TARGETARCH}" = "arm64" ]; then \
+         SKIP_PKGS="${SKIP_PKGS} jaka_driver jaka_planner"; \
+       fi \
     && colcon build \
         --merge-install \
         --parallel-workers ${COLCON_PARALLEL_WORKERS} \
-        --packages-skip micro_ros_agent \
+        --packages-skip ${SKIP_PKGS} \
         --cmake-args \
           -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
           "-DCMAKE_CXX_FLAGS_RELEASE=${CMAKE_CXX_FLAGS_RELEASE}" \

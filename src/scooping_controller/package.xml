@@ -39,8 +39,8 @@
   <exec_depend>moveit_ros_visualization</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
   <exec_depend>controller_manager</exec_depend>
-  <exec_depend>jaka_driver</exec_depend>
-  <exec_depend>jaka_zu5_moveit_config</exec_depend>
+  <!-- Jaka packages are optional: selected at runtime via robots.yaml / device.yaml.
+       They are skipped on arm64 (vendor libjakaAPI.so is x86_64-only). -->
   <exec_depend>joint_trajectory_controller</exec_depend>
   <exec_depend>joint_state_broadcaster</exec_depend>
   <exec_depend>mock_components</exec_depend>

@@ -1,0 +1,109 @@
+# Build multi-arch images + publish slim deploy bundle on merge to main.
+# Does NOT auto-rollout to robots — fleet deploy stays a manual Ansible command.
+#
+# Required GitHub secrets:
+#   DOCKERHUB_USERNAME
+#   DOCKERHUB_TOKEN
+#   TAILSCALE_AUTHKEY   — ephemeral/reusable key that can reach the Jetson
+#   JETSON_SSH_HOST     — e.g. jetson-local (Tailscale MagicDNS name)
+#   JETSON_SSH_USER     — e.g. ashwanth
+#
+# Optional repository variable:
+#   BUILDER_NAME (default: multiarch)
+
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-and-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-push-bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Needed so publish_deploy_bundle.sh can force-push the orphan deploy branch.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+
+      - name: Append Jetson as native arm64 buildx node
+        env:
+          JETSON_SSH_HOST: ${{ secrets.JETSON_SSH_HOST }}
+          JETSON_SSH_USER: ${{ secrets.JETSON_SSH_USER }}
+          BUILDER_NAME: ${{ vars.BUILDER_NAME }}
+        run: |
+          set -euo pipefail
+          BUILDER_NAME="${BUILDER_NAME:-multiarch}"
+          if [[ -z "${JETSON_SSH_HOST:-}" || -z "${JETSON_SSH_USER:-}" ]]; then
+            echo "JETSON_SSH_HOST / JETSON_SSH_USER secrets not set; building with QEMU only."
+            docker buildx create --name "${BUILDER_NAME}" --driver docker-container --use \
+              || docker buildx use "${BUILDER_NAME}"
+            docker run --privileged --rm tonistiigi/binfmt --install all
+            exit 0
+          fi
+          export JETSON_HOST="${JETSON_SSH_HOST}"
+          export JETSON_USER="${JETSON_SSH_USER}"
+          export BUILDER_NAME
+          bash scripts/setup_jetson_builder.sh || true
+          if ! docker buildx inspect "${BUILDER_NAME}" >/dev/null 2>&1; then
+            docker buildx create --name "${BUILDER_NAME}" --driver docker-container --use
+            docker buildx create --name "${BUILDER_NAME}" --append \
+              --node "jetson" \
+              "ssh://${JETSON_SSH_USER}@${JETSON_SSH_HOST}"
+          fi
+          docker buildx use "${BUILDER_NAME}"
+          docker buildx inspect --bootstrap
+
+      - name: Build and push multi-arch images
+        env:
+          BUILDER_NAME: ${{ vars.BUILDER_NAME }}
+          PLATFORMS: linux/amd64,linux/arm64
+        run: |
+          export BUILDER_NAME="${BUILDER_NAME:-multiarch}"
+          bash scripts/buildx_push_images.sh
+
+      - name: Publish slim deploy bundle
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          bash scripts/publish_deploy_bundle.sh
+
+      - name: Summarize
+        run: |
+          SHA="$(git rev-parse --short HEAD)"
+          {
+            echo "## Release ready"
+            echo ""
+            echo "- Image tag: \`${SHA}\`"
+            echo "- Deploy tag: \`deploy-${SHA}\`"
+            echo "- Manual fleet rollout:"
+            echo "  \`\`\`bash"
+            echo "  ansible-playbook -i ansible/inventory/tailscale.py ansible/deploy.yml -e image_tag=${SHA} -e serial_batch=1"
+            echo "  \`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"

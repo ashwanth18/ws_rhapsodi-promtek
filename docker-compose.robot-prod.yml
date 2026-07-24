@@ -25,7 +25,7 @@ services:
     environment:
       POSTGRES_DB: robot_data
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
       - "5432:5432"
     volumes:
@@ -34,7 +34,7 @@ services:
   backend:
     image: ${BACKEND_IMAGE:-iserenity/rhapsodi-promtek:backend}
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/robot_data
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/robot_data
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000,http://localhost:8080}
       WEIGHMENT_URL: ${WEIGHMENT_URL:-http://host.docker.internal:5002/batch/weighment}
       BATCH_END_URL: ${BATCH_END_URL:-http://host.docker.internal:5002/batch/end}
@@ -72,7 +72,7 @@ services:
   webhook_service:
     image: ${WEBHOOK_IMAGE:-iserenity/rhapsodi-promtek:webhook}
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/robot_data
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/robot_data
     ports:
       - "5000:5000"
     volumes:
@@ -81,10 +81,9 @@ services:
       - db
 
   condor_agent:
+    # Image-only: built/pushed by scripts/buildx_push_images.sh. Do not add a
+    # local `build:` block — edge devices only pull from the registry.
     image: ${CONDOR_AGENT_IMAGE:-iserenity/rhapsodi-promtek:condor-agent}
-    build:
-      context: .
-      dockerfile: docker/condor-agent.Dockerfile
     environment:
       promtek-condor-rhapsodi-agent__RhapsodiUrl: ${CONDOR_AGENT_RHAPSODI_URL:-http://webhook_service:5000}
       promtek-condor-rhapsodi-agent__Port: ${CONDOR_AGENT_PORT:-5002}

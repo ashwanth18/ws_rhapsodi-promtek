@@ -86,6 +86,11 @@ build_with_cache \
   --build-arg VITE_MICROROS_HEARTBEAT_TOPIC="${VITE_MICROROS_HEARTBEAT_TOPIC}" \
   -f docker/dashboard.Dockerfile .
 
+build_with_cache \
+  condor-agent \
+  -f docker/condor-agent.Dockerfile .
+
 echo
 echo "Pushed role tags and sha tags ending in -${GIT_SHA}"
 echo "Pin a robot with IMAGE_TAG=${GIT_SHA} in robot-prod.env (see robot-prod.env.example)."
+echo "Then publish the slim deploy bundle: bash scripts/publish_deploy_bundle.sh"

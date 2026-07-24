@@ -49,6 +49,12 @@ src/dashboard/node_modules/**
 **/*.dll
 **/*.exe
 
+# Vendor binaries required by Jaka packages (ignored by **/*.so above)
+!src/jaka_driver/lib/
+!src/jaka_driver/lib/**
+!src/jaka_planner/lib/
+!src/jaka_planner/lib/**
+
 # Keep published Condor agent artifacts in build context
 !Rhapsodi Condor Agent WIP Apr 8 2026/**
 
