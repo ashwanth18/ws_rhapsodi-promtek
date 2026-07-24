@@ -161,3 +161,12 @@ services:
     volumes:
       - ${WORKSPACE_ROOT:-.}/fastdds.xml:/fastdds.xml:ro
     command: ros2 launch niryo_robot_simulation_client rosbridge_websocket_fixed.launch.py address:=0.0.0.0 port:=9090
+
+  # Publishes /system/health_events on micro-ROS heartbeat staleness/recovery
+  # (see control_heartbeat_method.md for the dashboard-side equivalent check).
+  microros_health_watchdog:
+    <<: *ros-service
+    volumes:
+      - ${WORKSPACE_ROOT:-.}/fastdds.xml:/fastdds.xml:ro
+      - ${WORKSPACE_ROOT:-.}/config:/ws/config:ro
+    command: ros2 run rhapsodi_common microros_health_watchdog

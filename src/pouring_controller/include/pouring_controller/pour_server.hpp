@@ -11,6 +11,8 @@
 #include <trajectory_msgs/msg/joint_trajectory_point.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <robot_common_msgs/msg/pour_status.hpp>
+#include <rhapsodi_common_cpp/health_event_publisher.hpp>
+#include <memory>
 #include <mutex>
 #include <vector>
 
@@ -30,6 +32,7 @@ private:
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr valve_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr incline_pub_;
   rclcpp::Publisher<robot_common_msgs::msg::PourStatus>::SharedPtr pour_status_pub_;
+  std::unique_ptr<rhapsodi_common_cpp::HealthEventPublisher> health_;
   std::mutex data_mutex_;
   double raw_weight_{0.0};
   double filtered_weight_{0.0};

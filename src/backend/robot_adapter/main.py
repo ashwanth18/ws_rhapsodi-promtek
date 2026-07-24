@@ -7,6 +7,8 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from robot_common_msgs.srv import StartWebhookWeightment
 
+from rhapsodi_common.health import HealthEventPublisher
+
 
 class StartWebhookWeightmentRequest(BaseModel):
     run_id: str
@@ -43,6 +45,7 @@ class WebhookRobotStarter:
         self._started = False
         self._node = None
         self._client = None
+        self._health = None
 
     def start(self) -> None:
         if self._started:
@@ -51,6 +54,9 @@ class WebhookRobotStarter:
         self._node = rclpy.create_node('webhook_robot_start_adapter')
         self._client = self._node.create_client(
             StartWebhookWeightment, self.service_name
+        )
+        self._health = HealthEventPublisher(
+            self._node, 'robot_start_adapter'
         )
         self._started = True
 
@@ -82,6 +88,16 @@ class WebhookRobotStarter:
             if not self._client.wait_for_service(
                 timeout_sec=self.wait_timeout_seconds
             ):
+                self._health.error(
+                    'robot_start_service_unavailable',
+                    f'Service {self.service_name} not available after '
+                    f'{self.wait_timeout_seconds}s',
+                    {
+                        'service_name': self.service_name,
+                        'run_id': payload.run_id,
+                        'weightment_id': payload.weightment_id,
+                    },
+                )
                 raise TimeoutError(
                     f'Service {self.service_name} not available after '
                     f'{self.wait_timeout_seconds}s'
@@ -106,14 +122,36 @@ class WebhookRobotStarter:
                 self._node, future, timeout_sec=self.call_timeout_seconds
             )
             if not future.done():
+                self._health.error(
+                    'robot_start_service_call_timeout',
+                    f'Service {self.service_name} call timed out after '
+                    f'{self.call_timeout_seconds}s',
+                    {
+                        'service_name': self.service_name,
+                        'run_id': payload.run_id,
+                        'weightment_id': payload.weightment_id,
+                    },
+                )
                 raise TimeoutError(
                     f'Service {self.service_name} call timed out after '
                     f'{self.call_timeout_seconds}s'
                 )
             response = future.result()
             if response is None:
+                self._health.error(
+                    'robot_start_service_empty_response',
+                    f'Service {self.service_name} returned no response',
+                    {'service_name': self.service_name, 'run_id': payload.run_id},
+                )
                 raise RuntimeError(
                     f'Service {self.service_name} returned no response'
+                )
+            if not response.accepted:
+                self._health.warn(
+                    'robot_start_rejected',
+                    f'Service {self.service_name} rejected the run: '
+                    f'{response.message}',
+                    {'service_name': self.service_name, 'run_id': payload.run_id},
                 )
             return StartWebhookWeightmentResponse(
                 accepted=bool(response.accepted),

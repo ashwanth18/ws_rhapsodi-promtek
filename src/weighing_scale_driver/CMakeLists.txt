@@ -9,10 +9,12 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(robot_common_msgs REQUIRED)
+find_package(rhapsodi_common_cpp REQUIRED)
 
 add_executable(weighing_scale_node src/weighing_scale_node.cpp)
 target_compile_features(weighing_scale_node PUBLIC cxx_std_17)
-ament_target_dependencies(weighing_scale_node rclcpp std_msgs)
+ament_target_dependencies(weighing_scale_node rclcpp std_msgs robot_common_msgs rhapsodi_common_cpp)
 
 install(TARGETS weighing_scale_node DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})

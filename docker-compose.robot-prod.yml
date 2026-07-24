@@ -164,6 +164,12 @@ services:
       ]
     restart: unless-stopped
 
+  # Publishes /system/health_events on micro-ROS heartbeat staleness/recovery
+  # (see control_heartbeat_method.md for the dashboard-side equivalent check).
+  microros_health_watchdog:
+    <<: *ros-robot-service
+    command: ros2 run rhapsodi_common microros_health_watchdog
+
   pouring_controller:
     <<: *ros-robot-service
     command: >

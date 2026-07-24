@@ -5,10 +5,13 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <cerrno>
 #include <cstring>
+
+#include "rhapsodi_common_cpp/health_event_publisher.hpp"
 
 namespace
 {
@@ -57,20 +60,33 @@ public:
     this->declare_parameter<std::string>("port", "/dev/ttyUSB0");
     this->declare_parameter<int>("baud", 9600);
     this->declare_parameter<std::string>("topic", "/weight");
+    this->declare_parameter<double>("stale_after_seconds", 5.0);
     topic_ = this->get_parameter("topic").as_string();
+    stale_after_s_ = this->get_parameter("stale_after_seconds").as_double();
     publisher_ = this->create_publisher<std_msgs::msg::Float64>(topic_, 10);
+    health_ = std::make_unique<rhapsodi_common_cpp::HealthEventPublisher>(
+      this, "weighing_scale_driver");
     int baud = this->get_parameter("baud").as_int();
     std::string port = this->get_parameter("port").as_string();
     fd_ = open_serial(port, baud);
     if (fd_ < 0) {
+      const std::string err = std::strerror(errno);
       RCLCPP_FATAL(this->get_logger(), "Failed to open %s (baud %d): %s",
-                   port.c_str(), baud, std::strerror(errno));
+                   port.c_str(), baud, err.c_str());
+      health_->critical(
+        "serial_open_failed",
+        "Failed to open weighing scale serial port " + port,
+        "{\"port\":\"" + port + "\",\"baud\":" + std::to_string(baud) +
+          ",\"errno\":\"" + err + "\"}");
       throw std::runtime_error("open serial failed");
     }
     RCLCPP_INFO(this->get_logger(), "Connected to weighing scale on %s at %d baud",
                 port.c_str(), baud);
     RCLCPP_INFO(this->get_logger(), "Publishing scale readings on %s", topic_.c_str());
+    last_reading_time_ = this->now();
     timer_ = this->create_wall_timer(std::chrono::milliseconds(50), std::bind(&WeighingScaleNode::tick, this));
+    stale_check_timer_ = this->create_wall_timer(
+      std::chrono::milliseconds(1000), std::bind(&WeighingScaleNode::checkStale, this));
   }
 
   ~WeighingScaleNode() override
@@ -92,15 +108,38 @@ private:
       auto w = parse_weight(line);
       if (w.has_value()) {
         std_msgs::msg::Float64 msg; msg.data = *w; publisher_->publish(msg);
+        last_reading_time_ = this->now();
+        if (is_stale_) {
+          is_stale_ = false;
+          health_->info("scale_readings_resumed", "Weighing scale readings resumed");
+        }
       }
+    }
+  }
+
+  void checkStale()
+  {
+    const double age_s = (this->now() - last_reading_time_).seconds();
+    if (age_s > stale_after_s_ && !is_stale_) {
+      is_stale_ = true;
+      RCLCPP_WARN(this->get_logger(), "No weight reading for %.1fs", age_s);
+      health_->warn(
+        "scale_readings_stale",
+        "No weighing scale reading for " + std::to_string(age_s) + "s",
+        "{\"age_seconds\":" + std::to_string(age_s) + "}");
     }
   }
 
   int fd_ { -1 };
   std::string buffer_;
   std::string topic_;
+  double stale_after_s_ { 5.0 };
+  bool is_stale_ { false };
+  rclcpp::Time last_reading_time_;
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr publisher_;
   rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::TimerBase::SharedPtr stale_check_timer_;
+  std::unique_ptr<rhapsodi_common_cpp::HealthEventPublisher> health_;
 };
 
 int main(int argc, char ** argv)

@@ -89,6 +89,7 @@ PourServer::PourServer(const rclcpp::NodeOptions & options)
   valve_pub_ = this->create_publisher<std_msgs::msg::Float64>(valvet, 10);
   incline_pub_ = this->create_publisher<std_msgs::msg::Float64>(it, 10);
   pour_status_pub_ = this->create_publisher<robot_common_msgs::msg::PourStatus>("/pour_status", 10);
+  health_ = std::make_unique<rhapsodi_common_cpp::HealthEventPublisher>(this, "pour_server");
 
   // control plugin selection
   const auto law = this->get_parameter("control_law_type").as_string();
@@ -273,6 +274,11 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
       result->overshoot = false;
       result->final_weight = filtered_weight_;
       result->message = "Stale weight";
+      health_->error(
+        "pour_stale_weight_abort",
+        "Pour aborted: no fresh weight reading (stale_ms=" + std::to_string(stale_ms_) + ")",
+        "{\"stale_ms\":" + std::to_string(stale_ms_) + ",\"target_weight\":" +
+          std::to_string(goal->target_weight) + "}");
       goal_handle->abort(result);
       return;
     }
@@ -436,6 +442,12 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
       // No tilt reset (disabled)
       RCLCPP_INFO(get_logger(), "Pour overshoot: final_abs=%.3fg final_net=%.3fg (baseline=%.3f)",
                   result->final_weight, result->final_net_g, baseline_g);
+      health_->warn(
+        "pour_overshoot",
+        "Pour overshot target by " + std::to_string(result->final_net_g - goal->target_weight) + "g",
+        "{\"target_weight\":" + std::to_string(goal->target_weight) +
+          ",\"final_net_g\":" + std::to_string(result->final_net_g) +
+          ",\"baseline_g\":" + std::to_string(baseline_g) + "}");
       goal_handle->succeed(result);
       return;
     }
@@ -485,6 +497,12 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
           incline_step,
           max_incline,
           baseline_g);
+        health_->warn(
+          "pour_no_progress_timeout",
+          "Pour stalled: no progress for " + std::to_string(no_progress_timeout_s_) +
+            "s, needs rescoop",
+          "{\"phase\":\"" + phase_name + "\",\"net_g\":" + std::to_string(net_g) +
+            ",\"incline_deg\":" + std::to_string(incline_deg) + "}");
         goal_handle->succeed(result);
         return;
       }
@@ -507,6 +525,10 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
             result->need_rescoop = true;
             result->proceed_next = false;
             result->message = "Stale weight during final settle";
+            health_->error(
+              "pour_stale_weight_during_settle",
+              "Pour aborted during final settle: weight went stale",
+              "{\"target_weight\":" + std::to_string(goal->target_weight) + "}");
             goal_handle->abort(result);
             return;
           }
@@ -546,6 +568,11 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
       // No tilt reset (disabled)
       RCLCPP_INFO(get_logger(), "Pour timeout: final_abs=%.3fg final_net=%.3fg (baseline=%.3f)",
                   result->final_weight, result->final_net_g, baseline_g);
+      health_->warn(
+        "pour_max_time_timeout",
+        "Pour exceeded max_time_s=" + std::to_string(goal->max_time_s) + "s",
+        "{\"target_weight\":" + std::to_string(goal->target_weight) +
+          ",\"final_net_g\":" + std::to_string(result->final_net_g) + "}");
       goal_handle->succeed(result);
       return;
     }

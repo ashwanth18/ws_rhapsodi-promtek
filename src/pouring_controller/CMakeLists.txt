@@ -10,6 +10,7 @@ find_package(control_msgs REQUIRED)
 find_package(trajectory_msgs REQUIRED)
 find_package(robot_common_msgs REQUIRED)
 find_package(pluginlib REQUIRED)
+find_package(rhapsodi_common_cpp REQUIRED)
 
 add_library(${PROJECT_NAME} SHARED
   src/pour_server.cpp
@@ -21,7 +22,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 ament_target_dependencies(${PROJECT_NAME}
-  rclcpp rclcpp_action std_msgs sensor_msgs control_msgs trajectory_msgs robot_common_msgs pluginlib
+  rclcpp rclcpp_action std_msgs sensor_msgs control_msgs trajectory_msgs robot_common_msgs pluginlib rhapsodi_common_cpp
 )
 
 add_executable(pour_server_node src/pour_server_node.cpp)

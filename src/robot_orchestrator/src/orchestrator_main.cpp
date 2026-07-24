@@ -16,6 +16,7 @@
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/int32.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <rhapsodi_common_cpp/health_event_publisher.hpp>
 
 int main(int argc, char ** argv)
 {
@@ -41,6 +42,7 @@ int main(int argc, char ** argv)
 
   // Status publisher
   auto status_pub = ros_node->create_publisher<robot_common_msgs::msg::SystemStatus>("/system_status", 10);
+  rhapsodi_common_cpp::HealthEventPublisher health(ros_node.get(), "robot_orchestrator");
 
   auto latched_qos = rclcpp::QoS(1).transient_local();
 
@@ -373,6 +375,10 @@ int main(int argc, char ** argv)
       start_requested = false;
     }
 
+    const std::string completed_run_mode =
+      lightsout_active.load() ? "lightsout" :
+      (webhook_active.load() ? "webhook" : "unknown");
+
     if (lightsout_active.load()) {
       lightsout_active = false;
       std_msgs::msg::Bool active_msg;
@@ -394,6 +400,10 @@ int main(int argc, char ** argv)
         run_state_msg.data = "succeeded";
       } else if (status == BT::NodeStatus::FAILURE) {
         run_state_msg.data = "failed";
+        health.error(
+          "bt_tree_failure",
+          "Behavior tree returned FAILURE for tree_file=" + tree_file,
+          "{\"tree_file\":\"" + tree_file + "\",\"run_mode\":\"" + completed_run_mode + "\"}");
       } else {
         run_state_msg.data = "idle";
       }

@@ -10,6 +10,7 @@ find_package(behaviortree_ros2 REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(rhapsodi_common_cpp REQUIRED)
 
 add_library(${PROJECT_NAME} SHARED
   src/pour_to_target_node.cpp
@@ -39,7 +40,7 @@ target_link_libraries(${PROJECT_NAME}
 
 add_executable(orchestrator_node src/orchestrator_main.cpp)
 target_link_libraries(orchestrator_node ${PROJECT_NAME} behaviortree_cpp::behaviortree_cpp behaviortree_ros2::behaviortree_ros2)
-ament_target_dependencies(orchestrator_node rclcpp ament_index_cpp std_srvs std_msgs)
+ament_target_dependencies(orchestrator_node rclcpp ament_index_cpp std_srvs std_msgs rhapsodi_common_cpp)
 
 install(TARGETS ${PROJECT_NAME} orchestrator_node
   ARCHIVE DESTINATION lib

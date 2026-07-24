@@ -21,4 +21,10 @@ setup(
     ),
     license='Apache-2.0',
     tests_require=['pytest'],
+    entry_points={
+        'console_scripts': [
+            'microros_health_watchdog = '
+            'rhapsodi_common.microros_watchdog:main',
+        ],
+    },
 )
