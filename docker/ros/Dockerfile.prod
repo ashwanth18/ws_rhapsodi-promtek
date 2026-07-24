@@ -52,18 +52,30 @@ RUN if [ -f /ws/src/ros2.repos ] && ! grep -qE '^repositories:\\s*\\{\\}\\s*$' /
 ARG COLCON_PARALLEL_WORKERS=8
 ARG CMAKE_BUILD_TYPE=Release
 ARG CMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG"
+# TARGETARCH is injected by BuildKit (amd64/arm64) and scopes cache mounts per arch.
+ARG TARGETARCH
 
 ENV MAKEFLAGS="-j${COLCON_PARALLEL_WORKERS}" \
-    CMAKE_BUILD_PARALLEL_LEVEL="${COLCON_PARALLEL_WORKERS}"
+    CMAKE_BUILD_PARALLEL_LEVEL="${COLCON_PARALLEL_WORKERS}" \
+    CCACHE_DIR=/root/.cache/ccache \
+    CCACHE_MAXSIZE=20G
 
-RUN source /opt/ros/jazzy/setup.bash \
+# Persist colcon build trees + ccache across image builds so unchanged packages
+# are not recompiled from scratch every time.
+RUN --mount=type=cache,target=/ws/build,id=colcon-build-${TARGETARCH} \
+    --mount=type=cache,target=/ws/log,id=colcon-log-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/ccache,id=ccache-${TARGETARCH} \
+    source /opt/ros/jazzy/setup.bash \
+    && mkdir -p /ws/build /ws/log /ws/install \
     && colcon build \
         --merge-install \
         --parallel-workers ${COLCON_PARALLEL_WORKERS} \
         --packages-skip micro_ros_agent \
         --cmake-args \
           -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
-          "-DCMAKE_CXX_FLAGS_RELEASE=${CMAKE_CXX_FLAGS_RELEASE}"
+          "-DCMAKE_CXX_FLAGS_RELEASE=${CMAKE_CXX_FLAGS_RELEASE}" \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
 FROM underlay AS runtime
 
