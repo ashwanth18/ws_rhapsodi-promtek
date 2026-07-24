@@ -1,0 +1,93 @@
+---
+# Rolling / canary deploy of Rhapsodi robot stack over Tailscale.
+#
+# Examples:
+#   # Canary one host, then rest in 25% batches:
+#   ansible-playbook -i ansible/inventory/tailscale.py ansible/deploy.yml \
+#     -e image_tag=$(git rev-parse --short HEAD) -e serial_mode=canary
+#
+#   # Pin everyone at once (use carefully):
+#   ansible-playbook -i ansible/inventory/tailscale.py ansible/deploy.yml \
+#     -e image_tag=abc1234 -e serial_batch=100%
+#
+#   # Limit to one device:
+#   ansible-playbook -i ansible/inventory/tailscale.py ansible/deploy.yml \
+#     --limit rhapsodi-pi5 -e image_tag=abc1234
+
+- name: Deploy Rhapsodi robot stack
+  hosts: robots
+  serial: "{{ serial_batch | default('1') }}"
+  gather_facts: true
+  vars:
+    workspace_dir: "{{ lookup('env', 'WORKSPACE_DIR') | default('/opt/rhapsodi/ws_rhapsodi-promtek', true) }}"
+    env_file: "{{ workspace_dir }}/robot-prod.env"
+    compose_file: "{{ workspace_dir }}/docker-compose.robot-prod.yml"
+    image_registry: "{{ lookup('env', 'IMAGE_REGISTRY') | default('iserenity/rhapsodi-promtek', true) }}"
+    health_url: "http://127.0.0.1:8000/health"
+    health_retries: 30
+    health_delay: 5
+  tasks:
+    - name: Require image_tag
+      ansible.builtin.assert:
+        that:
+          - image_tag is defined
+          - image_tag | length > 0
+        fail_msg: "Pass -e image_tag=<git-short-sha> from scripts/buildx_push_images.sh"
+
+    - name: Ensure workspace exists
+      ansible.builtin.stat:
+        path: "{{ compose_file }}"
+      register: compose_stat
+
+    - name: Fail if device is not provisioned
+      ansible.builtin.fail:
+        msg: "Missing {{ compose_file }}. Run scripts/provision_device.sh on this host first."
+      when: not compose_stat.stat.exists
+
+    - name: Pin IMAGE_TAG and derived image refs in robot-prod.env
+      ansible.builtin.shell: |
+        set -euo pipefail
+        ENV="{{ env_file }}"
+        TAG="{{ image_tag }}"
+        REG="{{ image_registry }}"
+        touch "$ENV"
+        grep -q '^IMAGE_TAG=' "$ENV" || echo 'IMAGE_TAG=' >> "$ENV"
+        grep -q '^ROS_PROD_IMAGE=' "$ENV" || echo 'ROS_PROD_IMAGE=' >> "$ENV"
+        grep -q '^BACKEND_IMAGE=' "$ENV" || echo 'BACKEND_IMAGE=' >> "$ENV"
+        grep -q '^PROCESSING_IMAGE=' "$ENV" || echo 'PROCESSING_IMAGE=' >> "$ENV"
+        grep -q '^WEBHOOK_IMAGE=' "$ENV" || echo 'WEBHOOK_IMAGE=' >> "$ENV"
+        grep -q '^DASHBOARD_IMAGE=' "$ENV" || echo 'DASHBOARD_IMAGE=' >> "$ENV"
+        sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=${TAG}|" "$ENV"
+        sed -i "s|^ROS_PROD_IMAGE=.*|ROS_PROD_IMAGE=${REG}:ros-prod-${TAG}|" "$ENV"
+        sed -i "s|^BACKEND_IMAGE=.*|BACKEND_IMAGE=${REG}:backend-${TAG}|" "$ENV"
+        sed -i "s|^PROCESSING_IMAGE=.*|PROCESSING_IMAGE=${REG}:processing-${TAG}|" "$ENV"
+        sed -i "s|^WEBHOOK_IMAGE=.*|WEBHOOK_IMAGE=${REG}:webhook-${TAG}|" "$ENV"
+        sed -i "s|^DASHBOARD_IMAGE=.*|DASHBOARD_IMAGE=${REG}:dashboard-${TAG}|" "$ENV"
+      args:
+        executable: /bin/bash
+
+    - name: Pull images
+      ansible.builtin.command:
+        cmd: docker compose --env-file {{ env_file }} -f {{ compose_file }} pull
+        chdir: "{{ workspace_dir }}"
+
+    - name: Recreate stack
+      ansible.builtin.command:
+        cmd: docker compose --env-file {{ env_file }} -f {{ compose_file }} up -d --remove-orphans
+        chdir: "{{ workspace_dir }}"
+
+    - name: Wait for backend health
+      ansible.builtin.uri:
+        url: "{{ health_url }}"
+        method: GET
+        status_code: [200, 204]
+      register: health
+      retries: "{{ health_retries }}"
+      delay: "{{ health_delay }}"
+      until: health is succeeded
+      ignore_errors: true
+
+    - name: Report health failure
+      ansible.builtin.fail:
+        msg: "Backend health check failed on {{ inventory_hostname }} after deploy"
+      when: health is failed
