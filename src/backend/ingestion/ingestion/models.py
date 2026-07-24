@@ -10,6 +10,7 @@ from sqlalchemy import (
     BigInteger,
     Column,
     DateTime,
+    Index,
     Integer,
     String,
     Text,
@@ -81,3 +82,43 @@ class FleetHealthEvent(Base):
     message = Column(Text, nullable=True)
     context_json = Column(Text, nullable=True)
     received_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class Incident(Base):
+    """One row per known-failure-signature match (`ingestion.rules`'s
+    detectors), over either a fleet health-log line or a per-run
+    events.jsonl line - see that module's docstring for the specific
+    signatures encoded (DDS/Fast-DDS transport timeouts, SQLAlchemy
+    `DetachedInstanceError`, Postgres `idle in transaction`, pour
+    overshoot/stall/abort, micro-ROS/scale staleness).
+
+    Two independent lifecycle timestamps, not one `resolved` boolean:
+    `kb_drafted_at` is set once the (future) semi-automated KB job has
+    folded this incident into a `.cursor/rules/robot-fault-patterns.mdc`
+    / `TROUBLESHOOTING.md` draft (so that job only looks at genuinely
+    new incidents next time); `resolved_at` is set by a human/reviewing
+    agent once the underlying fault is actually understood/fixed. An
+    incident can be drafted long before it's resolved.
+    """
+
+    __tablename__ = 'incidents'
+    __table_args__ = (
+        Index(
+            'ix_incidents_dedup_lookup',
+            'signature_id',
+            'device_id',
+            'run_key',
+            'detected_at',
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    signature_id = Column(String, index=True, nullable=False)
+    title = Column(String, nullable=False)
+    severity = Column(String, index=True, nullable=False)
+    device_id = Column(String, index=True, nullable=True)
+    run_key = Column(String, index=True, nullable=True)
+    evidence_json = Column(Text, nullable=True)
+    detected_at = Column(DateTime(timezone=True), server_default=func.now())
+    kb_drafted_at = Column(DateTime(timezone=True), nullable=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)

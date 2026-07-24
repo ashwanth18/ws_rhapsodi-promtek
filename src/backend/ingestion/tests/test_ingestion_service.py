@@ -14,7 +14,13 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from ingestion import database, main
-from ingestion.models import Base, FleetHealthEvent, IngestedBlob, IngestedRun
+from ingestion.models import (
+    Base,
+    FleetHealthEvent,
+    Incident,
+    IngestedBlob,
+    IngestedRun,
+)
 from ingestion.object_store import LocalFilesystemObjectStore
 
 
@@ -90,7 +96,12 @@ def test_append_fleet_log_parses_jsonl_into_rows(client):
         headers={'Content-Type': 'text/plain'},
     )
     assert resp.status_code == 200
-    assert resp.json() == {'received_lines': 3, 'skipped_lines': 1}
+    body = resp.json()
+    assert body['received_lines'] == 3
+    assert body['skipped_lines'] == 1
+    # The pour_overshoot line (no severity threshold context) matches
+    # exactly one detector; scale_timeout isn't a known signature.
+    assert body['incidents_recorded'] == 1
 
     session = _session(client)
     try:
@@ -102,6 +113,12 @@ def test_append_fleet_log_parses_jsonl_into_rows(client):
         assert rows[0].code == 'scale_timeout'
         assert json.loads(rows[0].context_json) == {'attempt': 3}
         assert rows[1].code == 'pour_overshoot'
+
+        incidents = session.query(Incident).all()
+        assert len(incidents) == 1
+        assert incidents[0].signature_id == 'pour_overshoot'
+        assert incidents[0].device_id == 'robot-1'
+        assert incidents[0].run_key is None
     finally:
         session.close()
 
@@ -134,7 +151,7 @@ def test_sync_tier0_persists_run_and_object_store_parquet(client, tmp_path):
         },
     )
     assert resp.status_code == 200
-    assert resp.json() == {'status': 'ok'}
+    assert resp.json() == {'status': 'ok', 'incidents_recorded': 0}
 
     session = _session(client)
     try:
@@ -283,6 +300,103 @@ def test_finalize_checksum_mismatch_deletes_partial_and_forces_restart(
     status = test_client.get('/v1/runs/run-1/tier1/f.bin/status')
     assert status.json() == {'received_bytes': 0}
     assert not store.exists('run-1/tier1/f.bin')
+
+
+def test_sync_tier0_detects_incidents_from_events_jsonl(client, tmp_path):
+    test_client, _, _ = client
+    events_file = tmp_path / 'events.jsonl'
+    events_file.write_text(
+        '\n'.join(
+            [
+                json.dumps(
+                    {
+                        'code': 'pour_overshoot',
+                        'severity': 'WARN',
+                        'message': 'Pour overshot target by 8.0g',
+                        'context': {
+                            'target_weight': 100.0,
+                            'final_net_g': 108.0,
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        'code': 'pour_no_progress_timeout',
+                        'severity': 'WARN',
+                        'message': 'stalled',
+                    }
+                ),
+            ]
+        )
+    )
+
+    resp = test_client.post(
+        '/v1/runs/run-1/tier0',
+        data={'robot_id': 'robot-1', 'device_id': 'robot-1'},
+        files={'events_jsonl': ('events.jsonl', events_file.read_bytes())},
+    )
+    assert resp.status_code == 200
+    assert resp.json()['incidents_recorded'] == 2
+
+    session = _session(client)
+    try:
+        incidents = (
+            session.query(Incident)
+            .filter_by(run_key='run-1')
+            .order_by(Incident.id)
+            .all()
+        )
+        assert len(incidents) == 2
+        # Overshoot amount is derived from the event's own context, not
+        # hardcoded - 108.0 - 100.0 = 8.0g clears the severe threshold.
+        assert incidents[0].signature_id == 'pour_overshoot_severe'
+        assert incidents[0].severity == 'ERROR'
+        assert json.loads(incidents[0].evidence_json)['overshoot_g'] == 8.0
+        assert incidents[1].signature_id == 'pour_stalled_abort'
+    finally:
+        session.close()
+
+
+def test_repeated_incident_within_window_is_deduplicated(client, tmp_path):
+    test_client, _, _ = client
+    line = json.dumps({'code': 'scale_readings_stale', 'severity': 'WARN'})
+
+    first = test_client.post(
+        '/v1/fleet/robot-1/health', content=line, headers={'Content-Type': 'text/plain'}
+    )
+    second = test_client.post(
+        '/v1/fleet/robot-1/health', content=line, headers={'Content-Type': 'text/plain'}
+    )
+    assert first.json()['incidents_recorded'] == 1
+    assert second.json()['incidents_recorded'] == 0
+
+    session = _session(client)
+    try:
+        assert session.query(Incident).count() == 1
+    finally:
+        session.close()
+
+
+def test_incidents_scoped_separately_per_device_and_run(client, tmp_path):
+    test_client, _, _ = client
+    line = json.dumps({'code': 'microros_heartbeat_stale', 'severity': 'WARN'})
+
+    resp_a = test_client.post(
+        '/v1/fleet/robot-a/health', content=line, headers={'Content-Type': 'text/plain'}
+    )
+    resp_b = test_client.post(
+        '/v1/fleet/robot-b/health', content=line, headers={'Content-Type': 'text/plain'}
+    )
+    # Different devices are independent, even for the same signature within
+    # the same dedup window.
+    assert resp_a.json()['incidents_recorded'] == 1
+    assert resp_b.json()['incidents_recorded'] == 1
+
+    session = _session(client)
+    try:
+        assert session.query(Incident).count() == 2
+    finally:
+        session.close()
 
 
 def test_complete_tier1_marks_run_and_requires_prior_tier0(client, tmp_path):

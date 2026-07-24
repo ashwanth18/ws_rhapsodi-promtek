@@ -32,16 +32,23 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from ingestion.database import SessionLocal, engine
-from ingestion.models import Base, FleetHealthEvent, IngestedBlob, IngestedRun
+from ingestion.models import Base, FleetHealthEvent, IngestedBlob, IngestedRun, Incident
 from ingestion.object_store import LocalFilesystemObjectStore
+from ingestion.rules import IncidentCandidate, evaluate_health_event
+
+# An open (unresolved) incident of the same signature/device/run within
+# this window is treated as "still ongoing" rather than a fresh incident -
+# stops a flapping condition (e.g. a scale that keeps going stale every
+# few seconds) from spamming the incidents table with near-duplicates.
+INCIDENT_DEDUP_WINDOW = timedelta(minutes=5)
 
 logger = logging.getLogger('ingestion')
 
@@ -81,6 +88,46 @@ def health_check() -> dict:
     return {'status': 'ok'}
 
 
+def _record_incidents(
+    db: Session,
+    candidates: List[IncidentCandidate],
+    device_id: Optional[str],
+    run_key: Optional[str],
+) -> int:
+    """Persists every detected candidate as an `Incident` row, skipping
+    ones that duplicate a still-open incident of the same signature for
+    this device/run within `INCIDENT_DEDUP_WINDOW`. Returns how many rows
+    were actually inserted (for the endpoint's response payload)."""
+    recorded = 0
+    cutoff = datetime.now(timezone.utc) - INCIDENT_DEDUP_WINDOW
+    for candidate in candidates:
+        existing = (
+            db.query(Incident)
+            .filter(
+                Incident.signature_id == candidate.signature_id,
+                Incident.device_id == device_id,
+                Incident.run_key == run_key,
+                Incident.resolved_at.is_(None),
+                Incident.detected_at >= cutoff,
+            )
+            .first()
+        )
+        if existing is not None:
+            continue
+        db.add(
+            Incident(
+                signature_id=candidate.signature_id,
+                title=candidate.title,
+                severity=candidate.severity,
+                device_id=device_id,
+                run_key=run_key,
+                evidence_json=json.dumps(candidate.evidence),
+            )
+        )
+        recorded += 1
+    return recorded
+
+
 # --- Fleet-wide append-only logs ---------------------------------------
 
 
@@ -98,6 +145,7 @@ async def append_fleet_log(
     raw = (await request.body()).decode('utf-8', errors='replace')
     received_lines = 0
     skipped_lines = 0
+    incidents_recorded = 0
     for line in raw.splitlines():
         line = line.strip()
         if not line:
@@ -123,8 +171,15 @@ async def append_fleet_log(
                 context_json=json.dumps(payload.get('context', {})),
             )
         )
+        incidents_recorded += _record_incidents(
+            db, evaluate_health_event(payload), device_id=device_id, run_key=None
+        )
     db.commit()
-    return {'received_lines': received_lines, 'skipped_lines': skipped_lines}
+    return {
+        'received_lines': received_lines,
+        'skipped_lines': skipped_lines,
+        'incidents_recorded': incidents_recorded,
+    }
 
 
 # --- Tier 0: small, whole-file --------------------------------------------
@@ -147,20 +202,36 @@ async def sync_tier0(
         db.add(run)
     run.robot_id = robot_id
     run.device_id = device_id
+    incidents_recorded = 0
     if metadata_json is not None:
         run.metadata_json = (await metadata_json.read()).decode(
             'utf-8', errors='replace'
         )
     if events_jsonl is not None:
-        run.events_jsonl = (await events_jsonl.read()).decode(
+        events_text = (await events_jsonl.read()).decode(
             'utf-8', errors='replace'
         )
+        run.events_jsonl = events_text
+        for line in events_text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            incidents_recorded += _record_incidents(
+                db,
+                evaluate_health_event(payload),
+                device_id=device_id,
+                run_key=run_key,
+            )
     if features_parquet is not None:
         key = f'{run_key}/tier0/features.parquet'
         store.write(key, await features_parquet.read())
         run.features_parquet_key = key
     db.commit()
-    return {'status': 'ok'}
+    return {'status': 'ok', 'incidents_recorded': incidents_recorded}
 
 
 # --- Tier 1: bulky, resumable, checksum-verified --------------------------
