@@ -148,6 +148,8 @@ docker compose -f docker-compose.monitoring.yml up -d
 ```
 
 - Grafana: `http://<jetson>:3001` (default admin/admin — change it)
+  - **Rhapsodi Fleet Health** — all devices overview
+  - **Rhapsodi Pi Overview** — per-device RAM / temp / disk / CPU / container restarts (pick device in the top dropdown)
 - Prometheus: `http://<jetson>:9091`
 - Alertmanager: `http://<jetson>:9093`
 
