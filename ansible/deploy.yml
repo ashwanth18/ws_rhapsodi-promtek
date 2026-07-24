@@ -1,10 +1,14 @@
 ---
 # Rolling / canary deploy of Rhapsodi robot stack over Tailscale.
 #
+# Prerequisites on the controller:
+#   echo 'your-vault-password' > ansible/.vault_pass && chmod 600 ansible/.vault_pass
+#   # placeholder vault password is "changeme" — replace secrets before real deploys
+#
 # Examples:
 #   # Canary one host, then rest in 25% batches:
 #   ansible-playbook -i ansible/inventory/tailscale.py ansible/deploy.yml \
-#     -e image_tag=$(git rev-parse --short HEAD) -e serial_mode=canary
+#     -e image_tag=$(git rev-parse --short HEAD) -e serial_batch=1
 #
 #   # Pin everyone at once (use carefully):
 #   ansible-playbook -i ansible/inventory/tailscale.py ansible/deploy.yml \
@@ -22,7 +26,9 @@
     workspace_dir: "{{ lookup('env', 'WORKSPACE_DIR') | default('/opt/rhapsodi/ws_rhapsodi-promtek', true) }}"
     env_file: "{{ workspace_dir }}/robot-prod.env"
     compose_file: "{{ workspace_dir }}/docker-compose.robot-prod.yml"
+    exporters_compose: "{{ workspace_dir }}/monitoring/exporters/docker-compose.exporters.yml"
     image_registry: "{{ lookup('env', 'IMAGE_REGISTRY') | default('iserenity/rhapsodi-promtek', true) }}"
+    deploy_tag: "deploy-{{ image_tag }}"
     health_url: "http://127.0.0.1:8000/health"
     health_retries: 30
     health_delay: 5
@@ -34,37 +40,113 @@
           - image_tag | length > 0
         fail_msg: "Pass -e image_tag=<git-short-sha> from scripts/buildx_push_images.sh"
 
+    - name: Require vaulted Docker Hub credentials
+      ansible.builtin.assert:
+        that:
+          - dockerhub_username is defined
+          - dockerhub_token is defined
+          - postgres_password is defined
+        fail_msg: >-
+          Missing vault secrets. Create ansible/.vault_pass and ensure
+          group_vars/all/vault.yml decrypts (see vault.yml.example).
+
     - name: Ensure workspace exists
       ansible.builtin.stat:
-        path: "{{ compose_file }}"
-      register: compose_stat
+        path: "{{ workspace_dir }}/.git"
+      register: workspace_git
 
     - name: Fail if device is not provisioned
       ansible.builtin.fail:
-        msg: "Missing {{ compose_file }}. Run scripts/provision_device.sh on this host first."
-      when: not compose_stat.stat.exists
+        msg: >-
+          Missing {{ workspace_dir }}/.git. Run scripts/provision_device.sh
+          on this host first (slim deploy-branch checkout).
+      when: not workspace_git.stat.exists
 
-    - name: Pin IMAGE_TAG and derived image refs in robot-prod.env
+    - name: Capture previous IMAGE_TAG for rollback
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if [[ -f "{{ env_file }}" ]]; then
+          grep -E '^IMAGE_TAG=' "{{ env_file }}" | cut -d= -f2- || true
+        fi
+      args:
+        executable: /bin/bash
+      register: previous_image_tag_cmd
+      changed_when: false
+
+    - name: Set previous_image_tag fact
+      ansible.builtin.set_fact:
+        previous_image_tag: "{{ previous_image_tag_cmd.stdout | trim }}"
+
+    - name: Fetch slim deploy bundle tag
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd "{{ workspace_dir }}"
+        # Preserve per-device state: robot-prod.env and config/device.yaml are
+        # not tracked on the deploy branch (only *.example files are).
+        if git fetch --depth 1 origin "refs/tags/{{ deploy_tag }}:refs/tags/{{ deploy_tag }}"; then
+          :
+        elif git fetch --depth 1 origin "tag" "{{ deploy_tag }}"; then
+          :
+        else
+          git fetch --depth 1 origin "{{ deploy_tag }}"
+        fi
+        git checkout --force "{{ deploy_tag }}"
+      args:
+        executable: /bin/bash
+
+    - name: Ensure robot-prod.env exists from example
+      ansible.builtin.copy:
+        src: "{{ workspace_dir }}/robot-prod.env.example"
+        dest: "{{ env_file }}"
+        remote_src: true
+        force: false
+
+    - name: Ensure config/device.yaml exists from example
+      ansible.builtin.copy:
+        src: "{{ workspace_dir }}/config/device.yaml.example"
+        dest: "{{ workspace_dir }}/config/device.yaml"
+        remote_src: true
+        force: false
+
+    - name: Pin IMAGE_TAG, image refs, and Postgres password in robot-prod.env
       ansible.builtin.shell: |
         set -euo pipefail
         ENV="{{ env_file }}"
         TAG="{{ image_tag }}"
         REG="{{ image_registry }}"
+        PG="{{ postgres_password }}"
         touch "$ENV"
-        grep -q '^IMAGE_TAG=' "$ENV" || echo 'IMAGE_TAG=' >> "$ENV"
-        grep -q '^ROS_PROD_IMAGE=' "$ENV" || echo 'ROS_PROD_IMAGE=' >> "$ENV"
-        grep -q '^BACKEND_IMAGE=' "$ENV" || echo 'BACKEND_IMAGE=' >> "$ENV"
-        grep -q '^PROCESSING_IMAGE=' "$ENV" || echo 'PROCESSING_IMAGE=' >> "$ENV"
-        grep -q '^WEBHOOK_IMAGE=' "$ENV" || echo 'WEBHOOK_IMAGE=' >> "$ENV"
-        grep -q '^DASHBOARD_IMAGE=' "$ENV" || echo 'DASHBOARD_IMAGE=' >> "$ENV"
+        ensure_key() {
+          local key="$1"
+          grep -q "^${key}=" "$ENV" || echo "${key}=" >> "$ENV"
+        }
+        ensure_key IMAGE_TAG
+        ensure_key ROS_PROD_IMAGE
+        ensure_key BACKEND_IMAGE
+        ensure_key PROCESSING_IMAGE
+        ensure_key WEBHOOK_IMAGE
+        ensure_key DASHBOARD_IMAGE
+        ensure_key CONDOR_AGENT_IMAGE
+        ensure_key POSTGRES_PASSWORD
         sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=${TAG}|" "$ENV"
         sed -i "s|^ROS_PROD_IMAGE=.*|ROS_PROD_IMAGE=${REG}:ros-prod-${TAG}|" "$ENV"
         sed -i "s|^BACKEND_IMAGE=.*|BACKEND_IMAGE=${REG}:backend-${TAG}|" "$ENV"
         sed -i "s|^PROCESSING_IMAGE=.*|PROCESSING_IMAGE=${REG}:processing-${TAG}|" "$ENV"
         sed -i "s|^WEBHOOK_IMAGE=.*|WEBHOOK_IMAGE=${REG}:webhook-${TAG}|" "$ENV"
         sed -i "s|^DASHBOARD_IMAGE=.*|DASHBOARD_IMAGE=${REG}:dashboard-${TAG}|" "$ENV"
+        sed -i "s|^CONDOR_AGENT_IMAGE=.*|CONDOR_AGENT_IMAGE=${REG}:condor-agent-${TAG}|" "$ENV"
+        sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${PG}|" "$ENV"
       args:
         executable: /bin/bash
+      no_log: true
+
+    - name: Docker Hub login for private image pulls
+      ansible.builtin.shell: |
+        set -euo pipefail
+        echo "{{ dockerhub_token }}" | docker login -u "{{ dockerhub_username }}" --password-stdin
+      args:
+        executable: /bin/bash
+      no_log: true
 
     - name: Pull images
       ansible.builtin.command:
@@ -75,6 +157,17 @@
       ansible.builtin.command:
         cmd: docker compose --env-file {{ env_file }} -f {{ compose_file }} up -d --remove-orphans
         chdir: "{{ workspace_dir }}"
+
+    - name: Ensure exporters are running
+      ansible.builtin.stat:
+        path: "{{ exporters_compose }}"
+      register: exporters_stat
+
+    - name: Start exporters compose
+      ansible.builtin.command:
+        cmd: docker compose -f {{ exporters_compose }} up -d
+        chdir: "{{ workspace_dir }}"
+      when: exporters_stat.stat.exists
 
     - name: Wait for backend health
       ansible.builtin.uri:
@@ -87,7 +180,52 @@
       until: health is succeeded
       ignore_errors: true
 
+    - name: Rollback to previous IMAGE_TAG on health failure
+      when:
+        - health is failed
+        - previous_image_tag | length > 0
+        - previous_image_tag != image_tag
+      block:
+        - name: Re-pin previous image tag
+          ansible.builtin.shell: |
+            set -euo pipefail
+            ENV="{{ env_file }}"
+            TAG="{{ previous_image_tag }}"
+            REG="{{ image_registry }}"
+            sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=${TAG}|" "$ENV"
+            sed -i "s|^ROS_PROD_IMAGE=.*|ROS_PROD_IMAGE=${REG}:ros-prod-${TAG}|" "$ENV"
+            sed -i "s|^BACKEND_IMAGE=.*|BACKEND_IMAGE=${REG}:backend-${TAG}|" "$ENV"
+            sed -i "s|^PROCESSING_IMAGE=.*|PROCESSING_IMAGE=${REG}:processing-${TAG}|" "$ENV"
+            sed -i "s|^WEBHOOK_IMAGE=.*|WEBHOOK_IMAGE=${REG}:webhook-${TAG}|" "$ENV"
+            sed -i "s|^DASHBOARD_IMAGE=.*|DASHBOARD_IMAGE=${REG}:dashboard-${TAG}|" "$ENV"
+            sed -i "s|^CONDOR_AGENT_IMAGE=.*|CONDOR_AGENT_IMAGE=${REG}:condor-agent-${TAG}|" "$ENV"
+            git -C "{{ workspace_dir }}" fetch --depth 1 origin "refs/tags/deploy-${TAG}:refs/tags/deploy-${TAG}" \
+              || git -C "{{ workspace_dir }}" fetch --depth 1 origin "deploy-${TAG}"
+            git -C "{{ workspace_dir }}" checkout --force "deploy-${TAG}" || true
+            docker compose --env-file "$ENV" -f "{{ compose_file }}" pull
+            docker compose --env-file "$ENV" -f "{{ compose_file }}" up -d --remove-orphans
+          args:
+            executable: /bin/bash
+
+        - name: Wait for backend health after rollback
+          ansible.builtin.uri:
+            url: "{{ health_url }}"
+            method: GET
+            status_code: [200, 204]
+          register: rollback_health
+          retries: "{{ health_retries }}"
+          delay: "{{ health_delay }}"
+          until: rollback_health is succeeded
+          ignore_errors: true
+
     - name: Report health failure
       ansible.builtin.fail:
-        msg: "Backend health check failed on {{ inventory_hostname }} after deploy"
+        msg: >-
+          Backend health check failed on {{ inventory_hostname }} after deploy
+          of image_tag={{ image_tag }}.
+          {% if previous_image_tag | length > 0 and previous_image_tag != image_tag %}
+          Attempted rollback to IMAGE_TAG={{ previous_image_tag }}.
+          {% else %}
+          No previous IMAGE_TAG available for automatic rollback.
+          {% endif %}
       when: health is failed
