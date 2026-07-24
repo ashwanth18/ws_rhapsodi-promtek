@@ -1,5 +1,5 @@
 import json
-import subprocess
+import signal
 import time
 import urllib.error
 import urllib.request
@@ -13,6 +13,9 @@ from rclpy.node import Node
 from std_msgs.msg import Bool, Float64, Int32, String
 
 from rhapsodi_common.device_config import load_device_config
+from rhapsodi_common.health import HealthEventPublisher
+
+from data_collection_manager.recorder_v2 import RecorderStartError, RecorderV2
 
 
 @dataclass
@@ -136,9 +139,10 @@ class DataCollectionManager(Node):
         self._processing_url = str(
             self.get_parameter('processing_url').value or ''
         ).strip()
+        self._health = HealthEventPublisher(self, 'data_collection_manager')
+        self._recorder = RecorderV2(health=self._health)
         self._lightsout_active = False
         self._current_episode: Optional[EpisodeContext] = None
-        self._bag_proc: Optional[subprocess.Popen] = None
         self._run_folder: Optional[Path] = None
         self._run_id: Optional[str] = None
         self._batch_id: Optional[str] = None
@@ -245,28 +249,22 @@ class DataCollectionManager(Node):
         )
 
     def _start_bag(self, ctx: EpisodeContext) -> None:
-        cmd = [
-            'ros2', 'bag', 'record', '--storage', 'mcap',
-            '-o', str(ctx.bag_path),
-        ]
-        cmd.extend(self._topics)
-        self.get_logger().info(f'Starting MCAP recording: {" ".join(cmd)}')
-        self._bag_proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+        """Start native MCAP recording for `ctx`. Raises RecorderStartError
+        on failure (a CRITICAL health event is published by RecorderV2
+        before raising) — callers must not treat a failed start as if
+        recording is happening.
+        """
+        self.get_logger().info(
+            f'Starting MCAP recording: bag_path={ctx.bag_path} '
+            f'topics={self._topics}'
         )
+        self._recorder.start(ctx.bag_path, self._topics)
 
     def _stop_bag(self) -> None:
-        if not self._bag_proc:
+        if not self._recorder.is_recording:
             return
         self.get_logger().info('Stopping MCAP recording')
-        self._bag_proc.terminate()
-        try:
-            self._bag_proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            self._bag_proc.kill()
-        self._bag_proc = None
+        self._recorder.stop()
 
     def _post_process(self, ctx: EpisodeContext) -> None:
         if not self._processing_url:
@@ -319,6 +317,17 @@ class DataCollectionManager(Node):
                 f'bag_path={ctx.bag_path} '
                 f'body={error_body[:500]}'
             )
+            self._health.error(
+                'processing_post_http_error',
+                f'Processing service returned HTTP {exc.code} for '
+                f'{ctx.folder}',
+                {
+                    'status': exc.code,
+                    'url': self._processing_url,
+                    'folder': str(ctx.folder),
+                    'bag_path': str(ctx.bag_path),
+                },
+            )
         except Exception as exc:
             elapsed_s = time.monotonic() - started_at
             self.get_logger().warn(
@@ -330,6 +339,21 @@ class DataCollectionManager(Node):
                 f'episode={ctx.episode_index} '
                 f'folder={ctx.folder} '
                 f'bag_path={ctx.bag_path}'
+            )
+            # This is exactly the "network blip silently drops the
+            # processing step" gap called out in the plan: the raw MCAP
+            # survives on disk, but nothing revisited it. Surfacing it as a
+            # health event at least makes the drop visible fleet-wide until
+            # the uplink daemon (uplink-daemon todo) can retry processing
+            # from the local manifest.
+            self._health.error(
+                'processing_post_failed',
+                f'Failed to POST run for processing: {exc!r}',
+                {
+                    'url': self._processing_url,
+                    'folder': str(ctx.folder),
+                    'bag_path': str(ctx.bag_path),
+                },
             )
 
     def _start_episode(self, episode_index: int) -> None:
@@ -347,9 +371,18 @@ class DataCollectionManager(Node):
             bag_path=bag_path,
             source='lightsout',
         )
-        self._current_episode = ctx
         self._write_metadata(ctx)
-        self._start_bag(ctx)
+        try:
+            self._start_bag(ctx)
+        except RecorderStartError as exc:
+            # Health event already published by RecorderV2.start(). Do not
+            # set _current_episode: a failed start must not be mistaken for
+            # an active recording by episode_end/webhook_active handlers.
+            self.get_logger().error(
+                f'Failed to start episode {episode_index} recording: {exc}'
+            )
+            return
+        self._current_episode = ctx
 
     def _start_webhook_run(self) -> None:
         if self._current_episode is not None:
@@ -366,9 +399,15 @@ class DataCollectionManager(Node):
             bag_path=bag_path,
             source='webhook',
         )
-        self._current_episode = ctx
         self._write_metadata(ctx)
-        self._start_bag(ctx)
+        try:
+            self._start_bag(ctx)
+        except RecorderStartError as exc:
+            self.get_logger().error(
+                f'Failed to start webhook run recording: {exc}'
+            )
+            return
+        self._current_episode = ctx
 
     def _has_webhook_metadata(self) -> bool:
         return bool(self._webhook_metadata.get('run_id'))
@@ -514,12 +553,28 @@ class DataCollectionManager(Node):
 def main() -> None:
     rclpy.init()
     node = DataCollectionManager()
+
+    # rclpy installs a SIGINT handler by default, but not SIGTERM — the
+    # signal `docker stop` / orchestrated shutdowns actually send. Without
+    # this, a container stop would jump straight to the SIGKILL grace-period
+    # timeout without ever closing the MCAP writer, risking a truncated bag.
+    def _handle_sigterm(signum, frame) -> None:  # noqa: ANN001
+        node.get_logger().info(
+            'Received SIGTERM: finishing active recording before shutdown'
+        )
+        node._finish_active()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+    signal.signal(signal.SIGTERM, _handle_sigterm)
+
     try:
         rclpy.spin(node)
     finally:
         node._finish_active()
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':
