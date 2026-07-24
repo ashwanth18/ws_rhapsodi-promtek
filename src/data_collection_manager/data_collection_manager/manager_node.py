@@ -18,6 +18,7 @@ from rhapsodi_common.health_log import HealthEventLogger
 
 from data_collection_manager.manifest import TIER_0, TIER_1, RunManifest
 from data_collection_manager.recorder_v2 import RecorderStartError, RecorderV2
+from data_collection_manager.recording_profiles import load_recording_profiles
 
 
 @dataclass
@@ -49,26 +50,26 @@ class DataCollectionManager(Node):
                 f'robot_type={device.robot_type} site_id={device.site_id}'
             )
         self.declare_parameter('output_root', 'data/lightsout')
+        # recording_profiles.yaml (recording-profiles) is the source of
+        # truth for which topics get recorded — pour-cycle telemetry and
+        # scoop-phase vision live there now instead of only the always-on
+        # bookkeeping topics this list used to be limited to. Still
+        # overridable via -p topics:=[...] for tests/sims.
+        recording_profiles = load_recording_profiles()
+        if recording_profiles.is_fallback:
+            self.get_logger().warn(
+                'No config/recording_profiles.yaml found; recording only '
+                'the historical always-on topic set (no pour/scoop '
+                'telemetry). See config/recording_profiles.yaml.'
+            )
+        else:
+            self.get_logger().info(
+                f'Loaded recording profiles from '
+                f'{recording_profiles.source_path}: '
+                f'{sorted(recording_profiles.profiles.keys())}'
+            )
         self.declare_parameter(
-            'topics',
-            [
-                '/weight',
-                '/system_status',
-                '/lightsout_training/phase',
-                '/lightsout_training/run_id',
-                '/lightsout_training/batch_id',
-                '/lightsout_training/ingredient_id',
-                '/lightsout_training/target_weight_g',
-                '/lightsout_training/episode',
-                '/lightsout_training/episodes_total',
-                '/lightsout_training/mode',
-                '/lightsout_training/robot_id',
-                '/webhook_run/active',
-                '/webhook_run/metadata',
-                '/webhook_run/phase',
-                '/tf_static',
-                '/joint_states',
-            ],
+            'topics', recording_profiles.all_topics()
         )
         self.declare_parameter(
             'lightsout_active_topic',
