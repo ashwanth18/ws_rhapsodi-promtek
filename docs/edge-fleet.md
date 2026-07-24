@@ -192,6 +192,7 @@ Central web UI + API for device inventory, flash install, updates, live Ansible 
 cd monitoring
 cp fleet-console.env.example fleet-console.env   # optional token / paths
 # Requires: ansible/.vault_pass, SSH keys to robots, Tailscale on the host
+# Optional: GITHUB_TOKEN for update-available badges + build-from-branch
 docker compose -f docker-compose.fleet-console.yml --env-file fleet-console.env up -d --build
 ```
 
@@ -199,8 +200,25 @@ docker compose -f docker-compose.fleet-console.yml --env-file fleet-console.env 
 - Status model:
   - **Alive** — Prometheus `up{job="node"}` (falls back to Tailscale online + reachable `/host_info`)
   - **Active** — robot currently has an active weightment run (`GET /robot_weightment_runs/active`)
-  - **Version** — `GET /host_info` → `image_tag` / `robot_type` / `site_id` / `device_id`
-- Deployment history is stored in a SQLite DB inside the `fleet_console_data` volume.
+  - **Version** — `GET /host_info` → `image_tag` / `profile_id` / `robot_type` / `site_id` / `device_id`
+- Two independent axes per device:
+  - **Version** — `tracked_branch` + pinned `image_tag` (code). Console polls GitHub for new commits and shows **Update available**.
+  - **Profile** — runtime behavior from [`config/profiles.yaml`](../config/profiles.yaml) (e.g. `prod-niryo`, `lightsout-training`, `jaka-site2-layout`). Applied by Ansible into `robot-prod.env`.
+- Desired-vs-running drift is shown on the devices list.
+- **Build & deploy branch** runs `buildx_push_images.sh` + `publish_deploy_bundle.sh` for the tracked branch, then deploys.
+- Deployment history + desired targets are stored in SQLite (`fleet_console_data` volume).
+
+### Profiles
+
+```bash
+# Deploy a specific profile to one device
+ansible-playbook -i ansible/inventory/tailscale.py ansible/deploy.yml \
+  --limit rhapsodi-pi5 \
+  -e image_tag=abc1234 \
+  -e profile=lightsout-training
+```
+
+Layout overrides live under `config/profiles/<id>/` and ship in the slim deploy bundle.
 
 ## Fault checks / Cursor agent
 

@@ -6,6 +6,8 @@
 #   docker-compose.robot-prod.yml
 #   robot-prod.env.example
 #   config/device.yaml.example
+#   config/profiles.yaml
+#   config/profiles/** (pose/scene layout overrides)
 #   monitoring/exporters/docker-compose.exporters.yml
 #
 # Usage (after scripts/buildx_push_images.sh):
@@ -38,6 +40,7 @@ BUNDLE_FILES=(
   docker-compose.robot-prod.yml
   robot-prod.env.example
   config/device.yaml.example
+  config/profiles.yaml
   monitoring/exporters/docker-compose.exporters.yml
 )
 
@@ -47,6 +50,11 @@ for f in "${BUNDLE_FILES[@]}"; do
     exit 1
   fi
 done
+
+if [[ ! -d config/profiles ]]; then
+  echo "Missing required directory: config/profiles" >&2
+  exit 1
+fi
 
 TMP_DIR="$(mktemp -d)"
 cleanup() { rm -rf "${TMP_DIR}"; }
@@ -68,8 +76,11 @@ git clean -fdx >/dev/null 2>&1 || true
 
 mkdir -p config monitoring/exporters
 for f in "${BUNDLE_FILES[@]}"; do
+  mkdir -p "$(dirname "${f}")"
   cp "${ROOT_DIR}/${f}" "${f}"
 done
+# Per-profile pose/scene layout packs
+cp -a "${ROOT_DIR}/config/profiles" config/
 
 # Minimal README so operators know what this branch is.
 cat > README.md <<EOF

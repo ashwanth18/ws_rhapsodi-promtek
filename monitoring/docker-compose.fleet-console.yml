@@ -39,6 +39,9 @@ services:
       TAILNET: ${TAILNET:-}
       TAILSCALE_ROBOT_TAG: ${TAILSCALE_ROBOT_TAG:-tag:robot}
       TAILSCALE_BUILDER_TAG: ${TAILSCALE_BUILDER_TAG:-tag:builder}
+      # GitHub (branch tracking / update-available + optional build-from-branch)
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_REPO: ${GITHUB_REPO:-ashwanth18/ws_rhapsodi-promtek}
     volumes:
       # Full monorepo (ansible playbooks, inventory, vault.yml + .vault_pass).
       - ${REPO_ROOT:-..}:/repo:ro

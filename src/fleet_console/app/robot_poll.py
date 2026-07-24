@@ -55,12 +55,14 @@ async def enrich_device(device: dict[str, Any]) -> dict[str, Any]:
         device['device_id'] = host_info.get('device_id') or device.get('id')
         device['image_tag'] = host_info.get('image_tag')
         device['robot_id'] = host_info.get('robot_id')
+        device['running_profile_id'] = host_info.get('profile_id')
     else:
         device.setdefault('robot_type', None)
         device.setdefault('site_id', None)
         device.setdefault('device_id', device.get('id'))
         device.setdefault('image_tag', None)
         device.setdefault('robot_id', None)
+        device.setdefault('running_profile_id', None)
     # Backend shape: {"active": <run dict|null>}
     if isinstance(active, dict):
         device['active'] = active.get('active') is not None

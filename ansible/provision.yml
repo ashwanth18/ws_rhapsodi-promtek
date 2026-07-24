@@ -49,7 +49,7 @@
           - robot_type in ['niryo', 'jaka']
         fail_msg: >-
           Pass -e image_tag=<git-short-sha> -e robot_type=niryo|jaka
-          (optional: -e site_id=... -e device_id=...).
+          (optional: -e site_id=... -e device_id=... -e profile=...).
 
     - name: Require vaulted Docker Hub credentials
       ansible.builtin.assert:
@@ -264,6 +264,13 @@
         executable: /bin/bash
       no_log: true
 
+    - name: Default profile from robot_type when unset
+      ansible.builtin.set_fact:
+        profile: "{{ (profile | default('')) if ((profile | default('')) | length > 0) else ('prod-jaka' if robot_type == 'jaka' else 'prod-niryo') }}"
+
+    - name: Apply runtime profile
+      ansible.builtin.include_tasks: tasks/apply_profile.yml
+
     - name: Write .rhapsodi-version for /host_info polling
       ansible.builtin.copy:
         dest: "{{ workspace_dir }}/.rhapsodi-version"
@@ -271,7 +278,7 @@
         group: "{{ install_user }}"
         mode: "0644"
         content: |
-          {"image_tag": "{{ image_tag }}", "deployed_at": "{{ ansible_date_time.iso8601 }}", "robot_type": "{{ robot_type }}", "site_id": "{{ site_id }}"}
+          {"image_tag": "{{ image_tag }}", "profile_id": "{{ applied_profile_id }}", "deployed_at": "{{ ansible_date_time.iso8601 }}", "robot_type": "{{ robot_type }}", "site_id": "{{ site_id }}"}
 
     - name: Docker Hub login for private image pulls
       # Run as root so freshly-added docker group membership is not required.

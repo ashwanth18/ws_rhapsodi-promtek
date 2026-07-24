@@ -311,6 +311,29 @@ def _load_image_tag() -> str | None:
     return None
 
 
+def _load_profile_id() -> str | None:
+    env_profile = (os.environ.get('PROFILE_ID') or '').strip()
+    if env_profile:
+        return env_profile
+    for path in (
+        os.environ.get('RHAPSODI_VERSION_FILE') or '',
+        '/etc/rhapsodi-version',
+        '/ws/.rhapsodi-version',
+    ):
+        if not path or not os.path.isfile(path):
+            continue
+        try:
+            raw = open(path, encoding='utf-8').read().strip()
+            if raw.startswith('{'):
+                payload = json.loads(raw)
+                profile = str(payload.get('profile_id') or '').strip()
+                if profile:
+                    return profile
+        except (OSError, json.JSONDecodeError):
+            continue
+    return None
+
+
 @app.get('/host_info')
 def host_info() -> dict:
     identity = _load_device_identity()
@@ -321,6 +344,7 @@ def host_info() -> dict:
         'robot_type': identity.get('robot_type'),
         'site_id': identity.get('site_id'),
         'image_tag': _load_image_tag(),
+        'profile_id': _load_profile_id(),
     }
 
 

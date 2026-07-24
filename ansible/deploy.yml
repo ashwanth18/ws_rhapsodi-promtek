@@ -158,6 +158,28 @@
         executable: /bin/bash
       no_log: true
 
+    - name: Resolve profile from -e or existing PROFILE_ID
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if [[ -n "{{ profile | default('') }}" ]]; then
+          echo "{{ profile }}"
+          exit 0
+        fi
+        if [[ -f "{{ env_file }}" ]]; then
+          grep -E '^PROFILE_ID=' "{{ env_file }}" | cut -d= -f2- || true
+        fi
+      args:
+        executable: /bin/bash
+      register: resolved_profile_cmd
+      changed_when: false
+
+    - name: Set profile fact (default prod-niryo)
+      ansible.builtin.set_fact:
+        profile: "{{ (resolved_profile_cmd.stdout | trim) if (resolved_profile_cmd.stdout | trim | length > 0) else 'prod-niryo' }}"
+
+    - name: Apply runtime profile
+      ansible.builtin.include_tasks: tasks/apply_profile.yml
+
     - name: Write .rhapsodi-version for /host_info polling
       ansible.builtin.copy:
         dest: "{{ workspace_dir }}/.rhapsodi-version"
@@ -165,7 +187,7 @@
         group: "{{ ansible_user }}"
         mode: "0644"
         content: |
-          {"image_tag": "{{ image_tag }}", "deployed_at": "{{ ansible_date_time.iso8601 }}"}
+          {"image_tag": "{{ image_tag }}", "profile_id": "{{ applied_profile_id }}", "deployed_at": "{{ ansible_date_time.iso8601 }}"}
 
     - name: Docker Hub login for private image pulls
       ansible.builtin.shell: |

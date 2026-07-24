@@ -37,6 +37,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return resp.json() as Promise<T>
 }
 
+export type DeviceTarget = {
+  device_id: string
+  tracked_branch: string
+  profile_id: string
+  pinned_image_tag?: string | null
+  auto_update?: boolean
+  robot_type?: string | null
+  site_id?: string | null
+}
+
+export type Profile = {
+  id: string
+  description: string
+  robot_type?: string | null
+  compose_file?: string
+}
+
 export type Device = {
   id: string
   hostname: string
@@ -52,6 +69,15 @@ export type Device = {
   device_id?: string | null
   robot_id?: string | null
   image_tag?: string | null
+  running_profile_id?: string | null
+  desired_branch?: string | null
+  desired_profile_id?: string | null
+  desired_image_tag?: string | null
+  update_available?: boolean | null
+  latest_sha?: string | null
+  drift?: { profile: boolean; version: boolean; any: boolean }
+  target?: DeviceTarget
+  version_check?: Record<string, unknown>
   metrics?: { cpu_pct?: number | null; mem_pct?: number | null; disk_pct?: number | null }
   last_deployment?: Deployment | null
   deployments?: Deployment[]
@@ -63,9 +89,11 @@ export type Device = {
 export type Deployment = {
   id: number
   device_id: string
-  action: 'provision' | 'deploy' | string
+  action: 'provision' | 'deploy' | 'build' | string
   robot_type?: string | null
   site_id?: string | null
+  profile_id?: string | null
+  tracked_branch?: string | null
   image_tag: string
   status: 'running' | 'success' | 'failed' | 'rolled_back' | string
   requested_by?: string | null
@@ -77,6 +105,17 @@ export type Deployment = {
 export const api = {
   listDevices: () => request<{ devices: Device[] }>('/api/devices'),
   getDevice: (id: string) => request<{ device: Device }>(`/api/devices/${id}`),
+  listProfiles: (robotType?: string) => {
+    const qs = robotType ? `?robot_type=${encodeURIComponent(robotType)}` : ''
+    return request<{ profiles: Profile[] }>(`/api/profiles${qs}`)
+  },
+  updateTarget: (id: string, body: Partial<DeviceTarget>) =>
+    request<{ target: DeviceTarget }>(`/api/devices/${id}/target`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  versionCheck: (id: string) =>
+    request<Record<string, unknown>>(`/api/devices/${id}/version_check`),
   listDeployments: (params?: { device_id?: string; status?: string }) => {
     const qs = new URLSearchParams()
     if (params?.device_id) qs.set('device_id', params.device_id)
@@ -93,14 +132,31 @@ export const api = {
   imageTags: () => request<{ image_tags: string[] }>('/api/image_tags'),
   provision: (
     id: string,
-    body: { robot_type: 'niryo' | 'jaka'; site_id: string; image_tag: string },
+    body: {
+      robot_type: 'niryo' | 'jaka'
+      site_id: string
+      image_tag: string
+      profile_id: string
+      tracked_branch: string
+    },
   ) =>
     request<{ deployment: Deployment }>(`/api/devices/${id}/provision`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  deploy: (id: string, body: { image_tag: string }) =>
+  deploy: (
+    id: string,
+    body: { image_tag: string; profile_id?: string; tracked_branch?: string },
+  ) =>
     request<{ deployment: Deployment }>(`/api/devices/${id}/deploy`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  build: (
+    id: string,
+    body: { branch?: string; deploy_after?: boolean; profile_id?: string },
+  ) =>
+    request<{ deployment: Deployment }>(`/api/devices/${id}/build`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),
@@ -110,7 +166,6 @@ export function logsStreamUrl(deploymentId: number): string {
   const base = getApiBase() || window.location.origin
   const token = getToken()
   const url = new URL(`${base}/api/deployments/${deploymentId}/logs/stream`)
-  // EventSource cannot set Authorization headers; pass token as query if set.
   if (token) url.searchParams.set('access_token', token)
   return url.toString()
 }

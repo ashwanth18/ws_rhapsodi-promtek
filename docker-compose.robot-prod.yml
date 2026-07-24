@@ -49,6 +49,7 @@ services:
       ROBOT_LOCATION_TARGETS_JSON: ${ROBOT_LOCATION_TARGETS_JSON:-}
       # Fleet Console /host_info identity + version (IMAGE_TAG from robot-prod.env)
       IMAGE_TAG: ${IMAGE_TAG:-}
+      PROFILE_ID: ${PROFILE_ID:-}
       RHAPSODI_DEVICE_CONFIG: /ws/config/device.yaml
     ports:
       - "8000:8000"
@@ -264,7 +265,7 @@ services:
     command: >
       ros2 run data_collection_manager data_collection_manager
       --ros-args
-      -p output_root:=/data/webhook
+      -p output_root:=${DATA_OUTPUT_ROOT:-/data/webhook}
     depends_on:
       - processing
 
@@ -273,7 +274,7 @@ services:
     command: >
       ros2 run robot_orchestrator orchestrator_node
       --ros-args
-      -p tree_file:=/ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml
+      -p tree_file:=${BT_TREE:-/ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml}
 
   # Development orchestrator: rebuilds a mounted source overlay at container start.
   # Use this instead of `orchestrator` when iterating on robot_orchestrator code on the Pi.

@@ -32,15 +32,30 @@ docker compose -f docker-compose.fleet-console.yml --env-file fleet-console.env 
 
 Open `http://<jetson-tailscale-ip>:8090`.
 
+## Version + profile axes
+
+Each device has a **desired target** (SQLite `device_targets`):
+
+- `tracked_branch` — which git branch to follow for updates
+- `profile_id` — runtime behavior from `config/profiles.yaml` (prod, lights-out, site layout, …)
+- `pinned_image_tag` — last successfully deployed SHA
+
+These are independent: e.g. track `main` with profile `lightsout-training`.
+
 ## API surface
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/api/devices` | Tailscale robots + Prometheus + `/host_info` + active run |
-| GET | `/api/devices/{id}` | Device detail + deploy history |
-| POST | `/api/devices/{id}/provision` | `ansible-playbook provision.yml` |
-| POST | `/api/devices/{id}/deploy` | `ansible-playbook deploy.yml` |
+| GET | `/api/devices` | Tailscale robots + Prometheus + `/host_info` + drift + update badges |
+| GET | `/api/devices/{id}` | Device detail + target + version_check + history |
+| PUT | `/api/devices/{id}/target` | Set tracked_branch / profile_id |
+| GET | `/api/devices/{id}/version_check` | Compare deployed SHA vs GitHub branch HEAD |
+| GET | `/api/profiles` | Runtime profile catalog |
+| POST | `/api/devices/{id}/provision` | `ansible-playbook provision.yml` (+ profile) |
+| POST | `/api/devices/{id}/deploy` | `ansible-playbook deploy.yml` (+ profile) |
+| POST | `/api/devices/{id}/build` | buildx + publish bundle for a branch (optional deploy_after) |
 | GET | `/api/deployments` | Global history |
-| GET | `/api/deployments/{id}/logs/stream` | SSE Ansible log tail |
+| GET | `/api/deployments/{id}/logs/stream` | SSE job log tail |
 
 Auth: optional `FLEET_API_TOKEN` bearer (also `?access_token=` for EventSource).
+Set `GITHUB_TOKEN` for update-available / build-from-branch.

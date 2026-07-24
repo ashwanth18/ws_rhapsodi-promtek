@@ -44,14 +44,14 @@ export default function DevicesPage() {
   }, [])
 
   const aliveCount = devices.filter((d) => d.alive).length
-  const activeCount = devices.filter((d) => d.active).length
-  const unprovisioned = devices.filter((d) => !d.provisioned).length
+  const updates = devices.filter((d) => d.update_available).length
+  const driftCount = devices.filter((d) => d.drift?.any).length
 
   return (
     <div>
       <SectionHeader
         title="Fleet devices"
-        description="Tailscale robots with live health, version, and deploy status."
+        description="Version (branch/SHA) and profile (runtime behavior) are independent axes."
         action={
           <Button variant="outline" onClick={load} disabled={loading}>
             <RefreshCw className="h-4 w-4" />
@@ -62,9 +62,9 @@ export default function DevicesPage() {
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label="Devices" value={devices.length} />
-        <MetricCard label="Alive" value={aliveCount} help="Prometheus / host_info" />
-        <MetricCard label="Active run" value={activeCount} />
-        <MetricCard label="Needs flash install" value={unprovisioned} />
+        <MetricCard label="Alive" value={aliveCount} />
+        <MetricCard label="Updates available" value={updates} help="Tracked branch moved" />
+        <MetricCard label="Drift" value={driftCount} help="Desired ≠ running" />
       </div>
 
       {error ? (
@@ -90,43 +90,63 @@ export default function DevicesPage() {
             ),
           },
           {
-            key: 'type',
-            header: 'Robot / site',
+            key: 'alive',
+            header: 'Alive / active',
             render: (d) => (
-              <div className="text-sm">
-                <div>{d.robot_type || (d.provisioned ? '—' : 'unprovisioned')}</div>
-                <div className="text-xs text-[var(--text-muted)]">{d.site_id || '—'}</div>
+              <div className="flex flex-col gap-1">
+                <StatusBadge
+                  label={d.alive ? 'alive' : d.online ? 'online' : 'down'}
+                  tone={aliveTone(d)}
+                  pulse={Boolean(d.alive)}
+                />
+                <StatusBadge
+                  label={d.active ? 'running' : 'idle'}
+                  tone={d.active ? 'info' : 'neutral'}
+                />
               </div>
             ),
           },
           {
-            key: 'alive',
-            header: 'Alive',
+            key: 'desired',
+            header: 'Desired',
             render: (d) => (
-              <StatusBadge
-                label={d.alive ? 'alive' : d.online ? 'online' : 'down'}
-                tone={aliveTone(d)}
-                pulse={Boolean(d.alive)}
-              />
+              <div className="text-xs">
+                <div className="text-[var(--text-secondary)]">
+                  {d.desired_branch || 'main'}
+                </div>
+                <div className="text-[var(--text-muted)]">
+                  {d.desired_profile_id || '—'}
+                </div>
+              </div>
             ),
           },
           {
-            key: 'active',
-            header: 'Active',
+            key: 'running',
+            header: 'Running',
             render: (d) => (
-              <StatusBadge
-                label={d.active ? 'running' : 'idle'}
-                tone={d.active ? 'info' : 'neutral'}
-                pulse={d.active}
-              />
+              <div className="text-xs">
+                <code className="text-[var(--accent)]">{d.image_tag || '—'}</code>
+                <div className="text-[var(--text-muted)]">
+                  {d.running_profile_id || (d.provisioned ? '—' : 'unprovisioned')}
+                </div>
+              </div>
             ),
           },
           {
-            key: 'version',
-            header: 'Version',
-            render: (d) => (
-              <code className="text-xs text-[var(--accent)]">{d.image_tag || '—'}</code>
-            ),
+            key: 'update',
+            header: 'Update',
+            render: (d) =>
+              d.update_available ? (
+                <StatusBadge
+                  label={`→ ${d.latest_sha || 'new'}`}
+                  tone="warn"
+                  pulse
+                />
+              ) : d.drift?.any ? (
+                <StatusBadge label="drift" tone="warn" />
+              ) : (
+                <StatusBadge label="current" tone="good" />
+              ),
           },
           {
             key: 'metrics',
@@ -141,7 +161,7 @@ export default function DevicesPage() {
           },
           {
             key: 'deploy',
-            header: 'Last deploy',
+            header: 'Last job',
             render: (d) =>
               d.last_deployment ? (
                 <StatusBadge

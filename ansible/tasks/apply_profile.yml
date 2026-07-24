@@ -1,0 +1,96 @@
+---
+# Apply a named runtime profile from config/profiles.yaml onto robot-prod.env.
+#
+# Required vars:
+#   workspace_dir, env_file, profile (profile id)
+# Optional:
+#   default_compose_file (default docker-compose.robot-prod.yml)
+#
+# Sets facts:
+#   applied_profile_id
+#   compose_file  (absolute path under workspace_dir)
+
+- name: Require profile id
+  ansible.builtin.assert:
+    that:
+      - profile is defined
+      - profile | length > 0
+    fail_msg: "Pass -e profile=<id> (see config/profiles.yaml)"
+
+- name: Read profiles catalog from device workspace
+  ansible.builtin.slurp:
+    src: "{{ workspace_dir }}/config/profiles.yaml"
+  register: profiles_catalog_raw
+
+- name: Parse profiles catalog
+  ansible.builtin.set_fact:
+    profiles_catalog: "{{ (profiles_catalog_raw.content | b64decode | from_yaml).profiles }}"
+
+- name: Fail if profile is unknown
+  ansible.builtin.fail:
+    msg: >-
+      Unknown profile '{{ profile }}'. Known:
+      {{ profiles_catalog.keys() | list | join(', ') }}
+  when: profile not in profiles_catalog
+
+- name: Resolve profile definition
+  ansible.builtin.set_fact:
+    profile_def: "{{ profiles_catalog[profile] }}"
+    applied_profile_id: "{{ profile }}"
+
+- name: Set compose_file from profile
+  ansible.builtin.set_fact:
+    compose_file: "{{ workspace_dir }}/{{ profile_def.compose_file | default(default_compose_file | default('docker-compose.robot-prod.yml')) }}"
+
+- name: Ensure profile compose file exists on device
+  ansible.builtin.stat:
+    path: "{{ compose_file }}"
+  register: profile_compose_stat
+
+- name: Fail if profile compose file missing
+  ansible.builtin.fail:
+    msg: >-
+      Profile '{{ profile }}' references missing compose file
+      {{ compose_file }}. Re-publish the slim deploy bundle.
+  when: not profile_compose_stat.stat.exists
+
+- name: Apply profile env overrides into robot-prod.env
+  ansible.builtin.shell: |
+    set -euo pipefail
+    ENV="{{ env_file }}"
+    touch "$ENV"
+    ensure_key() {
+      local key="$1"
+      grep -q "^${key}=" "$ENV" || echo "${key}=" >> "$ENV"
+    }
+    set_key() {
+      local key="$1"
+      local value="$2"
+      ensure_key "$key"
+      # Escape sed replacement specials carefully via python for safety.
+      python3 - "$ENV" "$key" "$value" <<'PY'
+    import pathlib, sys
+    path, key, value = sys.argv[1], sys.argv[2], sys.argv[3]
+    lines = pathlib.Path(path).read_text().splitlines()
+    out = []
+    found = False
+    for line in lines:
+        if line.startswith(key + "="):
+            out.append(f"{key}={value}")
+            found = True
+        else:
+            out.append(line)
+    if not found:
+        out.append(f"{key}={value}")
+    pathlib.Path(path).write_text("\n".join(out) + "\n")
+    PY
+    }
+
+    set_key PROFILE_ID "{{ profile }}"
+    set_key COMPOSE_FILE "{{ profile_def.compose_file | default('docker-compose.robot-prod.yml') }}"
+
+    {% for key, value in (profile_def.env | default({})).items() %}
+    set_key "{{ key }}" "{{ value }}"
+    {% endfor %}
+  args:
+    executable: /bin/bash
