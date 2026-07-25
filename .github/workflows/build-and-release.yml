@@ -72,6 +72,27 @@ jobs:
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
 
+      - name: Configure SSH for Jetson buildx node
+        env:
+          JETSON_SSH_KEY: ${{ secrets.JETSON_SSH_KEY }}
+          JETSON_SSH_HOST: ${{ secrets.JETSON_SSH_HOST }}
+          JETSON_SSH_USER: ${{ secrets.JETSON_SSH_USER }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${JETSON_SSH_KEY:-}" ]]; then
+            echo "JETSON_SSH_KEY not set; Jetson node may fall back to QEMU."
+            exit 0
+          fi
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$JETSON_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${JETSON_SSH_HOST}" >> ~/.ssh/known_hosts 2>/dev/null || true
+          # Also keyscan Tailscale IP if host is MagicDNS
+          ssh-keyscan -H jetson >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh -o BatchMode=yes -o ConnectTimeout=15 \
+            "${JETSON_SSH_USER}@${JETSON_SSH_HOST}" 'echo jetson_ssh_ok; uname -m'
+
       - name: Append Jetson as native arm64 buildx node
         env:
           JETSON_SSH_HOST: ${{ secrets.JETSON_SSH_HOST }}

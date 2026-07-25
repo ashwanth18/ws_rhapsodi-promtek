@@ -116,7 +116,13 @@ class AgentReportRequest(BaseModel):
 
 
 def _repo_root() -> Path:
-    return Path(os.environ.get('REPO_ROOT', str(Path(__file__).resolve().parents[3])))
+    if os.environ.get('REPO_ROOT'):
+        return Path(os.environ['REPO_ROOT'])
+    here = Path(__file__).resolve()
+    try:
+        return here.parents[3]
+    except IndexError:
+        return Path('/repo')
 
 
 def _commit_subject(sha: str | None) -> str | None:

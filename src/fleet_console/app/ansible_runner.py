@@ -9,12 +9,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-REPO_ROOT = Path(
-    os.environ.get(
-        'REPO_ROOT',
-        str(Path(__file__).resolve().parents[3]),
-    )
-)
+def _default_repo_root() -> Path:
+    # In the Docker image layout (/app/app/...), parents[3] does not exist.
+    here = Path(__file__).resolve()
+    try:
+        return here.parents[3]
+    except IndexError:
+        return Path('/repo')
+
+
+REPO_ROOT = Path(os.environ['REPO_ROOT'] if os.environ.get('REPO_ROOT') else _default_repo_root())
 ANSIBLE_DIR = Path(os.environ.get('ANSIBLE_DIR', str(REPO_ROOT / 'ansible')))
 LOG_DIR = Path(os.environ.get('FLEET_LOG_DIR', '/data/logs'))
 LOG_DIR.mkdir(parents=True, exist_ok=True)

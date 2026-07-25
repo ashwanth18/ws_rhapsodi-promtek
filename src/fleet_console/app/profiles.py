@@ -10,7 +10,15 @@ try:
 except ImportError:  # pragma: no cover
     yaml = None  # type: ignore
 
-REPO_ROOT = Path(os.environ.get('REPO_ROOT', str(Path(__file__).resolve().parents[3])))
+def _default_repo_root() -> Path:
+    here = Path(__file__).resolve()
+    try:
+        return here.parents[3]
+    except IndexError:
+        return Path('/repo')
+
+
+REPO_ROOT = Path(os.environ['REPO_ROOT'] if os.environ.get('REPO_ROOT') else _default_repo_root())
 
 
 def profiles_path() -> Path:
