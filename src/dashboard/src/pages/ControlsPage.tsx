@@ -12,6 +12,7 @@ import {
   Cloud,
   Radio,
   Scale,
+  Server,
   Settings2,
   Sparkles,
   Waves,
@@ -78,6 +79,21 @@ type SpineNode = {
   icon: ReactNode
 }
 
+/** Flip to `'spine'` to restore the sequential link-integrity strip. */
+const SIGNAL_LAYOUT: 'hub' | 'spine' = 'hub'
+
+function orbClass(status: LinkStatus): string {
+  const tone = toneFor(status)
+  const live = status === 'connected'
+  return `signal-orb relative z-[1] flex items-center justify-center rounded-2xl border ${
+    live
+      ? 'border-[var(--status-good-fg)]/40 bg-[var(--status-good-bg)] text-[var(--status-good-fg)]'
+      : tone === 'warn'
+        ? 'border-[var(--status-warn-fg)]/35 bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]'
+        : 'border-[var(--status-bad-fg)]/35 bg-[var(--status-bad-bg)] text-[var(--status-bad-fg)]'
+  } ${live ? 'signal-orb--pulse' : ''}`
+}
+
 function SignalNode({ node, index, total }: { node: SpineNode; index: number; total: number }) {
   const tone = toneFor(node.status)
   const live = node.status === 'connected'
@@ -91,17 +107,7 @@ function SignalNode({ node, index, total }: { node: SpineNode; index: number; to
           aria-hidden
         />
       )}
-      <div
-        className={`signal-orb relative z-[1] flex h-11 w-11 items-center justify-center rounded-2xl border ${
-          live
-            ? 'border-[var(--status-good-fg)]/40 bg-[var(--status-good-bg)] text-[var(--status-good-fg)]'
-            : tone === 'warn'
-              ? 'border-[var(--status-warn-fg)]/35 bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]'
-              : 'border-[var(--status-bad-fg)]/35 bg-[var(--status-bad-bg)] text-[var(--status-bad-fg)]'
-        } ${live ? 'signal-orb--pulse' : ''}`}
-      >
-        {node.icon}
-      </div>
+      <div className={`${orbClass(node.status)} h-11 w-11`}>{node.icon}</div>
       <div className="mt-3 w-full px-1">
         <div className="font-display text-sm font-semibold tracking-tight text-[var(--text-primary)]">
           {node.title}
@@ -117,6 +123,101 @@ function SignalNode({ node, index, total }: { node: SpineNode; index: number; to
             {node.detail}
           </p>
         )}
+      </div>
+    </div>
+  )
+}
+
+function HubSpoke({ node }: { node: SpineNode }) {
+  const tone = toneFor(node.status)
+  const live = node.status === 'connected'
+  return (
+    <div className="signal-hub-spoke flex flex-col items-center text-center">
+      <div className={`${orbClass(node.status)} h-12 w-12`}>{node.icon}</div>
+      <div className="mt-2 font-display text-sm font-semibold tracking-tight">{node.title}</div>
+      <div className="mt-0.5 max-w-[9rem] truncate text-[11px] text-[var(--text-faint)]" title={node.subtitle}>
+        {node.subtitle}
+      </div>
+      <div className="mt-2">
+        <StatusBadge label={labelFor(node.status)} tone={tone} pulse={live} title={node.detail} />
+      </div>
+      {node.detail ? (
+        <p className="mt-1.5 line-clamp-2 max-w-[10rem] text-[10px] leading-snug text-[var(--text-muted)]" title={node.detail}>
+          {node.detail}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+function SignalHub({
+  hub,
+  spokes,
+}: {
+  hub: SpineNode
+  spokes: SpineNode[]
+}) {
+  const hubLive = hub.status === 'connected'
+  // Expect 4 spokes: top-left, top-right, bottom-left, bottom-right around Pi.
+  const [tl, tr, bl, br] = [
+    spokes[0],
+    spokes[1],
+    spokes[2],
+    spokes[3],
+  ]
+  return (
+    <div className="signal-hub relative mx-auto w-full max-w-xl">
+      <svg
+        className="pointer-events-none absolute inset-[12%] hidden md:block"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        aria-hidden
+      >
+        {[
+          { n: tl, x: 18, y: 18 },
+          { n: tr, x: 82, y: 18 },
+          { n: bl, x: 18, y: 82 },
+          { n: br, x: 82, y: 82 },
+        ].map(({ n, x, y }) =>
+          n ? (
+            <line
+              key={n.id}
+              x1="50"
+              y1="50"
+              x2={x}
+              y2={y}
+              className={
+                n.status === 'connected' && hubLive
+                  ? 'signal-hub-ray--live'
+                  : 'signal-hub-ray--dead'
+              }
+              strokeWidth="1.2"
+            />
+          ) : null,
+        )}
+      </svg>
+
+      <div className="relative grid grid-cols-2 gap-x-6 gap-y-8 md:gap-y-12">
+        {tl ? <HubSpoke node={tl} /> : <div />}
+        {tr ? <HubSpoke node={tr} /> : <div />}
+        <div className="col-span-2 flex flex-col items-center justify-center py-1">
+          <div className={`${orbClass(hub.status)} h-16 w-16`}>{hub.icon}</div>
+          <div className="mt-3 font-display text-base font-semibold tracking-tight">{hub.title}</div>
+          <div className="mt-0.5 text-[11px] text-[var(--text-faint)]">{hub.subtitle}</div>
+          <div className="mt-2">
+            <StatusBadge
+              label={labelFor(hub.status)}
+              tone={toneFor(hub.status)}
+              pulse={hubLive}
+              title={hub.detail}
+            />
+          </div>
+          <p className="mt-2 max-w-[16rem] text-center text-[10px] leading-snug text-[var(--text-muted)]">
+            Hub view — peers hang off the Pi independently (not a sequence).
+          </p>
+        </div>
+        {bl ? <HubSpoke node={bl} /> : <div />}
+        {br ? <HubSpoke node={br} /> : <div />}
       </div>
     </div>
   )
@@ -394,24 +495,27 @@ export default function ControlsPage() {
     )
   }
 
-  const spine: SpineNode[] = useMemo(
+  const hubStatus: LinkStatus =
+    apiStatus === 'disconnected' || rosStatus === 'disconnected'
+      ? 'disconnected'
+      : apiStatus === 'connecting' || rosStatus === 'connecting'
+        ? 'connecting'
+        : 'connected'
+
+  const hub: SpineNode = useMemo(
+    () => ({
+      id: 'pi',
+      title: 'Pi cell',
+      subtitle: hostName || 'API + rosbridge',
+      status: hubStatus,
+      detail: `${apiBase} · ${rosbridgeUrl}`,
+      icon: <Server className="h-7 w-7" />,
+    }),
+    [hubStatus, hostName, apiBase, rosbridgeUrl],
+  )
+
+  const spokes: SpineNode[] = useMemo(
     () => [
-      {
-        id: 'api',
-        title: 'API',
-        subtitle: hostName || 'backend',
-        status: apiStatus,
-        detail: apiBase,
-        icon: <Cable className="h-5 w-5" />,
-      },
-      {
-        id: 'ros',
-        title: 'rosbridge',
-        subtitle: 'DDS bridge',
-        status: rosStatus,
-        detail: rosbridgeUrl,
-        icon: <Radio className="h-5 w-5" />,
-      },
       {
         id: 'arm',
         title: 'Arm',
@@ -451,11 +555,6 @@ export default function ControlsPage() {
       },
     ],
     [
-      apiStatus,
-      hostName,
-      apiBase,
-      rosStatus,
-      rosbridgeUrl,
       armStatus,
       armStale,
       scaleStatus,
@@ -470,8 +569,33 @@ export default function ControlsPage() {
     ],
   )
 
-  const downCount = spine.filter((n) => n.status === 'disconnected').length
-  const warnCount = spine.filter((n) =>
+  // Kept for spine layout revert (`SIGNAL_LAYOUT = 'spine'`).
+  const spine: SpineNode[] = useMemo(
+    () => [
+      {
+        id: 'api',
+        title: 'API',
+        subtitle: hostName || 'backend',
+        status: apiStatus,
+        detail: apiBase,
+        icon: <Cable className="h-5 w-5" />,
+      },
+      {
+        id: 'ros',
+        title: 'rosbridge',
+        subtitle: 'DDS bridge',
+        status: rosStatus,
+        detail: rosbridgeUrl,
+        icon: <Radio className="h-5 w-5" />,
+      },
+      ...spokes,
+    ],
+    [apiStatus, hostName, apiBase, rosStatus, rosbridgeUrl, spokes],
+  )
+
+  const peerNodes = SIGNAL_LAYOUT === 'hub' ? [hub, ...spokes] : spine
+  const downCount = peerNodes.filter((n) => n.status === 'disconnected').length
+  const warnCount = peerNodes.filter((n) =>
     ['stale', 'degraded', 'connecting', 'unknown'].includes(n.status),
   ).length
   const allLive = downCount === 0 && warnCount === 0 && !clockSkewWarn
@@ -488,7 +612,9 @@ export default function ControlsPage() {
             Link integrity
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-[var(--text-muted)]">
-            Live path from this browser through the Pi stack to the arm, sensors, and Condor MES bridge.
+            {SIGNAL_LAYOUT === 'hub'
+              ? 'Pi is the hub. Arm, scale, micro-ROS, and Condor are independent peers — not a pipeline.'
+              : 'Live path from this browser through the Pi stack to the arm, sensors, and Condor MES bridge.'}{' '}
             Fix red nodes here before starting a weighment.
           </p>
         </div>
@@ -515,13 +641,19 @@ export default function ControlsPage() {
         </div>
       </div>
 
-      {/* Signal spine */}
+      {/* Signal map — hub (default) or spine (SIGNAL_LAYOUT) */}
       <section className="signal-spine relative overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--card-surface)] p-5 shadow-card md:p-6">
         <div className="pointer-events-none absolute inset-0 signal-spine-glow" aria-hidden />
-        <div className="relative flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
-          {spine.map((node, i) => (
-            <SignalNode key={node.id} node={node} index={i} total={spine.length} />
-          ))}
+        <div className="relative">
+          {SIGNAL_LAYOUT === 'hub' ? (
+            <SignalHub hub={hub} spokes={spokes} />
+          ) : (
+            <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+              {spine.map((node, i) => (
+                <SignalNode key={node.id} node={node} index={i} total={spine.length} />
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Condor callout */}

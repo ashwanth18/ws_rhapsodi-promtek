@@ -224,6 +224,22 @@ body::before {
   100% { background-position: 200% 0; }
 }
 
+.signal-hub-ray--live {
+  stroke: color-mix(in srgb, var(--status-good-fg) 55%, var(--accent));
+  stroke-dasharray: 4 3;
+  animation: signal-hub-dash 1.8s linear infinite;
+}
+
+.signal-hub-ray--dead {
+  stroke: var(--border-strong);
+  stroke-dasharray: 2 3;
+  opacity: 0.55;
+}
+
+@keyframes signal-hub-dash {
+  to { stroke-dashoffset: -14; }
+}
+
 @media (max-width: 767px) {
   .signal-node + .signal-node {
     margin-top: 0.25rem;
