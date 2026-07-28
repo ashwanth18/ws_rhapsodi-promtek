@@ -41,6 +41,10 @@ export type Release = {
   id: number
   branch: string
   git_sha: string
+  /** First 7 chars of git_sha when provided by API. */
+  short_sha?: string | null
+  /** Operator-facing label, e.g. "#12 (0a5a4f8)". Not SemVer. */
+  version?: string | null
   status: string
   images?: Record<string, string>
   image_registry?: string | null
@@ -59,6 +63,24 @@ export type Release = {
     builder?: string
     platforms?: string
   } | null
+}
+
+export function shortSha(sha?: string | null): string {
+  if (!sha) return '—'
+  return sha.trim().slice(0, 7)
+}
+
+/** Prefer API `version`, else synthesize "#id (sha)". */
+export function releaseVersion(r?: Release | null): string {
+  if (!r) return '—'
+  if (r.version) return r.version
+  return `#${r.id} (${shortSha(r.git_sha)})`
+}
+
+export function releaseSummary(r?: Release | null): string {
+  if (!r) return ''
+  const sub = (r.subject || '').trim()
+  return sub || `from branch ${r.branch}`
 }
 
 export function formatDuration(seconds?: number | null): string {

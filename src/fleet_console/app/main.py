@@ -134,6 +134,8 @@ class ReleaseReportRequest(BaseModel):
     platforms: list[str] | None = None
     # Hardware classes this release is intended for, e.g. ["pi5"]
     device_classes: list[str] | None = None
+    # Commit subject / one-line changelog (from CI git log).
+    subject: str | None = None
 
 
 class ProvisionRequest(BaseModel):
@@ -229,8 +231,10 @@ def _repo_root() -> Path:
         return Path('/repo')
 
 
-def _commit_subject(sha: str | None) -> str | None:
-    """Best-effort subject line from the local git repo."""
+def _commit_subject(sha: str | None, stored: str | None = None) -> str | None:
+    """Prefer CI-stored subject; fall back to local git log."""
+    if stored and stored.strip():
+        return stored.strip()
     short = (sha or '').strip()
     if not short or short == 'deadbee':
         return None
@@ -254,6 +258,18 @@ def _sha_matches(a: str | None, b: str | None) -> bool:
     return left == right or left.startswith(right) or right.startswith(left)
 
 
+def _short_sha(sha: str | None) -> str | None:
+    if not sha:
+        return None
+    return sha.strip()[:7]
+
+
+def _release_version(row: Release) -> str:
+    """Human release number (monotonic DB id) + short sha — not SemVer."""
+    short = _short_sha(row.git_sha) or 'unknown'
+    return f'#{row.id} ({short})'
+
+
 def _serialize_release(row: Release) -> dict[str, Any]:
     images = {}
     if row.images:
@@ -272,10 +288,14 @@ def _serialize_release(row: Release) -> dict[str, Any]:
         duration = timings.get('total_seconds')
     plats = release_platforms(row)
     classes = release_device_classes(row)
+    subject = _commit_subject(row.git_sha, getattr(row, 'subject', None))
     return {
         'id': row.id,
         'branch': row.branch,
         'git_sha': row.git_sha,
+        'short_sha': _short_sha(row.git_sha),
+        # App-style version for operators: Release #N (shortsha). Not SemVer.
+        'version': _release_version(row),
         'status': row.status,
         'images': images,
         'image_registry': row.image_registry or _image_registry(),
@@ -286,7 +306,7 @@ def _serialize_release(row: Release) -> dict[str, Any]:
         'device_classes': classes,
         'error_message': row.error_message,
         'reported_at': row.reported_at.isoformat() if row.reported_at else None,
-        'subject': _commit_subject(row.git_sha),
+        'subject': subject,
         'demo': row.git_sha == 'deadbee',
     }
 
@@ -1330,6 +1350,7 @@ def api_report_release(body: ReleaseReportRequest) -> dict:
         if not classes and body.status == 'success':
             classes = ['pi5']
         classes_json = json.dumps(classes) if classes else None
+        subject = (body.subject or '').strip() or _commit_subject(short)
         if existing:
             existing.status = body.status
             existing.images = json.dumps(images)
@@ -1342,6 +1363,8 @@ def api_report_release(body: ReleaseReportRequest) -> dict:
                 existing.platforms = platforms_json
             if classes_json:
                 existing.device_classes = classes_json
+            if subject:
+                existing.subject = subject[:512]
             existing.reported_at = utc_now()
             db.commit()
             db.refresh(existing)
@@ -1356,6 +1379,7 @@ def api_report_release(body: ReleaseReportRequest) -> dict:
             error_message=body.error_message,
             platforms=platforms_json,
             device_classes=classes_json,
+            subject=(subject[:512] if subject else None),
             duration_seconds=duration,
             timings=timings_json,
             reported_at=utc_now(),

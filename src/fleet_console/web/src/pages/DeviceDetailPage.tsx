@@ -5,6 +5,9 @@ import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react
 import {
   api,
   formatDuration,
+  releaseSummary,
+  releaseVersion,
+  shortSha,
   type Branch,
   type CustomDashboard,
   type Deployment,
@@ -339,12 +342,29 @@ export default function DeviceDetailPage() {
 
       {device?.update_available && device.latest_release ? (
         <div className="mb-4 rounded-[var(--radius-md)] border border-[var(--status-warn-fg)]/40 bg-[var(--status-warn-bg)] px-4 py-3 text-sm text-[var(--status-warn-fg)]">
-          Deployable update:{' '}
-          <code>{device.latest_release.git_sha}</code>
-          {device.latest_release.subject
-            ? ` — ${device.latest_release.subject}`
-            : ''}
-          . Select it in Release below, then Deploy.
+          <div className="font-medium">Update available</div>
+          <div className="mt-1">
+            New version{' '}
+            <strong>{releaseVersion(device.latest_release)}</strong>
+            {device.image_tag ? (
+              <>
+                {' '}
+                (running {shortSha(device.image_tag)})
+              </>
+            ) : null}
+          </div>
+          <div className="mt-1 text-[var(--text-secondary)]">
+            What&apos;s in it: {releaseSummary(device.latest_release)}
+            {device.latest_release.reported_at
+              ? ` · built ${new Date(device.latest_release.reported_at).toLocaleString()}`
+              : ''}
+          </div>
+          <div className="mt-2 text-xs">
+            Select{' '}
+            <strong>{releaseVersion(device.latest_release)}</strong> in Release
+            below, then Deploy. Tracked branch:{' '}
+            <code>{trackedBranch || 'main'}</code>
+          </div>
         </div>
       ) : null}
 
@@ -387,7 +407,21 @@ export default function DeviceDetailPage() {
         />
         <MetricCard
           label="Running version"
-          value={<code className="text-base text-[var(--accent)]">{device?.image_tag || '—'}</code>}
+          value={
+            <div>
+              <div className="text-base font-medium text-[var(--accent)]">
+                {device?.desired_release
+                  ? releaseVersion(device.desired_release)
+                  : device?.image_tag
+                    ? shortSha(device.image_tag)
+                    : '—'}
+              </div>
+              <code className="text-xs text-[var(--text-muted)]">
+                {device?.image_tag || '—'}
+              </code>
+            </div>
+          }
+          help="Release #N is the console version; full git sha is the image tag."
         />
         <MetricCard
           label="Device / platform"
@@ -525,6 +559,13 @@ export default function DeviceDetailPage() {
                   ) {
                     marks.push('desired')
                   }
+                  if (
+                    device?.update_available &&
+                    device.latest_release &&
+                    r.id === device.latest_release.id
+                  ) {
+                    marks.push('NEW UPDATE')
+                  }
                   const plats = (r.platforms || [])
                     .map((p) => p.replace('linux/', ''))
                     .join('+')
@@ -538,7 +579,7 @@ export default function DeviceDetailPage() {
                   const mark = marks.length ? ` [${marks.join(', ')}]` : ''
                   return (
                     <option key={r.id} value={r.id}>
-                      {r.git_sha} · {r.branch}
+                      {releaseVersion(r)} · {r.branch}
                       {subject}
                       {when}
                       {build}
@@ -547,11 +588,13 @@ export default function DeviceDetailPage() {
                   )
                 })}
               </select>
-              {selectedRelease?.subject || selectedRelease?.duration_seconds != null ? (
+              {selectedRelease ? (
                 <span className="mt-1 block text-[11px] text-[var(--text-secondary)]">
-                  {selectedRelease?.subject || ''}
-                  {selectedRelease?.duration_seconds != null
-                    ? `${selectedRelease?.subject ? ' · ' : ''}CI build ${formatDuration(selectedRelease.duration_seconds)}`
+                  <span className="font-medium">{releaseVersion(selectedRelease)}</span>
+                  {' — '}
+                  {releaseSummary(selectedRelease)}
+                  {selectedRelease.duration_seconds != null
+                    ? ` · CI build ${formatDuration(selectedRelease.duration_seconds)}`
                     : ''}
                 </span>
               ) : null}

@@ -158,6 +158,7 @@ jobs:
           FLEET_CONSOLE_URL: ${{ secrets.FLEET_CONSOLE_URL }}
           CI_REPORT_TOKEN: ${{ secrets.CI_REPORT_TOKEN }}
           IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+          PLATFORMS: linux/amd64,linux/arm64
         run: |
           set -euo pipefail
           if [[ -z "${FLEET_CONSOLE_URL:-}" || -z "${CI_REPORT_TOKEN:-}" ]]; then
@@ -166,10 +167,11 @@ jobs:
           fi
           SHA="$(git rev-parse --short HEAD)"
           BRANCH="${{ steps.ref.outputs.ref }}"
+          SUBJECT="$(git log -1 --format=%s | head -c 500)"
           REG="${IMAGE_REGISTRY:-iserenity/rhapsodi-promtek}"
           URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           BODY=$(
-            BRANCH="$BRANCH" SHA="$SHA" REG="$REG" URL="$URL" python3 -c '
+            BRANCH="$BRANCH" SHA="$SHA" REG="$REG" URL="$URL" PLATFORMS="$PLATFORMS" SUBJECT="$SUBJECT" python3 -c '
           import json, os
           from pathlib import Path
           sha = os.environ["SHA"]
@@ -181,6 +183,12 @@ jobs:
           if path.is_file():
               timings = json.loads(path.read_text())
               duration = timings.get("total_seconds")
+          plats = []
+          raw = (timings.get("platforms") if isinstance(timings, dict) else None) or os.environ.get("PLATFORMS", "")
+          if isinstance(raw, str) and raw.strip():
+              plats = [p.strip() for p in raw.replace(" ", "").split(",") if p.strip()]
+          elif isinstance(raw, list):
+              plats = [str(p) for p in raw]
           print(json.dumps({
               "branch": os.environ["BRANCH"],
               "git_sha": sha,
@@ -190,6 +198,9 @@ jobs:
               "workflow_run_url": os.environ["URL"],
               "duration_seconds": duration,
               "build_timings": timings,
+              "platforms": plats,
+              "device_classes": ["pi5"],
+              "subject": os.environ.get("SUBJECT") or None,
           }))
           '
           )

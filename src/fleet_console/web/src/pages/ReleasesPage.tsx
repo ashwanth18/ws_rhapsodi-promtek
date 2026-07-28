@@ -4,6 +4,8 @@ import { ExternalLink, RefreshCw, Rocket } from 'lucide-react'
 import {
   api,
   formatDuration,
+  releaseSummary,
+  releaseVersion,
   type Branch,
   type Device,
   type Release,
@@ -159,7 +161,7 @@ export default function ReleasesPage() {
     <div>
       <SectionHeader
         title="Releases & builds"
-        description="Build CI for a git branch. Successful runs create Releases that any matching device can deploy."
+        description="Build CI for a tracked git branch (usually main). Successful runs create Releases with version #N. Edge devices pull the orphan deploy branch via deploy-<sha> tags — you do not develop on deploy."
         action={
           <Button variant="outline" onClick={() => void load()} disabled={loading}>
             <RefreshCw className="h-4 w-4" />
@@ -275,7 +277,7 @@ export default function ReleasesPage() {
 
       <SectionHeader
         title="Verified releases"
-        description="Hub images ready to deploy. Intended devices are fleet robots whose platform matches the release."
+        description="Each row is a deployable version (#N). Newest is at the top. Intended devices match the release platform."
       />
       <DataTable
         rows={releases}
@@ -283,16 +285,35 @@ export default function ReleasesPage() {
         emptyMessage={loading ? 'Loading…' : 'No deployable releases yet. Run Build CI.'}
         columns={[
           {
-            key: 'sha',
-            header: 'Release',
+            key: 'version',
+            header: 'Version',
             render: (r) => (
               <div>
-                <code className="text-[var(--accent)]">{r.git_sha}</code>
-                <div className="text-xs text-[var(--text-muted)]">
-                  {r.branch}
-                  {r.subject ? ` — ${r.subject}` : ''}
+                <div className="font-medium text-[var(--accent)]">
+                  {releaseVersion(r)}
+                </div>
+                <div
+                  className="mt-0.5 max-w-[22rem] truncate text-xs text-[var(--text-secondary)]"
+                  title={releaseSummary(r)}
+                >
+                  {releaseSummary(r)}
+                </div>
+                <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">
+                  branch {r.branch}
+                  {r.reported_at
+                    ? ` · ${new Date(r.reported_at).toLocaleString()}`
+                    : ''}
                 </div>
               </div>
+            ),
+          },
+          {
+            key: 'sha',
+            header: 'Image tag',
+            render: (r) => (
+              <code className="text-xs text-[var(--text-muted)]">
+                {r.git_sha}
+              </code>
             ),
           },
           {

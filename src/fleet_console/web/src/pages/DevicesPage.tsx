@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ExternalLink, LayoutDashboard, RefreshCw } from 'lucide-react'
-import { api, type Device } from '../lib/api'
+import {
+  api,
+  releaseSummary,
+  releaseVersion,
+  shortSha,
+  type Device,
+} from '../lib/api'
 import {
   Button,
   DataTable,
@@ -60,7 +66,7 @@ export default function DevicesPage() {
     <div>
       <SectionHeader
         title="Fleet devices"
-        description="Fleet management view: provision, deploy, and observe robots here. Open each cell’s operator dashboard for live weighment controls."
+        description="Fleet management view: provision, deploy, and observe robots here. Open each cell’s operator dashboard for live weighment controls. Versions are Release #N (git sha) — not SemVer. Devices track a git branch (usually main); CI publishes to the orphan deploy branch as deploy-<sha> tags."
         action={
           <Button variant="outline" onClick={load} disabled={loading}>
             <RefreshCw className="h-4 w-4" />
@@ -69,13 +75,21 @@ export default function DevicesPage() {
         }
       />
 
+      {updates > 0 ? (
+        <div className="mb-4 rounded-[var(--radius-md)] border border-[var(--status-warn-fg)]/40 bg-[var(--status-warn-bg)] px-4 py-3 text-sm text-[var(--status-warn-fg)]">
+          {updates === 1
+            ? '1 device has a newer verified Release ready to deploy. Open the device, pick the highlighted Release, then Deploy.'
+            : `${updates} devices have a newer verified Release ready to deploy. Open each device, pick the highlighted Release, then Deploy.`}
+        </div>
+      ) : null}
+
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label="Devices" value={devices.length} />
         <MetricCard label="Alive" value={aliveCount} />
         <MetricCard
-          label="Deployable updates"
+          label="Updates ready"
           value={updates}
-          help="Newer Release image than desired/running"
+          help="Newer verified Release than desired/running — open device to deploy"
         />
         <MetricCard
           label={needsBuild ? 'Needs CI build' : 'Drift'}
@@ -198,16 +212,30 @@ export default function DevicesPage() {
           },
           {
             key: 'running',
-            header: 'Running',
-            render: (d) => (
-              <div className="text-xs">
-                <code className="text-[var(--accent)]">{d.image_tag || '—'}</code>
-                <div className="text-[var(--text-muted)]">
-                  {d.running_profile_id || (d.provisioned ? '—' : 'unprovisioned')}
-                  {d.running_source === 'agent' ? ' · via agent' : ''}
+            header: 'Running version',
+            render: (d) => {
+              const desired = d.desired_release
+              const label = desired
+                ? releaseVersion(desired)
+                : d.image_tag
+                  ? shortSha(d.image_tag)
+                  : '—'
+              return (
+                <div className="text-xs">
+                  <div className="font-medium text-[var(--text-secondary)]">
+                    {label}
+                  </div>
+                  <code className="text-[10px] text-[var(--text-muted)]">
+                    {d.image_tag ? shortSha(d.image_tag) : '—'}
+                  </code>
+                  <div className="text-[var(--text-muted)]">
+                    {d.running_profile_id ||
+                      (d.provisioned ? '—' : 'unprovisioned')}
+                    {d.running_source === 'agent' ? ' · via agent' : ''}
+                  </div>
                 </div>
-              </div>
-            ),
+              )
+            },
           },
           {
             key: 'agent',
@@ -237,28 +265,37 @@ export default function DevicesPage() {
             key: 'update',
             header: 'Update',
             render: (d) => {
-              if (d.update_available) {
+              if (d.update_available && d.latest_release) {
+                const latest = d.latest_release
                 return (
-                  <div className="text-xs">
-                    <StatusBadge
-                      label={`deploy ${d.latest_sha || 'new'}`}
-                      tone="warn"
-                      pulse
-                    />
-                    <div className="mt-1 text-[var(--text-muted)]">
-                      {d.latest_release?.subject || 'newer Release ready'}
+                  <div className="max-w-[16rem] text-xs">
+                    <StatusBadge label="Update available" tone="warn" pulse />
+                    <div className="mt-1 font-medium text-[var(--status-warn-fg)]">
+                      → {releaseVersion(latest)}
+                    </div>
+                    <div
+                      className="mt-0.5 truncate text-[var(--text-muted)]"
+                      title={releaseSummary(latest)}
+                    >
+                      {releaseSummary(latest)}
+                    </div>
+                    <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">
+                      tracked {d.desired_branch || d.target?.tracked_branch || 'main'}
                     </div>
                   </div>
                 )
               }
               if (d.needs_build) {
                 return (
-                  <div className="text-xs">
-                    <StatusBadge
-                      label={`build ${d.branch_tip_sha || 'tip'}`}
-                      tone="info"
-                    />
-                    <div className="mt-1 max-w-[12rem] truncate text-[var(--text-muted)]">
+                  <div className="max-w-[16rem] text-xs">
+                    <StatusBadge label="Needs CI build" tone="info" />
+                    <div className="mt-1 font-medium text-[var(--text-secondary)]">
+                      tip {shortSha(d.branch_tip_sha)}
+                    </div>
+                    <div
+                      className="mt-0.5 truncate text-[var(--text-muted)]"
+                      title={d.branch_tip_message || undefined}
+                    >
                       {d.branch_tip_message || 'branch tip not built yet'}
                     </div>
                   </div>
@@ -267,7 +304,7 @@ export default function DevicesPage() {
               if (d.drift?.any) {
                 return <StatusBadge label="drift" tone="warn" />
               }
-              return <StatusBadge label="current" tone="good" />
+              return <StatusBadge label="Up to date" tone="good" />
             },
           },
           {

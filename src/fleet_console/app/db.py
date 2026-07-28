@@ -50,6 +50,8 @@ class Release(Base):
     platforms = Column(Text, nullable=True)
     # JSON list of device_class allow-list, e.g. ["pi5"]
     device_classes = Column(Text, nullable=True)
+    # Commit subject / changelog one-liner from CI (survives without local git).
+    subject = Column(String(512), nullable=True)
     reported_at = Column(DateTime, nullable=False, default=utc_now)
 
 
@@ -189,4 +191,9 @@ def init_db() -> None:
             conn.commit()
         if 'device_classes' not in rel_cols:
             conn.exec_driver_sql('ALTER TABLE releases ADD COLUMN device_classes TEXT')
+            conn.commit()
+        if 'subject' not in rel_cols:
+            conn.exec_driver_sql(
+                'ALTER TABLE releases ADD COLUMN subject VARCHAR(512)'
+            )
             conn.commit()
