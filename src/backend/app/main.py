@@ -343,6 +343,261 @@ def _load_profile_id() -> str | None:
     return None
 
 
+def _proc_root() -> Path:
+    """Host /proc when bind-mounted; else container /proc."""
+    for candidate in (
+        os.environ.get('HOST_PROC') or '',
+        '/host/proc',
+        '/proc',
+    ):
+        if candidate and Path(candidate, 'meminfo').is_file():
+            return Path(candidate)
+    return Path('/proc')
+
+
+def _sys_root() -> Path:
+    for candidate in (
+        os.environ.get('HOST_SYS') or '',
+        '/host/sys',
+        '/sys',
+    ):
+        if candidate and Path(candidate).is_dir():
+            return Path(candidate)
+    return Path('/sys')
+
+
+def _read_loadavg(proc: Path) -> dict[str, float | None]:
+    try:
+        parts = (proc / 'loadavg').read_text(encoding='utf-8').split()
+        return {
+            'load1': float(parts[0]),
+            'load5': float(parts[1]),
+            'load15': float(parts[2]),
+        }
+    except (OSError, IndexError, ValueError):
+        return {'load1': None, 'load5': None, 'load15': None}
+
+
+def _read_mem(proc: Path) -> dict[str, float | int | None]:
+    try:
+        info: dict[str, int] = {}
+        for line in (proc / 'meminfo').read_text(encoding='utf-8').splitlines():
+            if ':' not in line:
+                continue
+            key, raw = line.split(':', 1)
+            num = raw.strip().split()[0]
+            info[key] = int(num) * 1024  # kB → bytes
+        total = info.get('MemTotal')
+        available = info.get('MemAvailable')
+        if total and available is not None and total > 0:
+            used = total - available
+            return {
+                'mem_total_bytes': total,
+                'mem_used_bytes': used,
+                'mem_pct': round(100.0 * used / total, 1),
+            }
+    except (OSError, ValueError, IndexError):
+        pass
+    return {'mem_total_bytes': None, 'mem_used_bytes': None, 'mem_pct': None}
+
+
+def _read_cpu_pct(proc: Path, sample_s: float = 0.15) -> float | None:
+    """Instant CPU busy % from two /proc/stat samples."""
+
+    def snapshot() -> tuple[int, int] | None:
+        try:
+            line = (proc / 'stat').read_text(encoding='utf-8').splitlines()[0]
+            parts = [int(x) for x in line.split()[1:]]
+            if len(parts) < 4:
+                return None
+            idle = parts[3] + (parts[4] if len(parts) > 4 else 0)
+            total = sum(parts)
+            return idle, total
+        except (OSError, ValueError, IndexError):
+            return None
+
+    a = snapshot()
+    if not a:
+        return None
+    time.sleep(sample_s)
+    b = snapshot()
+    if not b:
+        return None
+    idle_d = b[0] - a[0]
+    total_d = b[1] - a[1]
+    if total_d <= 0:
+        return None
+    busy = max(0.0, min(100.0, 100.0 * (1.0 - idle_d / total_d)))
+    return round(busy, 1)
+
+
+def _read_temp_c(sys_root: Path) -> float | None:
+    zones = sorted(sys_root.glob('class/thermal/thermal_zone*/temp'))
+    for path in zones:
+        try:
+            raw = int(path.read_text(encoding='utf-8').strip())
+            # millidegrees on Linux thermal zones
+            value = raw / 1000.0 if raw > 200 else float(raw)
+            if 0 < value < 150:
+                return round(value, 1)
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+def _read_disk(path: str) -> dict[str, float | int | None]:
+    try:
+        usage = os.statvfs(path)
+        total = usage.f_frsize * usage.f_blocks
+        free = usage.f_frsize * usage.f_bavail
+        used = total - free
+        if total <= 0:
+            raise OSError('empty filesystem')
+        return {
+            'disk_path': path,
+            'disk_total_bytes': total,
+            'disk_used_bytes': used,
+            'disk_pct': round(100.0 * used / total, 1),
+        }
+    except OSError:
+        return {
+            'disk_path': path,
+            'disk_total_bytes': None,
+            'disk_used_bytes': None,
+            'disk_pct': None,
+        }
+
+
+def _parse_node_exporter(text: str) -> dict[str, Any]:
+    """Best-effort gauges from node_exporter text exposition."""
+    gauges: dict[str, float] = {}
+    for line in text.splitlines():
+        if not line or line.startswith('#') or '{' not in line and ' ' not in line:
+            # bare metric
+            parts = line.split()
+            if len(parts) == 2:
+                try:
+                    gauges[parts[0]] = float(parts[1])
+                except ValueError:
+                    pass
+            continue
+        # Keep first-match simple gauges we care about.
+        try:
+            name_labels, value_s = line.rsplit(' ', 1)
+            value = float(value_s)
+        except ValueError:
+            continue
+        if name_labels == 'node_load1' or name_labels.startswith('node_load1{'):
+            gauges['load1'] = value
+        elif name_labels == 'node_load5' or name_labels.startswith('node_load5{'):
+            gauges['load5'] = value
+        elif name_labels == 'node_load15' or name_labels.startswith('node_load15{'):
+            gauges['load15'] = value
+        elif name_labels.startswith('node_memory_MemTotal_bytes'):
+            gauges['mem_total'] = value
+        elif name_labels.startswith('node_memory_MemAvailable_bytes'):
+            gauges['mem_avail'] = value
+        elif (
+            name_labels.startswith('node_filesystem_size_bytes{')
+            and 'mountpoint="/"' in name_labels
+            and 'fstype="rootfs"' not in name_labels
+        ):
+            gauges['disk_total'] = value
+        elif (
+            name_labels.startswith('node_filesystem_avail_bytes{')
+            and 'mountpoint="/"' in name_labels
+            and 'fstype="rootfs"' not in name_labels
+        ):
+            gauges['disk_avail'] = value
+        elif name_labels.startswith('node_thermal_zone_temp') or (
+            'node_hwmon_temp_celsius' in name_labels and 'temp1' in name_labels
+        ):
+            if 'temp_c' not in gauges and 0 < value < 150:
+                gauges['temp_c'] = value
+
+    out: dict[str, Any] = {'source': 'node_exporter'}
+    if 'load1' in gauges:
+        out['load1'] = gauges['load1']
+        out['load5'] = gauges.get('load5')
+        out['load15'] = gauges.get('load15')
+    if 'mem_total' in gauges and 'mem_avail' in gauges and gauges['mem_total'] > 0:
+        used = gauges['mem_total'] - gauges['mem_avail']
+        out['mem_total_bytes'] = int(gauges['mem_total'])
+        out['mem_used_bytes'] = int(used)
+        out['mem_pct'] = round(100.0 * used / gauges['mem_total'], 1)
+    if 'disk_total' in gauges and 'disk_avail' in gauges and gauges['disk_total'] > 0:
+        used = gauges['disk_total'] - gauges['disk_avail']
+        out['disk_path'] = '/'
+        out['disk_total_bytes'] = int(gauges['disk_total'])
+        out['disk_used_bytes'] = int(used)
+        out['disk_pct'] = round(100.0 * used / gauges['disk_total'], 1)
+    if 'temp_c' in gauges:
+        out['temp_c'] = round(gauges['temp_c'], 1)
+    return out
+
+
+def _scrape_node_exporter() -> dict[str, Any] | None:
+    url = (
+        os.environ.get('NODE_EXPORTER_URL') or 'http://host.docker.internal:9100/metrics'
+    ).strip()
+    if not url:
+        return None
+    try:
+        req = request.Request(url, method='GET')
+        with request.urlopen(req, timeout=1.5) as resp:
+            text = resp.read().decode('utf-8', errors='replace')
+        parsed = _parse_node_exporter(text)
+        # CPU still from /proc sample (node_exporter needs a rate()).
+        return parsed
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _collect_host_metrics() -> dict[str, Any]:
+    """Pi (or API host) system metrics for the Controls dashboard."""
+    proc = _proc_root()
+    sys_root = _sys_root()
+    metrics: dict[str, Any] = {
+        'source': f'proc:{proc}',
+        'cpu_pct': _read_cpu_pct(proc),
+        **_read_loadavg(proc),
+        **_read_mem(proc),
+        'temp_c': _read_temp_c(sys_root),
+    }
+    # Prefer /data (robot store) when present; else root / host root.
+    disk_path = '/data' if Path('/data').is_dir() else '/'
+    for candidate in ('/host/root', disk_path, '/'):
+        if candidate == '/host/root' and not Path(candidate).is_dir():
+            continue
+        disk = _read_disk(candidate if candidate != '/host/root' else '/host/root')
+        if disk.get('disk_total_bytes'):
+            metrics.update(disk)
+            break
+    else:
+        metrics.update(_read_disk(disk_path))
+
+    ne = _scrape_node_exporter()
+    if ne:
+        # Prefer host exporter for mem/disk/load/temp; keep local cpu sample.
+        for key in (
+            'load1',
+            'load5',
+            'load15',
+            'mem_pct',
+            'mem_used_bytes',
+            'mem_total_bytes',
+            'disk_pct',
+            'disk_used_bytes',
+            'disk_total_bytes',
+            'disk_path',
+            'temp_c',
+        ):
+            if ne.get(key) is not None:
+                metrics[key] = ne[key]
+        metrics['source'] = 'node_exporter+proc'
+    return metrics
+
+
 @app.get('/host_info')
 def host_info() -> dict:
     identity = _load_device_identity()
@@ -359,6 +614,7 @@ def host_info() -> dict:
         # surface Pi vs browser vs Niryo time skew (MoveIt is sensitive to this).
         'utc_unix': now.timestamp(),
         'utc_iso': now.isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
+        'metrics': _collect_host_metrics(),
     }
 
 

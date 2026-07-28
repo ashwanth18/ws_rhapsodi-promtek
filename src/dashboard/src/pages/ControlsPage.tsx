@@ -24,6 +24,66 @@ import { ROSLIB } from '../ros/roslib'
 import { useRuntimeConfig } from '../config/RuntimeConfig'
 import { useConnectionStatus, type ConnStatus } from '../hooks/useConnectionStatus'
 import { useShellTelemetry, CLOCK_SKEW_WARN_S } from '../hooks/useShellTelemetry'
+import { formatBytes, useSystemMetrics } from '../hooks/useSystemMetrics'
+
+function MetricRow({
+  label,
+  value,
+  pct,
+}: {
+  label: string
+  value: string
+  pct?: number | null
+}) {
+  const clamped =
+    pct != null && Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : null
+  const barTone =
+    clamped == null
+      ? 'bg-[var(--border)]'
+      : clamped >= 90
+        ? 'bg-[var(--status-bad-fg)]'
+        : clamped >= 75
+          ? 'bg-[var(--status-warn-fg)]'
+          : 'bg-[var(--accent)]'
+  return (
+    <div>
+      <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
+        <span className="text-[var(--text-muted)]">{label}</span>
+        <span className="font-mono font-tabular text-[var(--text-secondary)]">{value}</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface-2)]">
+        <div
+          className={`h-full rounded-full transition-[width] duration-500 ${barTone}`}
+          style={{ width: `${clamped ?? 0}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
+function MiniStat({
+  label,
+  value,
+  warn,
+}: {
+  label: string
+  value: string
+  warn?: boolean
+}) {
+  return (
+    <div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wider text-[var(--text-faint)]">{label}</div>
+      <div
+        className={`mt-1 truncate font-mono text-[11px] font-tabular ${
+          warn ? 'text-[var(--status-warn-fg)]' : 'text-[var(--text-secondary)]'
+        }`}
+        title={value}
+      >
+        {value}
+      </div>
+    </div>
+  )
+}
 
 type SensorStatus = 'connected' | 'stale' | 'disconnected'
 type LifecycleStatus = 'connected' | 'connecting' | 'disconnected'
@@ -238,6 +298,7 @@ export default function ControlsPage() {
     formatClock,
     skewLabel,
   } = useShellTelemetry()
+  const { pi, piError, niryo, hardwareTopic } = useSystemMetrics()
   const { apiStatus, rosStatus, hostName } = useConnectionStatus(weightStale)
 
   const recordSrvRef = useRef<any>(null)
@@ -745,6 +806,208 @@ export default function ControlsPage() {
             </div>
           </div>
         )}
+      </section>
+
+      {/* System metrics — Pi host + Niryo board/motors */}
+      <section className="mt-6 grid gap-4 lg:grid-cols-2">
+        <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--card-surface)] p-5 shadow-card">
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <div>
+              <h3 className="font-display text-base font-semibold">Pi system</h3>
+              <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                {hostName || 'API host'} · {pi?.source || 'awaiting metrics'}
+              </p>
+            </div>
+            <StatusBadge
+              label={piError ? 'Unavailable' : pi ? 'Live' : '…'}
+              tone={piError ? 'bad' : pi ? 'good' : 'warn'}
+            />
+          </div>
+          {piError ? (
+            <p className="text-xs text-[var(--status-bad-fg)]">{piError}</p>
+          ) : (
+            <div className="space-y-3">
+              <MetricRow
+                label="CPU"
+                value={pi?.cpu_pct != null ? `${pi.cpu_pct.toFixed(0)}%` : '—'}
+                pct={pi?.cpu_pct}
+              />
+              <MetricRow
+                label="Memory"
+                value={
+                  pi?.mem_pct != null
+                    ? `${pi.mem_pct.toFixed(0)}% · ${formatBytes(pi.mem_used_bytes)} / ${formatBytes(pi.mem_total_bytes)}`
+                    : '—'
+                }
+                pct={pi?.mem_pct}
+              />
+              <MetricRow
+                label={`Disk${pi?.disk_path ? ` (${pi.disk_path})` : ''}`}
+                value={
+                  pi?.disk_pct != null
+                    ? `${pi.disk_pct.toFixed(0)}% · ${formatBytes(pi.disk_used_bytes)} / ${formatBytes(pi.disk_total_bytes)}`
+                    : '—'
+                }
+                pct={pi?.disk_pct}
+              />
+              <div className="grid grid-cols-2 gap-3 pt-1 text-xs">
+                <div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wider text-[var(--text-faint)]">
+                    Load 1 / 5 / 15
+                  </div>
+                  <div className="mt-1 font-mono font-tabular text-[var(--text-secondary)]">
+                    {pi?.load1 != null ? pi.load1.toFixed(2) : '—'}
+                    {' / '}
+                    {pi?.load5 != null ? pi.load5.toFixed(2) : '—'}
+                    {' / '}
+                    {pi?.load15 != null ? pi.load15.toFixed(2) : '—'}
+                  </div>
+                </div>
+                <div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wider text-[var(--text-faint)]">
+                    SoC temp
+                  </div>
+                  <div
+                    className={`mt-1 font-mono font-tabular ${
+                      pi?.temp_c != null && pi.temp_c >= 75
+                        ? 'text-[var(--status-warn-fg)]'
+                        : 'text-[var(--text-secondary)]'
+                    }`}
+                  >
+                    {pi?.temp_c != null ? `${pi.temp_c.toFixed(1)} °C` : '—'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--card-surface)] p-5 shadow-card">
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <div>
+              <h3 className="font-display text-base font-semibold">Niryo system</h3>
+              <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                {niryo.hardware_version || 'Ned'} ·{' '}
+                <code className="font-mono text-[10px]">{hardwareTopic}</code>
+              </p>
+            </div>
+            <StatusBadge
+              label={
+                !ros
+                  ? 'No ROS'
+                  : niryo.fresh
+                    ? 'Live'
+                    : niryo.age_ms != null
+                      ? 'Stale'
+                      : 'No data'
+              }
+              tone={
+                !ros || (!niryo.fresh && niryo.age_ms == null)
+                  ? 'bad'
+                  : niryo.fresh
+                    ? 'good'
+                    : 'warn'
+              }
+              pulse={niryo.fresh}
+            />
+          </div>
+          <div className="mb-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+            <MiniStat
+              label="Board temp"
+              value={
+                niryo.rpi_temperature != null ? `${niryo.rpi_temperature} °C` : '—'
+              }
+              warn={
+                Boolean(niryo.rpi_overheating) ||
+                (niryo.rpi_temperature != null && niryo.rpi_temperature >= 70)
+              }
+            />
+            <MiniStat
+              label="Motors link"
+              value={
+                niryo.connection_up == null
+                  ? '—'
+                  : niryo.connection_up
+                    ? 'Up'
+                    : 'Down'
+              }
+              warn={niryo.connection_up === false}
+            />
+            <MiniStat
+              label="Robot status"
+              value={niryo.robot_status_str || '—'}
+            />
+            <MiniStat
+              label="Calibration"
+              value={
+                niryo.calibration_in_progress
+                  ? 'In progress'
+                  : niryo.calibration_needed
+                    ? 'Needed'
+                    : niryo.calibration_needed === false
+                      ? 'OK'
+                      : '—'
+              }
+              warn={Boolean(niryo.calibration_needed)}
+            />
+          </div>
+          {niryo.error_message ? (
+            <p className="mb-3 text-xs text-[var(--status-warn-fg)]">{niryo.error_message}</p>
+          ) : null}
+          {niryo.robot_message ? (
+            <p className="mb-3 text-xs text-[var(--text-muted)]">{niryo.robot_message}</p>
+          ) : null}
+          {niryo.motors.length === 0 ? (
+            <p className="text-xs text-[var(--text-muted)]">
+              Waiting for hardware_status (arm bridge + rosbridge must be up).
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-[var(--radius-sm)] border border-[var(--border)]">
+              <table className="w-full min-w-[20rem] text-left text-xs">
+                <thead className="bg-[var(--surface-2)] text-[10px] uppercase tracking-wider text-[var(--text-faint)]">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Motor</th>
+                    <th className="px-3 py-2 font-medium">Temp</th>
+                    <th className="px-3 py-2 font-medium">V</th>
+                    <th className="px-3 py-2 font-medium">Err</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {niryo.motors.map((m) => (
+                    <tr key={m.name} className="border-t border-[var(--border)]">
+                      <td className="px-3 py-1.5 font-mono text-[var(--text-secondary)]">
+                        {m.name}
+                        {m.type ? (
+                          <span className="text-[var(--text-faint)]"> · {m.type}</span>
+                        ) : null}
+                      </td>
+                      <td
+                        className={`px-3 py-1.5 font-mono font-tabular ${
+                          m.temp_c != null && m.temp_c >= 55
+                            ? 'text-[var(--status-warn-fg)]'
+                            : ''
+                        }`}
+                      >
+                        {m.temp_c != null ? `${m.temp_c}°` : '—'}
+                      </td>
+                      <td className="px-3 py-1.5 font-mono font-tabular">
+                        {m.voltage != null ? m.voltage.toFixed(1) : '—'}
+                      </td>
+                      <td
+                        className={`px-3 py-1.5 font-mono ${
+                          m.error ? 'text-[var(--status-bad-fg)]' : 'text-[var(--text-faint)]'
+                        }`}
+                        title={m.error_message || undefined}
+                      >
+                        {m.error || '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </section>
 
       {/* Actuator bay */}

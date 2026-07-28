@@ -56,11 +56,18 @@ services:
       IMAGE_TAG: ${IMAGE_TAG:-}
       PROFILE_ID: ${PROFILE_ID:-}
       RHAPSODI_DEVICE_CONFIG: /ws/config/device.yaml
+      # Host metrics for Controls /host_info (node_exporter on Pi, else /host/proc)
+      NODE_EXPORTER_URL: ${NODE_EXPORTER_URL:-http://host.docker.internal:9100/metrics}
+      HOST_PROC: /host/proc
+      HOST_SYS: /host/sys
     ports:
       - "8000:8000"
     volumes:
       - ./data:/data
       - ./config:/ws/config:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro,rslave
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
