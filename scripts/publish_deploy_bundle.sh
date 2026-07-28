@@ -3,12 +3,16 @@
 # the files an edge device needs to run docker compose (no ROS source tree).
 #
 # Bundle contents:
-#   docker-compose.robot-prod.yml
+#   docker-compose.robot-prod.yml (compat shim → compose/devices/pi5.yml)
+#   compose/devices/** (hardware compose)
+#   compose/README.md
 #   robot-prod.env.example
 #   config/device.yaml.example
+#   config/device_classes.yaml
 #   config/profiles.yaml
 #   config/profiles/** (pose/scene layout overrides)
 #   monitoring/exporters/docker-compose.exporters.yml
+#   monitoring/exporters/promtail-config.yml
 #
 # Usage (after scripts/buildx_push_images.sh):
 #   bash scripts/publish_deploy_bundle.sh
@@ -38,10 +42,13 @@ REMOTE_URL="$(git remote get-url "${REMOTE}")"
 
 BUNDLE_FILES=(
   docker-compose.robot-prod.yml
+  compose/README.md
   robot-prod.env.example
   config/device.yaml.example
+  config/device_classes.yaml
   config/profiles.yaml
   monitoring/exporters/docker-compose.exporters.yml
+  monitoring/exporters/promtail-config.yml
 )
 
 for f in "${BUNDLE_FILES[@]}"; do
@@ -53,6 +60,11 @@ done
 
 if [[ ! -d config/profiles ]]; then
   echo "Missing required directory: config/profiles" >&2
+  exit 1
+fi
+
+if [[ ! -d compose/devices ]]; then
+  echo "Missing required directory: compose/devices" >&2
   exit 1
 fi
 
@@ -74,13 +86,15 @@ git rm -rf --quiet . >/dev/null 2>&1 || true
 # Clear any leftover untracked junk from the shared clone.
 git clean -fdx >/dev/null 2>&1 || true
 
-mkdir -p config monitoring/exporters
+mkdir -p config monitoring/exporters compose/devices
 for f in "${BUNDLE_FILES[@]}"; do
   mkdir -p "$(dirname "${f}")"
   cp "${ROOT_DIR}/${f}" "${f}"
 done
 # Per-profile pose/scene layout packs
 cp -a "${ROOT_DIR}/config/profiles" config/
+# Hardware compose files
+cp -a "${ROOT_DIR}/compose/devices/." compose/devices/
 
 # Minimal README so operators know what this branch is.
 cat > README.md <<EOF

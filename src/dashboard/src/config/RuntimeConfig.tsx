@@ -7,8 +7,8 @@ type RuntimeConfig = {
   setRosbridgeUrl: (value: string) => void
 }
 
-const API_DEFAULT = (import.meta as any).env.VITE_API_BASE || 'http://localhost:8000'
-const ROS_DEFAULT = (import.meta as any).env.VITE_ROSBRIDGE_URL || 'ws://localhost:9090'
+const ENV_API = ((import.meta as any).env.VITE_API_BASE as string | undefined)?.trim() || ''
+const ENV_ROS = ((import.meta as any).env.VITE_ROSBRIDGE_URL as string | undefined)?.trim() || ''
 const API_KEY = 'rhapsodi.apiBase'
 const ROS_KEY = 'rhapsodi.rosbridgeUrl'
 
@@ -21,16 +21,66 @@ export function normalizeRosbridgeUrl(raw: string): string {
   return s
 }
 
+function isLoopbackHost(host: string): boolean {
+  const h = host.trim().toLowerCase()
+  return h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h === '::1'
+}
+
+function isLoopbackUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw.includes('://') ? raw : `http://${raw}`)
+    return isLoopbackHost(u.hostname)
+  } catch {
+    return false
+  }
+}
+
+/** Derive API / rosbridge from the page host so remote Tailscale access works. */
+export function pageHostDefaults(): { apiBase: string; rosbridgeUrl: string } {
+  if (typeof window === 'undefined') {
+    return { apiBase: 'http://localhost:8000', rosbridgeUrl: 'ws://localhost:9090' }
+  }
+  const host = window.location.hostname || 'localhost'
+  const http = window.location.protocol === 'https:' ? 'https' : 'http'
+  const ws = http === 'https' ? 'wss' : 'ws'
+  return {
+    apiBase: `${http}://${host}:8000`,
+    rosbridgeUrl: `${ws}://${host}:9090`,
+  }
+}
+
+function resolveUrl(
+  stored: string | null | undefined,
+  envDefault: string,
+  pageDefault: string,
+): string {
+  const s = stored?.trim()
+  if (s) {
+    // Stale localhost from a prior session breaks remote MagicDNS access.
+    if (isLoopbackUrl(s) && typeof window !== 'undefined' && !isLoopbackHost(window.location.hostname)) {
+      return pageDefault
+    }
+    return s
+  }
+  const env = envDefault.trim()
+  if (
+    (!env || isLoopbackUrl(env)) &&
+    typeof window !== 'undefined' &&
+    !isLoopbackHost(window.location.hostname)
+  ) {
+    return pageDefault
+  }
+  return env || pageDefault
+}
+
 function initialApiBase(): string {
-  const stored = localStorage.getItem(API_KEY)?.trim()
-  return stored || API_DEFAULT.trim()
+  return resolveUrl(localStorage.getItem(API_KEY), ENV_API, pageHostDefaults().apiBase)
 }
 
 function initialRosbridgeUrl(): string {
-  const stored = localStorage.getItem(ROS_KEY)?.trim()
-  if (!stored) return normalizeRosbridgeUrl(ROS_DEFAULT) || ROS_DEFAULT
-  const n = normalizeRosbridgeUrl(stored)
-  return n || ROS_DEFAULT
+  const page = pageHostDefaults().rosbridgeUrl
+  const resolved = resolveUrl(localStorage.getItem(ROS_KEY), ENV_ROS, page)
+  return normalizeRosbridgeUrl(resolved) || page
 }
 
 const RuntimeConfigCtx = createContext<RuntimeConfig | null>(null)
@@ -53,7 +103,7 @@ export function RuntimeConfigProvider({ children }: { children: React.ReactNode 
 
   const value = useMemo(
     () => ({ apiBase, rosbridgeUrl, setApiBase, setRosbridgeUrl }),
-    [apiBase, rosbridgeUrl]
+    [apiBase, rosbridgeUrl],
   )
 
   return (

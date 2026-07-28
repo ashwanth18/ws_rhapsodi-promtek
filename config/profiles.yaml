@@ -1,12 +1,16 @@
-# Fleet runtime profiles — independent of image version (git SHA).
+# Fleet runtime profiles — behavior only (orthogonal to device hardware).
 #
 # A device picks:
-#   - version: tracked_branch + pinned image_tag (code)
+#   - device_class: pi5 | jetson | x86  → compose/devices/<class>.yml
+#   - platform: linux/arm64 | linux/amd64 (OCI)
+#   - version: tracked_branch + Release (images)
 #   - profile: one of the keys below (runtime behavior / layout)
 #
-# Ansible apply (deploy.yml / provision.yml):
-#   -e profile=<id>
-# writes PROFILE_ID + env overrides into robot-prod.env and selects compose_file.
+# Compose is NOT selected here — see config/device_classes.yaml.
+# Optional device_classes: restrict which hardware may use this profile.
+#
+# Ansible apply (deploy.yml / provision via agent):
+#   profile env overrides are written into robot-prod.env.
 #
 # Pose/scene overrides under config/profiles/<id>/ are shipped in the slim
 # deploy bundle and mounted at /ws/config on the device.
@@ -15,7 +19,7 @@ profiles:
   prod-niryo:
     description: Production webhook weighment stack (Niryo)
     robot_type: niryo
-    compose_file: docker-compose.robot-prod.yml
+    device_classes: [pi5]
     env:
       PROFILE_ID: prod-niryo
       BT_TREE: /ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml
@@ -27,8 +31,7 @@ profiles:
   lightsout-training:
     description: Lights-out training BT + data collection (Niryo)
     robot_type: niryo
-    # Same edge compose as prod; only BT tree + data root change.
-    compose_file: docker-compose.robot-prod.yml
+    device_classes: [pi5]
     env:
       PROFILE_ID: lightsout-training
       BT_TREE: /ws/install/share/robot_orchestrator/bt_trees/lightsout.xml
@@ -38,9 +41,9 @@ profiles:
       CONTAINER_SCENE_YAML: /ws/install/share/scooping_controller/config/container_scene_real.yaml
 
   prod-jaka:
-    description: Production webhook weighment stack (Jaka) — amd64 only today
+    description: Production webhook weighment stack (Jaka) — amd64 / x86 host
     robot_type: jaka
-    compose_file: docker-compose.robot-prod.yml
+    device_classes: [x86]
     env:
       PROFILE_ID: prod-jaka
       BT_TREE: /ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml
@@ -52,7 +55,7 @@ profiles:
   jaka-site2-layout:
     description: Jaka with site-2 table layout (custom scoop/pour poses)
     robot_type: jaka
-    compose_file: docker-compose.robot-prod.yml
+    device_classes: [x86]
     env:
       PROFILE_ID: jaka-site2-layout
       BT_TREE: /ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml

@@ -203,12 +203,16 @@
 
     - name: Pull images
       ansible.builtin.command:
-        cmd: docker compose --env-file {{ env_file }} -f {{ compose_file }} pull
+        cmd: >-
+          docker compose --project-directory {{ workspace_dir }}
+          --env-file {{ env_file }} -f {{ compose_file }} pull
         chdir: "{{ workspace_dir }}"
 
     - name: Recreate stack
       ansible.builtin.command:
-        cmd: docker compose --env-file {{ env_file }} -f {{ compose_file }} up -d --remove-orphans
+        cmd: >-
+          docker compose --project-directory {{ workspace_dir }}
+          --env-file {{ env_file }} -f {{ compose_file }} up -d --remove-orphans
         chdir: "{{ workspace_dir }}"
 
     - name: Ensure exporters are running
@@ -255,8 +259,8 @@
             git -C "{{ workspace_dir }}" fetch --depth 1 origin "refs/tags/deploy-${TAG}:refs/tags/deploy-${TAG}" \
               || git -C "{{ workspace_dir }}" fetch --depth 1 origin "deploy-${TAG}"
             git -C "{{ workspace_dir }}" checkout --force "deploy-${TAG}" || true
-            docker compose --env-file "$ENV" -f "{{ compose_file }}" pull
-            docker compose --env-file "$ENV" -f "{{ compose_file }}" up -d --remove-orphans
+            docker compose --project-directory "{{ workspace_dir }}" --env-file "$ENV" -f "{{ compose_file }}" pull
+            docker compose --project-directory "{{ workspace_dir }}" --env-file "$ENV" -f "{{ compose_file }}" up -d --remove-orphans
           args:
             executable: /bin/bash
 

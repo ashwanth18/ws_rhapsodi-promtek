@@ -180,21 +180,28 @@ ensure_robot_weightment_run_columns()
 
 app = FastAPI(title='Rhapsodi Backend')
 
-cors_origins = [
-    origin.strip()
-    for origin in os.environ.get('CORS_ORIGINS', '').split(',')
-    if origin.strip()
-]
-if not cors_origins:
-    cors_origins = ['http://localhost:5173', 'http://localhost:3000']
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
-    allow_methods=['*'],
-    allow_headers=['*'],
-)
+# Robot dashboards are opened via Tailscale MagicDNS / LAN hostnames
+# (e.g. http://rhapsodi-pi5:8080). Default to reflecting any http(s) Origin
+# when CORS_ORIGINS is unset or '*'; otherwise use an explicit allow-list.
+_cors_raw = os.environ.get('CORS_ORIGINS', '*').strip()
+_cors_origins = [o.strip() for o in _cors_raw.split(',') if o.strip()]
+if not _cors_origins or _cors_origins == ['*']:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[],
+        allow_origin_regex=r'https?://.*',
+        allow_credentials=True,
+        allow_methods=['*'],
+        allow_headers=['*'],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=True,
+        allow_methods=['*'],
+        allow_headers=['*'],
+    )
 
 
 @app.on_event('startup')
@@ -337,6 +344,7 @@ def _load_profile_id() -> str | None:
 @app.get('/host_info')
 def host_info() -> dict:
     identity = _load_device_identity()
+    now = datetime.now(tz=timezone.utc)
     return {
         'hostname': socket.gethostname(),
         'device_id': identity.get('device_id'),
@@ -345,6 +353,10 @@ def host_info() -> dict:
         'site_id': identity.get('site_id'),
         'image_tag': _load_image_tag(),
         'profile_id': _load_profile_id(),
+        # UTC clock on the API host (Pi in robot-prod). Used by the dashboard to
+        # surface Pi vs browser vs Niryo time skew (MoveIt is sensitive to this).
+        'utc_unix': now.timestamp(),
+        'utc_iso': now.isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
     }
 
 

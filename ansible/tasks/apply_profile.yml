@@ -1,14 +1,18 @@
 ---
 # Apply a named runtime profile from config/profiles.yaml onto robot-prod.env.
+# Compose is resolved from device_class via config/device_classes.yaml
+# (not from the profile).
 #
 # Required vars:
 #   workspace_dir, env_file, profile (profile id)
 # Optional:
-#   default_compose_file (default docker-compose.robot-prod.yml)
+#   device_class (default: from robot-prod.env DEVICE_CLASS, else pi5)
+#   default_compose_file (fallback compose/devices/pi5.yml)
 #
 # Sets facts:
 #   applied_profile_id
 #   compose_file  (absolute path under workspace_dir)
+#   applied_device_class
 
 - name: Require profile id
   ansible.builtin.assert:
@@ -38,19 +42,77 @@
     profile_def: "{{ profiles_catalog[profile] }}"
     applied_profile_id: "{{ profile }}"
 
-- name: Set compose_file from profile
-  ansible.builtin.set_fact:
-    compose_file: "{{ workspace_dir }}/{{ profile_def.compose_file | default(default_compose_file | default('docker-compose.robot-prod.yml')) }}"
+- name: Read DEVICE_CLASS from existing env if present
+  ansible.builtin.shell: |
+    set -euo pipefail
+    ENV="{{ env_file }}"
+    if [[ -f "$ENV" ]] && grep -q '^DEVICE_CLASS=' "$ENV"; then
+      grep '^DEVICE_CLASS=' "$ENV" | head -1 | cut -d= -f2-
+    fi
+  args:
+    executable: /bin/bash
+  register: env_device_class
+  changed_when: false
+  failed_when: false
 
-- name: Ensure profile compose file exists on device
+- name: Resolve device_class
+  ansible.builtin.set_fact:
+    applied_device_class: >-
+      {{
+        device_class
+        | default(env_device_class.stdout | default('') | trim, true)
+        | default('pi5', true)
+      }}
+
+- name: Read device_classes catalog when present
+  ansible.builtin.stat:
+    path: "{{ workspace_dir }}/config/device_classes.yaml"
+  register: device_classes_stat
+
+- name: Slurp device_classes catalog
+  ansible.builtin.slurp:
+    src: "{{ workspace_dir }}/config/device_classes.yaml"
+  register: device_classes_raw
+  when: device_classes_stat.stat.exists
+
+- name: Parse device_classes catalog
+  ansible.builtin.set_fact:
+    device_classes_catalog: >-
+      {{
+        (device_classes_raw.content | b64decode | from_yaml).device_classes
+        | default({})
+      }}
+  when: device_classes_stat.stat.exists
+
+- name: Resolve compose_rel from device_class catalog
+  ansible.builtin.set_fact:
+    compose_rel: "{{ device_classes_catalog[applied_device_class].compose_file }}"
+  when: >-
+    device_classes_stat.stat.exists
+    and applied_device_class in device_classes_catalog
+
+- name: Fallback compose_rel (legacy profile or missing catalog)
+  ansible.builtin.set_fact:
+    compose_rel: >-
+      {{
+        profile_def.compose_file
+        | default(default_compose_file | default('compose/devices/pi5.yml'))
+      }}
+  when: compose_rel is not defined
+
+- name: Set absolute compose_file path
+  ansible.builtin.set_fact:
+    compose_file: "{{ workspace_dir }}/{{ compose_rel }}"
+
+- name: Ensure compose file exists on device
   ansible.builtin.stat:
     path: "{{ compose_file }}"
   register: profile_compose_stat
 
-- name: Fail if profile compose file missing
+- name: Fail if compose file missing
   ansible.builtin.fail:
     msg: >-
-      Profile '{{ profile }}' references missing compose file
+      device_class '{{ applied_device_class }}' references missing compose file
       {{ compose_file }}. Re-publish the slim deploy bundle.
   when: not profile_compose_stat.stat.exists
 
@@ -67,7 +129,6 @@
       local key="$1"
       local value="$2"
       ensure_key "$key"
-      # Escape sed replacement specials carefully via python for safety.
       python3 - "$ENV" "$key" "$value" <<'PY'
     import pathlib, sys
     path, key, value = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -87,7 +148,8 @@
     }
 
     set_key PROFILE_ID "{{ profile }}"
-    set_key COMPOSE_FILE "{{ profile_def.compose_file | default('docker-compose.robot-prod.yml') }}"
+    set_key DEVICE_CLASS "{{ applied_device_class }}"
+    set_key COMPOSE_FILE "{{ compose_rel }}"
 
     {% for key, value in (profile_def.env | default({})).items() %}
     set_key "{{ key }}" "{{ value }}"

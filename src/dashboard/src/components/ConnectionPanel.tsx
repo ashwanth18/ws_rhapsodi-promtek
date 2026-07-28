@@ -57,10 +57,18 @@ export default function ConnectionPanel() {
       setRosStatus('disconnected')
       return
     }
-    setRosStatus('connecting')
-    ros.on('connection', () => setRosStatus('connected'))
-    ros.on('close', () => setRosStatus('disconnected'))
-    ros.on('error', () => setRosStatus('disconnected'))
+    setRosStatus(ros.isConnected ? 'connected' : 'connecting')
+    const onConnect = () => setRosStatus('connected')
+    const onClose = () => setRosStatus('disconnected')
+    const onError = () => setRosStatus('disconnected')
+    ros.on('connection', onConnect)
+    ros.on('close', onClose)
+    ros.on('error', onError)
+    return () => {
+      ros.off('connection', onConnect)
+      ros.off('close', onClose)
+      ros.off('error', onError)
+    }
   }, [ros])
 
   const canSave = useMemo(

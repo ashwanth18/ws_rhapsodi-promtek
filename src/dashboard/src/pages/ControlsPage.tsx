@@ -11,7 +11,6 @@
 // - We keep a single ROS connection alive while the page is mounted
 // - We use refs for the service/action clients to avoid re-creating them on each render
 import { useEffect, useMemo, useRef, useState } from 'react'
-import SidebarLayout from './SidebarLayout'
 import Button from '../components/ui/button'
 import { SubsystemCard } from '../components/ui/ConfirmDialog'
 import { SectionHeader } from '../components/ui/SectionHeader'
@@ -21,8 +20,7 @@ import { ROSLIB } from '../ros/roslib'
 type SensorStatus = 'connected' | 'stale' | 'disconnected'
 type LifecycleStatus = 'connected' | 'connecting' | 'disconnected'
 
-// Configure rosbridge endpoint and topics through Vite env vars where possible
-const ROSBRIDGE_URL: string = (import.meta as any).env.VITE_ROSBRIDGE_URL || 'ws://localhost:9090'
+// Topics via Vite env; rosbridge URL comes from RuntimeConfig / RosProvider.
 const WEIGHT_TOPIC: string = (import.meta as any).env.VITE_WEIGHT_TOPIC || '/weight'
 const MICROROS_HEARTBEAT_TOPIC: string = (import.meta as any).env.VITE_MICROROS_HEARTBEAT_TOPIC || '/microros/heartbeat'
 
@@ -35,9 +33,6 @@ export default function ControlsPage() {
   const [lastCamera, setLastCamera] = useState<number | null>(null)
   const [lastVibrationSent, setLastVibrationSent] = useState<number | null>(null)
   const [vibValue, setVibValue] = useState<number>(0.3)
-  const [scaleLifecycleStatus, setScaleLifecycleStatus] = useState<LifecycleStatus>('disconnected')
-  const [scaleLifecycleLabel, setScaleLifecycleLabel] = useState<string>('unknown')
-  const [scalePending, setScalePending] = useState<'start' | 'stop' | null>(null)
   const [microRosLifecycleStatus, setMicroRosLifecycleStatus] = useState<LifecycleStatus>('disconnected')
   const [microRosLifecycleLabel, setMicroRosLifecycleLabel] = useState<string>('unknown')
   const [microRosPending, setMicroRosPending] = useState<'start' | 'stop' | null>(null)
@@ -98,39 +93,6 @@ export default function ControlsPage() {
     }
   }, [])
 
-  const getScaleLifecycleState = async () => {
-    if (!ros) return
-    const srv = new ROSLIB.Service({
-      ros,
-      name: '/weighing_scale_launcher/get_state',
-      serviceType: 'lifecycle_msgs/srv/GetState',
-    })
-    return new Promise<{ label: string }>((resolve, reject) => {
-      srv.callService(
-        new ROSLIB.ServiceRequest({}),
-        (res: any) => resolve({ label: res?.current_state?.label || 'unknown' }),
-        (err: any) => reject(err)
-      )
-    })
-  }
-
-  const changeScaleLifecycleState = async (transitionId: number) => {
-    if (!ros) return
-    const srv = new ROSLIB.Service({
-      ros,
-      name: '/weighing_scale_launcher/change_state',
-      serviceType: 'lifecycle_msgs/srv/ChangeState',
-    })
-    return new Promise<void>((resolve, reject) => {
-      const req = new ROSLIB.ServiceRequest({ transition: { id: transitionId } })
-      srv.callService(
-        req,
-        () => resolve(),
-        (err: any) => reject(err)
-      )
-    })
-  }
-
   const changeMicroRosLifecycleState = async (transitionId: number) => {
     if (!ros) return
     const srv = new ROSLIB.Service({
@@ -146,26 +108,6 @@ export default function ControlsPage() {
         (err: any) => reject(err)
       )
     })
-  }
-
-  const refreshScaleLifecycle = async () => {
-    try {
-      const res = await getScaleLifecycleState()
-      if (!res) return
-      const label = res.label
-      setScaleLifecycleLabel(label)
-      if (label === 'active') {
-        setScaleLifecycleStatus('connected')
-      } else if (label === 'configuring' || label === 'activating') {
-        setScaleLifecycleStatus('connecting')
-      } else {
-        setScaleLifecycleStatus('disconnected')
-      }
-      void driveScaleLifecycle(label)
-    } catch {
-      setScaleLifecycleLabel('unknown')
-      setScaleLifecycleStatus('disconnected')
-    }
   }
 
   const getMicroRosLifecycleState = async () => {
@@ -287,62 +229,6 @@ export default function ControlsPage() {
     }
   }
 
-  const driveScaleLifecycle = async (labelOverride?: string) => {
-    const label = labelOverride ?? scaleLifecycleLabel
-    if (!scalePending) return
-    if (label === 'configuring' || label === 'activating' || label === 'deactivating' || label === 'cleaningup') {
-      return
-    }
-    try {
-      if (scalePending === 'start') {
-        if (label === 'unconfigured' || label === 'unknown') {
-          await changeScaleLifecycleState(1) // configure
-          return
-        }
-        if (label === 'inactive') {
-          await changeScaleLifecycleState(3) // activate
-          return
-        }
-        if (label === 'active') {
-          setScalePending(null)
-        }
-        return
-      }
-      if (scalePending === 'stop') {
-        if (label === 'active') {
-          await changeScaleLifecycleState(4) // deactivate
-          return
-        }
-        if (label === 'inactive') {
-          await changeScaleLifecycleState(2) // cleanup
-          return
-        }
-        if (label === 'unconfigured' || label === 'unknown') {
-          setScalePending(null)
-        }
-      }
-    } catch {
-      setScalePending(null)
-      setScaleLifecycleStatus('disconnected')
-    }
-  }
-
-  useEffect(() => {
-    if (!ros) return
-    refreshScaleLifecycle()
-    const transitionSub = new ROSLIB.Topic({
-      ros,
-      name: '/weighing_scale_launcher/transition_event',
-      messageType: 'lifecycle_msgs/TransitionEvent',
-    })
-    transitionSub.subscribe(() => {
-      refreshScaleLifecycle()
-    })
-    return () => {
-      transitionSub.unsubscribe()
-    }
-  }, [ros])
-
   useEffect(() => {
     if (!ros) return
     refreshMicroRosLifecycle()
@@ -401,8 +287,7 @@ export default function ControlsPage() {
   }
 
   return (
-    <SidebarLayout>
-      <div className="px-5 py-5 lg:px-6">
+          <div className="px-5 py-5 lg:px-6">
         <SectionHeader
           title="Controls & Sensors"
           description="Monitor subsystem connectivity and send low-latency ROS commands."
@@ -413,32 +298,21 @@ export default function ControlsPage() {
             title="Weighing Scale"
             statusLabel={weightStatus}
             statusTone={weightStatus === 'connected' ? 'good' : weightStatus === 'stale' ? 'warn' : 'bad'}
-            lastSeen={lastWeight ? `${Math.round((nowTs - lastWeight) / 1000)}s ago` : 'never'}
+            lastSeen={lastWeight ? `${Math.max(0, Math.round((nowTs - lastWeight) / 1000))}s ago` : 'never'}
           >
             <div className="space-y-3 text-sm">
-              <div className="flex items-center gap-2">
-                <span className="text-[var(--text-muted)]">Lifecycle</span>
-                <SensorStatusPill status={scaleLifecycleStatus} />
-                <span className="text-xs text-[var(--text-faint)]">{scaleLifecycleLabel}</span>
+              <div className="text-xs text-[var(--text-muted)]">
+                Topic: {WEIGHT_TOPIC} — live when weight frames arrive.
               </div>
-              <div className="text-xs text-[var(--text-muted)]">Topic: {WEIGHT_TOPIC}</div>
-              <Button
-                onClick={async () => {
-                  if (!ros || scalePending) return
-                  setScaleLifecycleStatus('connecting')
-                  try {
-                    const nextAction = scaleLifecycleLabel === 'active' ? 'stop' : 'start'
-                    setScalePending(nextAction)
-                    await driveScaleLifecycle()
-                  } catch {
-                    setScalePending(null)
-                    setScaleLifecycleStatus('disconnected')
-                  }
-                }}
-                disabled={!ros || !!scalePending}
-              >
-                {scaleLifecycleLabel === 'active' ? 'Stop scale' : 'Start scale'}
-              </Button>
+              <div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+                Scale is started by Compose (<code className="font-mono">scale_launcher</code>), not a ROS
+                lifecycle node. The old “Lifecycle / Start scale” controls targeted{' '}
+                <code className="font-mono">/weighing_scale_launcher</code>, which is not running — so that
+                row stayed disconnected even when the scale was live.
+              </div>
+              <div className="text-xs text-[var(--text-faint)]">
+                To restart: <code className="font-mono">docker compose … restart scale_launcher</code>
+              </div>
             </div>
           </SubsystemCard>
 
@@ -478,7 +352,7 @@ export default function ControlsPage() {
             title="Camera"
             statusLabel={cameraStatus}
             statusTone={cameraStatus === 'connected' ? 'good' : cameraStatus === 'stale' ? 'warn' : 'bad'}
-            lastSeen={lastCamera ? `${Math.round((nowTs - lastCamera) / 1000)}s ago` : 'never'}
+            lastSeen={lastCamera ? `${Math.max(0, Math.round((nowTs - lastCamera) / 1000))}s ago` : 'never'}
           >
             <div className="text-xs text-[var(--text-muted)]">Topic: /scan_qr/camera_info</div>
           </SubsystemCard>
@@ -541,7 +415,6 @@ export default function ControlsPage() {
           </SubsystemCard>
         </div>
       </div>
-    </SidebarLayout>
   )
 }
 

@@ -9,7 +9,6 @@ import Select from '../components/ui/select'
 import StatusBadge from '../components/ui/StatusBadge'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { useRuntimeConfig } from '../config/RuntimeConfig'
-import SidebarLayout from './SidebarLayout'
 
 type Row = {
   event_id: string
@@ -137,8 +136,7 @@ export default function BatchListPage() {
   ]
 
   return (
-    <SidebarLayout>
-      <div className="px-5 py-5 lg:px-6">
+          <div className="px-5 py-5 lg:px-6">
         <SectionHeader
           title="Batches"
           description="Released batches grouped from MES webhook weightments."
@@ -212,6 +210,5 @@ export default function BatchListPage() {
           </div>
         </div>
       </div>
-    </SidebarLayout>
   )
 }

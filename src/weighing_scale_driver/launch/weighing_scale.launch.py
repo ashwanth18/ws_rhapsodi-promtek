@@ -9,11 +9,11 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     port = LaunchConfiguration("port", default="/dev/ttyUSB0")
-    baud = LaunchConfiguration("baud", default="115200")
+    baud = LaunchConfiguration("baud", default="9600")
     topic = LaunchConfiguration("topic", default="/weight")
 
     declare_port = DeclareLaunchArgument("port", default_value="/dev/ttyUSB0")
-    declare_baud = DeclareLaunchArgument("baud", default_value="115200")
+    declare_baud = DeclareLaunchArgument("baud", default_value="9600")
     declare_topic = DeclareLaunchArgument("topic", default_value="/weight")
 
     node = Node(

@@ -10,7 +10,6 @@ import MetricCard from '../components/ui/MetricCard'
 import StatusBadge from '../components/ui/StatusBadge'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { useRuntimeConfig } from '../config/RuntimeConfig'
-import SidebarLayout from './SidebarLayout'
 
 type Summary = {
   event_id: string
@@ -351,8 +350,7 @@ export default function BatchDetailPage() {
   const completedCount = rows.filter((r) => r.completed).length
 
   return (
-    <SidebarLayout>
-      <div className="px-5 py-5 lg:px-6">
+          <div className="px-5 py-5 lg:px-6">
         <SectionHeader
           title="Batch Details"
           description={`Batch ${summary?.batch_id ?? '—'}`}
@@ -569,6 +567,5 @@ export default function BatchDetailPage() {
         />
         <RunDetailDrawer row={drawerRow} onClose={() => setDrawerRow(null)} />
       </div>
-    </SidebarLayout>
   )
 }

@@ -1,5 +1,5 @@
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, Outlet, useLocation } from 'react-router-dom'
 import {
   Activity,
   ChevronLeft,
@@ -76,7 +76,7 @@ function connTone(status: string): 'good' | 'warn' | 'bad' {
   return 'bad'
 }
 
-export default function SidebarLayout({ children }: { children: ReactNode }) {
+export default function SidebarLayout({ children }: { children?: ReactNode }) {
   const [open, setOpenState] = useState(() => {
     const stored = localStorage.getItem(SIDEBAR_OPEN_STORAGE_KEY)
     return stored !== 'false'
@@ -85,7 +85,20 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
   const { apiBase } = useRuntimeConfig()
   const { themePreference, setThemePreference } = useTheme()
-  const { runState, weightStale } = useShellTelemetry()
+  const {
+    runState,
+    weightStale,
+    armStale,
+    browserUnix,
+    piUnix,
+    niryoUnix,
+    piSkew,
+    niryoSkew,
+    niryoVsPiSkew,
+    clockSkewWarn,
+    formatClock,
+    skewLabel,
+  } = useShellTelemetry()
   const { apiStatus, rosStatus, hostName } = useConnectionStatus(weightStale)
   const [activeRun, setActiveRun] = useState<ActiveRobotRun | null>(null)
   const prevRosStatus = useRef(rosStatus)
@@ -215,6 +228,21 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
                 tone={weightStale ? 'idle' : 'good'}
                 pulse={!weightStale}
               />
+              <StatusBadge
+                label={armStale ? 'Arm offline' : 'Arm live'}
+                tone={armStale ? 'idle' : 'good'}
+                pulse={!armStale}
+              />
+              <StatusBadge
+                label={clockSkewWarn ? 'Clock skew' : 'Clocks OK'}
+                tone={clockSkewWarn ? 'warn' : piUnix == null ? 'idle' : 'good'}
+                title={
+                  `Browser ${formatClock(browserUnix)} · ` +
+                  `Pi ${formatClock(piUnix)} (${skewLabel(piSkew)}) · ` +
+                  `Niryo ${formatClock(niryoUnix)} (${skewLabel(niryoSkew)})` +
+                  (niryoVsPiSkew != null ? ` · Niryo−Pi ${skewLabel(niryoVsPiSkew)}` : '')
+                }
+              />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {activeRun && (
@@ -244,8 +272,27 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
               </Button>
             </div>
           </div>
+          <div
+            className={`flex flex-wrap gap-x-4 gap-y-1 border-t border-[var(--border)] px-5 py-1.5 font-mono text-[10px] tabular-nums ${
+              clockSkewWarn ? 'bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]' : 'text-[var(--text-faint)]'
+            }`}
+            title="Browser = this laptop/desktop. Pi = API host clock. Niryo = /joint_states header stamp. Skew vs browser shown in parentheses."
+          >
+            <span>Browser {formatClock(browserUnix)}</span>
+            <span>
+              Pi {formatClock(piUnix)}
+              {piSkew != null ? ` (${skewLabel(piSkew)})` : ''}
+            </span>
+            <span>
+              Niryo {formatClock(niryoUnix)}
+              {niryoSkew != null ? ` (${skewLabel(niryoSkew)})` : armStale ? ' (no joint_states)' : ''}
+            </span>
+            {niryoVsPiSkew != null && (
+              <span>Niryo−Pi {skewLabel(niryoVsPiSkew)}</span>
+            )}
+          </div>
         </header>
-        <main className="flex-1">{children}</main>
+        <main className="flex-1">{children ?? <Outlet />}</main>
       </div>
 
       <SettingsDrawer
