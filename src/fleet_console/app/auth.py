@@ -1,18 +1,23 @@
 """Auth helpers for Fleet Console: browser bearer, CI report token, agent token."""
 from __future__ import annotations
 
-import os
 import secrets
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .db import DeviceTarget, SessionLocal
+from .settings_store import get as settings_get
 
 _bearer = HTTPBearer(auto_error=False)
 
-FLEET_API_TOKEN = os.environ.get('FLEET_API_TOKEN', '').strip()
-CI_REPORT_TOKEN = os.environ.get('CI_REPORT_TOKEN', '').strip()
+
+def _fleet_api_token() -> str:
+    return settings_get('fleet_api_token')
+
+
+def _ci_report_token() -> str:
+    return settings_get('ci_report_token')
 
 
 def _extract_bearer(
@@ -30,10 +35,11 @@ def require_token(
     creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> None:
     """Browser / operator shared bearer. If unset, allow (local Tailnet trust)."""
-    if not FLEET_API_TOKEN:
+    expected = _fleet_api_token()
+    if not expected:
         return
     token = _extract_bearer(request, creds)
-    if not token or not secrets.compare_digest(token, FLEET_API_TOKEN):
+    if not token or not secrets.compare_digest(token, expected):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail='Missing or invalid bearer token',
@@ -45,11 +51,7 @@ def require_ci_token(
     creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> None:
     """CI-only token for POST /api/releases/report."""
-    if not CI_REPORT_TOKEN:
-        # Fall back to FLEET_API_TOKEN so a single-token setup still works.
-        expected = FLEET_API_TOKEN
-    else:
-        expected = CI_REPORT_TOKEN
+    expected = _ci_report_token() or _fleet_api_token()
     if not expected:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

@@ -103,7 +103,7 @@ export function SectionHeader({
   description,
   action,
 }: {
-  title: string
+  title: ReactNode
   description?: string
   action?: ReactNode
 }) {

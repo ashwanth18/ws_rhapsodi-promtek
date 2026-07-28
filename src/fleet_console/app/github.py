@@ -9,11 +9,8 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN', '').strip()
-GITHUB_REPO = os.environ.get(
-    'GITHUB_REPO',
-    'ashwanth18/ws_rhapsodi-promtek',
-).strip()
+from .settings_store import get as settings_get
+
 CACHE_TTL_SECONDS = int(os.environ.get('GITHUB_CACHE_TTL_SECONDS', '120'))
 WORKFLOW_FILE = os.environ.get(
     'GITHUB_BUILD_WORKFLOW',
@@ -23,14 +20,23 @@ WORKFLOW_FILE = os.environ.get(
 _cache: dict[str, tuple[float, Any]] = {}
 
 
+def _github_token() -> str:
+    return settings_get('github_token')
+
+
+def _github_repo() -> str:
+    return settings_get('github_repo', 'ashwanth18/ws_rhapsodi-promtek')
+
+
 def _headers() -> dict[str, str]:
     headers = {
         'Accept': 'application/vnd.github+json',
         'User-Agent': 'rhapsodi-fleet-console',
         'X-GitHub-Api-Version': '2022-11-28',
     }
-    if GITHUB_TOKEN:
-        headers['Authorization'] = f'Bearer {GITHUB_TOKEN}'
+    token = _github_token()
+    if token:
+        headers['Authorization'] = f'Bearer {token}'
     return headers
 
 
@@ -68,7 +74,7 @@ def latest_commit(branch: str) -> dict[str, Any]:
     if cached and now - cached[0] < CACHE_TTL_SECONDS:
         return cached[1]
 
-    url = f'https://api.github.com/repos/{GITHUB_REPO}/commits/{branch}'
+    url = f'https://api.github.com/repos/{_github_repo()}/commits/{branch}'
     payload = _get_json(url)
     sha = str(payload.get('sha') or '')
     commit = payload.get('commit') or {}
@@ -92,7 +98,7 @@ def list_branches(limit: int = 50) -> list[dict[str, Any]]:
         return cached[1]
 
     url = (
-        f'https://api.github.com/repos/{GITHUB_REPO}/branches'
+        f'https://api.github.com/repos/{_github_repo()}/branches'
         f'?per_page={max(1, min(limit, 100))}'
     )
     payload = _get_json(url)
@@ -131,7 +137,7 @@ def compare_commits(base: str, head: str) -> dict[str, Any]:
     if cached and now - cached[0] < CACHE_TTL_SECONDS:
         return cached[1]
     url = (
-        f'https://api.github.com/repos/{GITHUB_REPO}/compare/'
+        f'https://api.github.com/repos/{_github_repo()}/compare/'
         f'{urllib.parse.quote(base)}...{urllib.parse.quote(head)}'
     )
     try:
@@ -192,11 +198,11 @@ def version_check(tracked_branch: str, deployed_sha: str | None) -> dict[str, An
 
 def trigger_workflow(branch: str) -> dict[str, Any]:
     """Dispatch build-and-release.yml for the given branch via workflow_dispatch."""
-    if not GITHUB_TOKEN:
+    if not _github_token():
         raise RuntimeError('GITHUB_TOKEN is required to trigger CI builds')
     branch = (branch or 'main').strip()
     url = (
-        f'https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/'
+        f'https://api.github.com/repos/{_github_repo()}/actions/workflows/'
         f'{WORKFLOW_FILE}/dispatches'
     )
     _post_json(
@@ -213,7 +219,7 @@ def trigger_workflow(branch: str) -> dict[str, Any]:
         'workflow': WORKFLOW_FILE,
         'message': f'Dispatched {WORKFLOW_FILE} for ref={branch}',
         'actions_url': (
-            f'https://github.com/{GITHUB_REPO}/actions/workflows/{WORKFLOW_FILE}'
+            f'https://github.com/{_github_repo()}/actions/workflows/{WORKFLOW_FILE}'
         ),
     }
 
@@ -221,7 +227,7 @@ def trigger_workflow(branch: str) -> dict[str, Any]:
 def latest_workflow_runs(branch: str | None = None, limit: int = 5) -> list[dict[str, Any]]:
     """Recent runs of the build-and-release workflow."""
     url = (
-        f'https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/'
+        f'https://api.github.com/repos/{_github_repo()}/actions/workflows/'
         f'{WORKFLOW_FILE}/runs?per_page={max(1, min(limit, 20))}'
     )
     if branch:

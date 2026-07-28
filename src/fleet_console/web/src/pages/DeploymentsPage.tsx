@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { RefreshCw } from 'lucide-react'
+import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
 import { api, type Deployment } from '../lib/api'
 import {
   Button,
@@ -10,10 +10,15 @@ import {
   deployTone,
 } from '../components/ui'
 
+const PAGE_SIZE = 20
+
 export default function DeploymentsPage() {
   const navigate = useNavigate()
   const [rows, setRows] = useState<Deployment[]>([])
   const [status, setStatus] = useState('')
+  const [page, setPage] = useState(1)
+  const [pages, setPages] = useState(1)
+  const [total, setTotal] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
   const load = async () => {
@@ -21,8 +26,13 @@ export default function DeploymentsPage() {
     try {
       const payload = await api.listDeployments({
         status: status || undefined,
+        page,
+        limit: PAGE_SIZE,
       })
       setRows(payload.deployments)
+      setPages(payload.pages)
+      setTotal(payload.total)
+      if (payload.page !== page) setPage(payload.page)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
@@ -32,7 +42,7 @@ export default function DeploymentsPage() {
     load()
     const id = window.setInterval(load, 10000)
     return () => window.clearInterval(id)
-  }, [status])
+  }, [status, page])
 
   return (
     <div>
@@ -44,7 +54,10 @@ export default function DeploymentsPage() {
             <select
               className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-1)] px-3 py-2 text-sm"
               value={status}
-              onChange={(e) => setStatus(e.target.value)}
+              onChange={(e) => {
+                setPage(1)
+                setStatus(e.target.value)
+              }}
             >
               <option value="">All statuses</option>
               <option value="running">running</option>
@@ -128,6 +141,33 @@ export default function DeploymentsPage() {
           },
         ]}
       />
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-[var(--text-muted)]">
+        <div>
+          {total} job{total === 1 ? '' : 's'} · page {page} of {pages} · {PAGE_SIZE}{' '}
+          per page
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Prev
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= pages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }

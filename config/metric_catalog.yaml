@@ -1,0 +1,144 @@
+# Curated metrics for Fleet Console dashboards.
+# Operators pick by id/label; PromQL/LogQL is pre-baked (use $device_id for device scope).
+
+metrics:
+  - id: cpu_pct
+    label: CPU %
+    hint: Host CPU utilization from idle
+    category: host
+    datasource: prometheus
+    query: >-
+      100 - (avg by (instance) (rate(node_cpu_seconds_total{instance="$device_id",mode="idle"}[2m])) * 100)
+    unit: percent
+    viz: gauge
+    min: 0
+    max: 100
+    options:
+      showPointer: true
+      thresholds:
+        - { upTo: 70, color: "#34d399", label: OK }
+        - { upTo: 90, color: "#fbbf24", label: High }
+        - { upTo: 100, color: "#fb7185", label: Critical }
+
+  - id: mem_pct
+    label: Memory %
+    hint: Host RAM used (1 − MemAvailable/MemTotal)
+    category: host
+    datasource: prometheus
+    query: >-
+      (1 - (node_memory_MemAvailable_bytes{instance="$device_id"} / node_memory_MemTotal_bytes{instance="$device_id"})) * 100
+    unit: percent
+    viz: gauge
+    min: 0
+    max: 100
+    options:
+      showPointer: true
+      thresholds:
+        - { upTo: 75, color: "#34d399", label: OK }
+        - { upTo: 90, color: "#fbbf24", label: High }
+        - { upTo: 100, color: "#fb7185", label: Critical }
+
+  - id: disk_root_pct
+    label: Disk %
+    hint: Root filesystem (/) used
+    category: host
+    datasource: prometheus
+    query: >-
+      (1 - (node_filesystem_avail_bytes{instance="$device_id",mountpoint="/",fstype!="rootfs"} / node_filesystem_size_bytes{instance="$device_id",mountpoint="/",fstype!="rootfs"})) * 100
+    unit: percent
+    viz: gauge
+    min: 0
+    max: 100
+    options:
+      showPointer: true
+      thresholds:
+        - { upTo: 80, color: "#34d399", label: OK }
+        - { upTo: 90, color: "#fbbf24", label: High }
+        - { upTo: 100, color: "#fb7185", label: Critical }
+
+  - id: temp_max
+    label: Temperature
+    hint: Max hwmon temperature (°C)
+    category: host
+    datasource: prometheus
+    query: >-
+      max by (instance) (node_hwmon_temp_celsius{instance="$device_id"})
+    unit: celsius
+    viz: gauge
+    min: 0
+    max: 100
+    options:
+      showPointer: true
+      thresholds:
+        - { upTo: 60, color: "#34d399", label: Cool }
+        - { upTo: 75, color: "#fbbf24", label: Warm }
+        - { upTo: 100, color: "#fb7185", label: Hot }
+
+  - id: load1
+    label: Load (1m)
+    hint: node_load1
+    category: host
+    datasource: prometheus
+    query: 'node_load1{instance="$device_id"}'
+    unit: short
+    viz: timeseries
+    options:
+      showLegend: false
+      smooth: true
+
+  - id: cpu_timeseries
+    label: CPU % over time
+    hint: Same as CPU % as a timeseries
+    category: host
+    datasource: prometheus
+    query: >-
+      100 - (avg by (instance) (rate(node_cpu_seconds_total{instance="$device_id",mode="idle"}[2m])) * 100)
+    unit: percent
+    viz: area
+    options:
+      showLegend: false
+      smooth: true
+      fillOpacity: 0.25
+
+  - id: mem_timeseries
+    label: Memory % over time
+    hint: RAM used as a timeseries
+    category: host
+    datasource: prometheus
+    query: >-
+      (1 - (node_memory_MemAvailable_bytes{instance="$device_id"} / node_memory_MemTotal_bytes{instance="$device_id"})) * 100
+    unit: percent
+    viz: area
+    options:
+      showLegend: false
+      smooth: true
+      fillOpacity: 0.25
+
+  - id: container_mem_top
+    label: Container memory (top)
+    hint: Top container working-set bytes
+    category: containers
+    datasource: prometheus
+    query: >-
+      topk(8, container_memory_working_set_bytes{instance="$device_id",name!=""})
+    unit: bytes
+    viz: timeseries
+    options:
+      showLegend: true
+      smooth: true
+
+  - id: logs_all
+    label: All container logs
+    hint: Loki streams for this host
+    category: logs
+    datasource: loki
+    query: '{host="$device_id"}'
+    viz: logs
+
+  - id: logs_errors
+    label: Error logs
+    hint: Lines containing error
+    category: logs
+    datasource: loki
+    query: '{host="$device_id"} |= "error"'
+    viz: logs

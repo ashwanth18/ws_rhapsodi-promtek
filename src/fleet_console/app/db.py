@@ -46,6 +46,10 @@ class Release(Base):
     error_message = Column(Text, nullable=True)
     duration_seconds = Column(Integer, nullable=True)
     timings = Column(Text, nullable=True)  # JSON: build-timings.json payload
+    # JSON list of OCI platforms, e.g. ["linux/amd64","linux/arm64"]
+    platforms = Column(Text, nullable=True)
+    # JSON list of device_class allow-list, e.g. ["pi5"]
+    device_classes = Column(Text, nullable=True)
     reported_at = Column(DateTime, nullable=False, default=utc_now)
 
 
@@ -71,6 +75,21 @@ class Deployment(Base):
     finished_at = Column(DateTime, nullable=True)
 
 
+class CustomDashboard(Base):
+    """Operator-built Grafana-style dashboard (fleet or device template)."""
+
+    __tablename__ = 'custom_dashboards'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(256), nullable=False)
+    # fleet | device_template
+    scope = Column(String(32), nullable=False, default='fleet')
+    # JSON array of panels: {id,title,type,datasource,query,unit,x,y,w,h}
+    panels = Column(Text, nullable=False, default='[]')
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+    updated_at = Column(DateTime, nullable=False, default=utc_now)
+
+
 class DeviceTarget(Base):
     """Desired state for a device (independent of Tailscale inventory)."""
 
@@ -83,6 +102,10 @@ class DeviceTarget(Base):
     auto_update = Column(Boolean, nullable=False, default=False)
     robot_type = Column(String(64), nullable=True)
     site_id = Column(String(64), nullable=True)
+    # OCI platform the device can pull, e.g. linux/arm64
+    platform = Column(String(64), nullable=True)
+    # Form-factor / host class: pi5 | jetson | x86 | unknown
+    device_class = Column(String(64), nullable=True)
     agent_token = Column(String(128), nullable=True, unique=True, index=True)
     # Last agent self-report
     agent_status = Column(String(64), nullable=True)
@@ -125,6 +148,14 @@ def init_db() -> None:
             migrations.append(
                 'ALTER TABLE device_targets ADD COLUMN agent_reported_at DATETIME'
             )
+        if 'platform' not in cols:
+            migrations.append(
+                'ALTER TABLE device_targets ADD COLUMN platform VARCHAR(64)'
+            )
+        if 'device_class' not in cols:
+            migrations.append(
+                'ALTER TABLE device_targets ADD COLUMN device_class VARCHAR(64)'
+            )
         # Drop legacy pinned_image_tag usage by leaving the column if present
         # (SQLite cannot DROP COLUMN reliably on older versions).
         for stmt in migrations:
@@ -152,4 +183,10 @@ def init_db() -> None:
             conn.commit()
         if 'timings' not in rel_cols:
             conn.exec_driver_sql('ALTER TABLE releases ADD COLUMN timings TEXT')
+            conn.commit()
+        if 'platforms' not in rel_cols:
+            conn.exec_driver_sql('ALTER TABLE releases ADD COLUMN platforms TEXT')
+            conn.commit()
+        if 'device_classes' not in rel_cols:
+            conn.exec_driver_sql('ALTER TABLE releases ADD COLUMN device_classes TEXT')
             conn.commit()
