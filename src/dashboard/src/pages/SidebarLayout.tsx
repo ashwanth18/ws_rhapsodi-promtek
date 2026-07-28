@@ -70,12 +70,6 @@ function robotStateLabel(state: string) {
   return 'Idle'
 }
 
-function connTone(status: string): 'good' | 'warn' | 'bad' {
-  if (status === 'connected') return 'good'
-  if (status === 'connecting') return 'warn'
-  return 'bad'
-}
-
 export default function SidebarLayout({ children }: { children?: ReactNode }) {
   const [open, setOpenState] = useState(() => {
     const stored = localStorage.getItem(SIDEBAR_OPEN_STORAGE_KEY)
@@ -85,20 +79,7 @@ export default function SidebarLayout({ children }: { children?: ReactNode }) {
   const { pathname } = useLocation()
   const { apiBase } = useRuntimeConfig()
   const { themePreference, setThemePreference } = useTheme()
-  const {
-    runState,
-    weightStale,
-    armStale,
-    browserUnix,
-    piUnix,
-    niryoUnix,
-    piSkew,
-    niryoSkew,
-    niryoVsPiSkew,
-    clockSkewWarn,
-    formatClock,
-    skewLabel,
-  } = useShellTelemetry()
+  const { runState, weightStale } = useShellTelemetry()
   const { apiStatus, rosStatus, hostName } = useConnectionStatus(weightStale)
   const [activeRun, setActiveRun] = useState<ActiveRobotRun | null>(null)
   const prevRosStatus = useRef(rosStatus)
@@ -177,6 +158,12 @@ export default function SidebarLayout({ children }: { children?: ReactNode }) {
   )
 
   const effectiveState = activeRun?.status || runState
+  const linksUnhealthy =
+    apiStatus === 'disconnected' ||
+    rosStatus === 'disconnected' ||
+    apiStatus === 'connecting' ||
+    rosStatus === 'connecting'
+  const onControls = pathname === '/controls' || pathname.startsWith('/controls/')
 
   return (
     <div className="flex min-h-screen bg-[var(--bg)] text-[var(--text-primary)]">
@@ -221,28 +208,12 @@ export default function SidebarLayout({ children }: { children?: ReactNode }) {
                 tone={robotStateTone(effectiveState)}
                 pulse={effectiveState === 'running' || effectiveState === 'starting'}
               />
-              <StatusBadge label={`API ${apiStatus}`} tone={connTone(apiStatus)} />
-              <StatusBadge label={`ROS ${rosStatus}`} tone={connTone(rosStatus)} />
-              <StatusBadge
-                label={weightStale ? 'Scale offline' : 'Scale live'}
-                tone={weightStale ? 'idle' : 'good'}
-                pulse={!weightStale}
-              />
-              <StatusBadge
-                label={armStale ? 'Arm offline' : 'Arm live'}
-                tone={armStale ? 'idle' : 'good'}
-                pulse={!armStale}
-              />
-              <StatusBadge
-                label={clockSkewWarn ? 'Clock skew' : 'Clocks OK'}
-                tone={clockSkewWarn ? 'warn' : piUnix == null ? 'idle' : 'good'}
-                title={
-                  `Browser ${formatClock(browserUnix)} · ` +
-                  `Pi ${formatClock(piUnix)} (${skewLabel(piSkew)}) · ` +
-                  `Niryo ${formatClock(niryoUnix)} (${skewLabel(niryoSkew)})` +
-                  (niryoVsPiSkew != null ? ` · Niryo−Pi ${skewLabel(niryoVsPiSkew)}` : '')
-                }
-              />
+              {/* Link health lives on Controls (Signal Deck); sticky only nudges when something is down. */}
+              {linksUnhealthy && !onControls ? (
+                <Link to="/controls" title="Open Cell Signal Deck">
+                  <StatusBadge label="Links — open Controls" tone="warn" pulse />
+                </Link>
+              ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {activeRun && (
@@ -271,25 +242,6 @@ export default function SidebarLayout({ children }: { children?: ReactNode }) {
                 {open && <span className="hidden sm:inline">Settings</span>}
               </Button>
             </div>
-          </div>
-          <div
-            className={`flex flex-wrap gap-x-4 gap-y-1 border-t border-[var(--border)] px-5 py-1.5 font-mono text-[10px] tabular-nums ${
-              clockSkewWarn ? 'bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]' : 'text-[var(--text-faint)]'
-            }`}
-            title="Browser = this laptop/desktop. Pi = API host clock. Niryo = /joint_states header stamp. Skew vs browser shown in parentheses."
-          >
-            <span>Browser {formatClock(browserUnix)}</span>
-            <span>
-              Pi {formatClock(piUnix)}
-              {piSkew != null ? ` (${skewLabel(piSkew)})` : ''}
-            </span>
-            <span>
-              Niryo {formatClock(niryoUnix)}
-              {niryoSkew != null ? ` (${skewLabel(niryoSkew)})` : armStale ? ' (no joint_states)' : ''}
-            </span>
-            {niryoVsPiSkew != null && (
-              <span>Niryo−Pi {skewLabel(niryoVsPiSkew)}</span>
-            )}
           </div>
         </header>
         <main className="flex-1">{children ?? <Outlet />}</main>
