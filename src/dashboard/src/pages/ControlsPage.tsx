@@ -1,97 +1,244 @@
-// ControlsPage: live controls + sensor connectivity
-// This page connects directly to ROS 2 through a WebSocket rosbridge (ros2-web-bridge)
-// using roslibjs. We avoid going through the FastAPI backend for low-latency robot control.
-//
-// Key pieces implemented here:
-// - Persistent rosbridge connection (ROSLIB.Ros) so we can subscribe/publish efficiently
-// - Subscriptions to sensor topics to show connectivity (weight, camera, vibration)
-// - Service client to record targets (pose or joints) via /record_target
-//
-// Design notes:
-// - We keep a single ROS connection alive while the page is mounted
-// - We use refs for the service/action clients to avoid re-creating them on each render
-import { useEffect, useMemo, useRef, useState } from 'react'
+/**
+ * Controls — Cell Signal Deck
+ *
+ * One place for link integrity (API → ROS → arm → scale → micro-ROS → Condor)
+ * plus operator actions. Designed as a live signal spine rather than a card dump.
+ */
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  Activity,
+  Bot,
+  Cable,
+  Cloud,
+  Radio,
+  Scale,
+  Settings2,
+  Sparkles,
+  Waves,
+} from 'lucide-react'
 import Button from '../components/ui/button'
-import { SubsystemCard } from '../components/ui/ConfirmDialog'
-import { SectionHeader } from '../components/ui/SectionHeader'
+import StatusBadge, { type StatusTone } from '../components/ui/StatusBadge'
 import { useRos } from '../ros/RosContext'
 import { ROSLIB } from '../ros/roslib'
+import { useRuntimeConfig } from '../config/RuntimeConfig'
+import { useConnectionStatus, type ConnStatus } from '../hooks/useConnectionStatus'
+import { useShellTelemetry, CLOCK_SKEW_WARN_S } from '../hooks/useShellTelemetry'
 
 type SensorStatus = 'connected' | 'stale' | 'disconnected'
 type LifecycleStatus = 'connected' | 'connecting' | 'disconnected'
+type LinkStatus = 'connected' | 'connecting' | 'stale' | 'degraded' | 'disconnected' | 'unknown'
 
-// Topics via Vite env; rosbridge URL comes from RuntimeConfig / RosProvider.
 const WEIGHT_TOPIC: string = (import.meta as any).env.VITE_WEIGHT_TOPIC || '/weight'
-const MICROROS_HEARTBEAT_TOPIC: string = (import.meta as any).env.VITE_MICROROS_HEARTBEAT_TOPIC || '/microros/heartbeat'
+const MICROROS_HEARTBEAT_TOPIC: string =
+  (import.meta as any).env.VITE_MICROROS_HEARTBEAT_TOPIC || '/microros/heartbeat'
+
+type IntegrationsPayload = {
+  checked_at?: string
+  condor?: {
+    status?: string
+    base_url?: string
+    http?: { reachable?: boolean; latency_ms?: number | null; http_status?: number | null }
+    websocket?: { status?: string; detail?: string | null; age_s?: number | null }
+  }
+  webhook?: {
+    status?: string
+    health_url?: string
+    http?: { reachable?: boolean; latency_ms?: number | null }
+  }
+}
+
+function toneFor(status: LinkStatus | ConnStatus | SensorStatus | LifecycleStatus): StatusTone {
+  if (status === 'connected') return 'good'
+  if (status === 'connecting' || status === 'stale' || status === 'degraded' || status === 'unknown') {
+    return 'warn'
+  }
+  return 'bad'
+}
+
+function labelFor(status: LinkStatus | string): string {
+  if (status === 'connected') return 'Live'
+  if (status === 'connecting') return 'Linking'
+  if (status === 'stale') return 'Stale'
+  if (status === 'degraded') return 'Degraded'
+  if (status === 'unknown') return 'Unknown'
+  return 'Down'
+}
+
+function ago(ts: number | null, now: number): string {
+  if (!ts) return 'never'
+  return `${Math.max(0, Math.round((now - ts) / 1000))}s ago`
+}
+
+type SpineNode = {
+  id: string
+  title: string
+  subtitle: string
+  status: LinkStatus
+  detail?: string
+  icon: ReactNode
+}
+
+function SignalNode({ node, index, total }: { node: SpineNode; index: number; total: number }) {
+  const tone = toneFor(node.status)
+  const live = node.status === 'connected'
+  return (
+    <div className="signal-node relative flex min-w-0 flex-1 flex-col items-center text-center">
+      {index < total - 1 && (
+        <div
+          className={`signal-link absolute left-[calc(50%+22px)] right-[-50%] top-[22px] hidden h-[2px] md:block ${
+            live ? 'signal-link--live' : 'signal-link--dead'
+          }`}
+          aria-hidden
+        />
+      )}
+      <div
+        className={`signal-orb relative z-[1] flex h-11 w-11 items-center justify-center rounded-2xl border ${
+          live
+            ? 'border-[var(--status-good-fg)]/40 bg-[var(--status-good-bg)] text-[var(--status-good-fg)]'
+            : tone === 'warn'
+              ? 'border-[var(--status-warn-fg)]/35 bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]'
+              : 'border-[var(--status-bad-fg)]/35 bg-[var(--status-bad-bg)] text-[var(--status-bad-fg)]'
+        } ${live ? 'signal-orb--pulse' : ''}`}
+      >
+        {node.icon}
+      </div>
+      <div className="mt-3 w-full px-1">
+        <div className="font-display text-sm font-semibold tracking-tight text-[var(--text-primary)]">
+          {node.title}
+        </div>
+        <div className="mt-0.5 truncate text-[11px] text-[var(--text-faint)]" title={node.subtitle}>
+          {node.subtitle}
+        </div>
+        <div className="mt-2 flex justify-center">
+          <StatusBadge label={labelFor(node.status)} tone={tone} pulse={live} title={node.detail} />
+        </div>
+        {node.detail && (
+          <p className="mt-2 line-clamp-2 text-[10px] leading-snug text-[var(--text-muted)]" title={node.detail}>
+            {node.detail}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
 
 export default function ControlsPage() {
   const ros = useRos()
-  const recordSrvRef = useRef<any>(null)
+  const { apiBase, rosbridgeUrl, setApiBase, setRosbridgeUrl } = useRuntimeConfig()
+  const {
+    weightStale,
+    armStale,
+    browserUnix,
+    piUnix,
+    niryoUnix,
+    piSkew,
+    niryoSkew,
+    clockSkewWarn,
+    formatClock,
+    skewLabel,
+  } = useShellTelemetry()
+  const { apiStatus, rosStatus, hostName } = useConnectionStatus(weightStale)
 
-  // last-seen timestamps
+  const recordSrvRef = useRef<any>(null)
   const [lastWeight, setLastWeight] = useState<number | null>(null)
   const [lastCamera, setLastCamera] = useState<number | null>(null)
   const [lastVibrationSent, setLastVibrationSent] = useState<number | null>(null)
-  const [vibValue, setVibValue] = useState<number>(0.3)
+  const [vibValue, setVibValue] = useState(0.3)
   const [microRosLifecycleStatus, setMicroRosLifecycleStatus] = useState<LifecycleStatus>('disconnected')
-  const [microRosLifecycleLabel, setMicroRosLifecycleLabel] = useState<string>('unknown')
+  const [microRosLifecycleLabel, setMicroRosLifecycleLabel] = useState('unknown')
   const [microRosPending, setMicroRosPending] = useState<'start' | 'stop' | null>(null)
   const [lastMicroRosHeartbeat, setLastMicroRosHeartbeat] = useState<number | null>(null)
-  const [nowTs, setNowTs] = useState<number>(Date.now())
+  const [nowTs, setNowTs] = useState(Date.now())
+  const [endpointsOpen, setEndpointsOpen] = useState(false)
+  const [apiInput, setApiInput] = useState(apiBase)
+  const [rosInput, setRosInput] = useState(rosbridgeUrl)
+  const [integrations, setIntegrations] = useState<IntegrationsPayload | null>(null)
+  const [integrationsError, setIntegrationsError] = useState<string | null>(null)
 
-  // derived statuses
-  const weightStatus: SensorStatus = lastWeight ? (nowTs - lastWeight < 1500 ? 'connected' : 'stale') : 'disconnected'
-  const cameraStatus: SensorStatus = lastCamera ? (nowTs - lastCamera < 3000 ? 'connected' : 'stale') : 'disconnected'
-  // Vibration is a publisher-only control; consider it "connected" if ROS is available
-  const vibrationPubStatus: SensorStatus = ros ? 'connected' : 'disconnected'
-  const microRosHeartbeatFresh = lastMicroRosHeartbeat ? (nowTs - lastMicroRosHeartbeat < 3000) : false
-  const microRosDisplayStatus: LifecycleStatus = microRosHeartbeatFresh ? 'connected' : microRosLifecycleStatus
-  const microRosDisplayLabel: string = microRosHeartbeatFresh ? 'heartbeat' : microRosLifecycleLabel
+  const [recordName, setRecordName] = useState('')
+  const [recordJoints, setRecordJoints] = useState(false)
+  const [recordMsg, setRecordMsg] = useState('')
 
-  // ROS wiring: use shared ROS connection for topics/service/action
+  useEffect(() => setApiInput(apiBase), [apiBase])
+  useEffect(() => setRosInput(rosbridgeUrl), [rosbridgeUrl])
+
+  const weightStatus: SensorStatus = lastWeight
+    ? nowTs - lastWeight < 1500
+      ? 'connected'
+      : 'stale'
+    : weightStale
+      ? 'disconnected'
+      : 'connected'
+  const cameraStatus: SensorStatus = lastCamera
+    ? nowTs - lastCamera < 3000
+      ? 'connected'
+      : 'stale'
+    : 'disconnected'
+  const microRosHeartbeatFresh = lastMicroRosHeartbeat ? nowTs - lastMicroRosHeartbeat < 3000 : false
+  const microRosDisplayStatus: LifecycleStatus = microRosHeartbeatFresh
+    ? 'connected'
+    : microRosLifecycleStatus
+  const armStatus: LinkStatus = armStale ? 'disconnected' : 'connected'
+  const scaleStatus: LinkStatus =
+    weightStatus === 'connected' ? 'connected' : weightStatus === 'stale' ? 'stale' : 'disconnected'
+  const condorStatus = (integrations?.condor?.status || 'unknown') as LinkStatus
+  const webhookStatus = (integrations?.webhook?.status || 'unknown') as LinkStatus
+
   useEffect(() => {
     if (!ros) return
-
-    // Subscribe to a lightweight, high-frequency topic for each device.
-    // We only care about "last seen" timestamps to compute a simple status badge.
     const weightSub = new ROSLIB.Topic({ ros, name: WEIGHT_TOPIC, messageType: 'std_msgs/Float64' })
     weightSub.subscribe(() => setLastWeight(Date.now()))
-
-    const cameraSub = new ROSLIB.Topic({ ros, name: '/scan_qr/camera_info', messageType: 'sensor_msgs/CameraInfo' })
+    const cameraSub = new ROSLIB.Topic({
+      ros,
+      name: '/scan_qr/camera_info',
+      messageType: 'sensor_msgs/CameraInfo',
+    })
     cameraSub.subscribe(() => setLastCamera(Date.now()))
-
     const microRosHeartbeatSub = new ROSLIB.Topic({
       ros,
       name: MICROROS_HEARTBEAT_TOPIC,
       messageType: 'std_msgs/Empty',
     })
     microRosHeartbeatSub.subscribe(() => setLastMicroRosHeartbeat(Date.now()))
-
-    // Set up service client once
-    // - /record_target (robot_common_msgs/srv/RecordTarget): store a named pose/joints into YAML
     recordSrvRef.current = new ROSLIB.Service({
       ros,
       name: '/record_target',
       serviceType: 'robot_common_msgs/srv/RecordTarget',
     })
-
     return () => {
-      // Clean-up subscriptions and close the websocket on unmount
       weightSub.unsubscribe()
       cameraSub.unsubscribe()
       microRosHeartbeatSub.unsubscribe()
-      
     }
   }, [ros])
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      setNowTs(Date.now())
-    }, 1000)
-    return () => {
-      window.clearInterval(interval)
-    }
+    const interval = window.setInterval(() => setNowTs(Date.now()), 1000)
+    return () => window.clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const res = await fetch(`${apiBase}/integrations/status`, { cache: 'no-store' })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = (await res.json()) as IntegrationsPayload
+        if (cancelled) return
+        setIntegrations(data)
+        setIntegrationsError(null)
+      } catch (err) {
+        if (cancelled) return
+        setIntegrationsError(err instanceof Error ? err.message : 'probe failed')
+      }
+    }
+    void load()
+    const id = window.setInterval(load, 4000)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
+  }, [apiBase])
 
   const changeMicroRosLifecycleState = async (transitionId: number) => {
     if (!ros) return
@@ -101,11 +248,10 @@ export default function ControlsPage() {
       serviceType: 'lifecycle_msgs/srv/ChangeState',
     })
     return new Promise<void>((resolve, reject) => {
-      const req = new ROSLIB.ServiceRequest({ transition: { id: transitionId } })
       srv.callService(
-        req,
+        new ROSLIB.ServiceRequest({ transition: { id: transitionId } }),
         () => resolve(),
-        (err: any) => reject(err)
+        (err: any) => reject(err),
       )
     })
   }
@@ -121,7 +267,7 @@ export default function ControlsPage() {
       srv.callService(
         new ROSLIB.ServiceRequest({}),
         (res: any) => resolve({ label: res?.current_state?.label || 'unknown' }),
-        (err: any) => reject(err)
+        (err: any) => reject(err),
       )
     })
   }
@@ -137,9 +283,43 @@ export default function ControlsPage() {
       srv.callService(
         new ROSLIB.ServiceRequest({}),
         (res: any) => resolve(Array.isArray(res?.nodes) ? res.nodes : []),
-        (err: any) => reject(err)
+        (err: any) => reject(err),
       )
     })
+  }
+
+  const driveMicroRosLifecycle = async (labelOverride?: string) => {
+    const label = labelOverride ?? microRosLifecycleLabel
+    if (!microRosPending) return
+    if (['configuring', 'activating', 'deactivating', 'cleaningup'].includes(label)) return
+    try {
+      if (microRosPending === 'start') {
+        if (label === 'unconfigured' || label === 'unknown') {
+          await changeMicroRosLifecycleState(1)
+          return
+        }
+        if (label === 'inactive') {
+          await changeMicroRosLifecycleState(3)
+          return
+        }
+        if (label === 'active') setMicroRosPending(null)
+        return
+      }
+      if (microRosPending === 'stop') {
+        if (label === 'active') {
+          await changeMicroRosLifecycleState(4)
+          return
+        }
+        if (label === 'inactive') {
+          await changeMicroRosLifecycleState(2)
+          return
+        }
+        if (label === 'unconfigured' || label === 'unknown') setMicroRosPending(null)
+      }
+    } catch {
+      setMicroRosPending(null)
+      setMicroRosLifecycleStatus('disconnected')
+    }
   }
 
   const refreshMicroRosLifecycle = async () => {
@@ -152,13 +332,9 @@ export default function ControlsPage() {
         if (!res) return
         const label = res.label
         setMicroRosLifecycleLabel(label)
-        if (label === 'active') {
-          setMicroRosLifecycleStatus('connected')
-        } else if (label === 'configuring' || label === 'activating') {
-          setMicroRosLifecycleStatus('connecting')
-        } else {
-          setMicroRosLifecycleStatus('disconnected')
-        }
+        if (label === 'active') setMicroRosLifecycleStatus('connected')
+        else if (label === 'configuring' || label === 'activating') setMicroRosLifecycleStatus('connecting')
+        else setMicroRosLifecycleStatus('disconnected')
         void driveMicroRosLifecycle(label)
         return
       }
@@ -173,15 +349,8 @@ export default function ControlsPage() {
       try {
         const res = await getMicroRosLifecycleState()
         if (!res) return
-        const label = res.label
-        setMicroRosLifecycleLabel(label)
-        if (label === 'active') {
-          setMicroRosLifecycleStatus('connected')
-        } else if (label === 'configuring' || label === 'activating') {
-          setMicroRosLifecycleStatus('connecting')
-        } else {
-          setMicroRosLifecycleStatus('disconnected')
-        }
+        setMicroRosLifecycleLabel(res.label)
+        setMicroRosLifecycleStatus(res.label === 'active' ? 'connected' : 'disconnected')
       } catch {
         setMicroRosLifecycleLabel('unknown')
         setMicroRosLifecycleStatus('disconnected')
@@ -189,59 +358,19 @@ export default function ControlsPage() {
     }
   }
 
-  const driveMicroRosLifecycle = async (labelOverride?: string) => {
-    const label = labelOverride ?? microRosLifecycleLabel
-    if (!microRosPending) return
-    if (label === 'configuring' || label === 'activating' || label === 'deactivating' || label === 'cleaningup') {
-      return
-    }
-    try {
-      if (microRosPending === 'start') {
-        if (label === 'unconfigured' || label === 'unknown') {
-          await changeMicroRosLifecycleState(1) // configure
-          return
-        }
-        if (label === 'inactive') {
-          await changeMicroRosLifecycleState(3) // activate
-          return
-        }
-        if (label === 'active') {
-          setMicroRosPending(null)
-        }
-        return
-      }
-      if (microRosPending === 'stop') {
-        if (label === 'active') {
-          await changeMicroRosLifecycleState(4) // deactivate
-          return
-        }
-        if (label === 'inactive') {
-          await changeMicroRosLifecycleState(2) // cleanup
-          return
-        }
-        if (label === 'unconfigured' || label === 'unknown') {
-          setMicroRosPending(null)
-        }
-      }
-    } catch {
-      setMicroRosPending(null)
-      setMicroRosLifecycleStatus('disconnected')
-    }
-  }
-
   useEffect(() => {
     if (!ros) return
-    refreshMicroRosLifecycle()
+    void refreshMicroRosLifecycle()
     const transitionSub = new ROSLIB.Topic({
       ros,
       name: '/micro_ros_launcher/transition_event',
       messageType: 'lifecycle_msgs/TransitionEvent',
     })
     transitionSub.subscribe(() => {
-      refreshMicroRosLifecycle()
+      void refreshMicroRosLifecycle()
     })
     const interval = window.setInterval(() => {
-      refreshMicroRosLifecycle()
+      void refreshMicroRosLifecycle()
     }, 2000)
     return () => {
       transitionSub.unsubscribe()
@@ -249,173 +378,357 @@ export default function ControlsPage() {
     }
   }, [ros])
 
-  // Publisher for vibration
   const publishVibration = () => {
-    // Simple publisher example. In a real system you might wrap this in a debounced input.
     if (!ros) return
     const pub = new ROSLIB.Topic({ ros, name: '/vibration/intensity', messageType: 'std_msgs/Float64' })
     pub.publish(new ROSLIB.Message({ data: vibValue }))
     setLastVibrationSent(Date.now())
   }
 
-  // Record target helpers
-  const [recordName, setRecordName] = useState<string>('')
-  const [recordJoints, setRecordJoints] = useState<boolean>(false)
-  const [recordMsg, setRecordMsg] = useState<string>('')
-  const recordTarget = async () => {
-    // Calls the ROS service to record a target by name.
-    // If joints=false, the server stores a Cartesian pose (base_link frame) for the current tool.
+  const recordTarget = () => {
     if (!ros || !recordSrvRef.current || !recordName) return
     setRecordMsg('')
-    const req = new ROSLIB.ServiceRequest({ name: recordName, joints: recordJoints })
-    recordSrvRef.current.callService(req, (res: any) => {
-      setRecordMsg(res?.message || '')
-    })
-  }
-
-  // MoveTo action removed in favor of service-only approach on this page
-
-  const SensorStatusPill = ({ status }: { status: SensorStatus | LifecycleStatus }) => {
-    const classes = status === 'connected'
-      ? 'bg-[var(--status-good-bg)] text-[var(--status-good-fg)]'
-      : status === 'connecting' || status === 'stale'
-        ? 'bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]'
-        : 'bg-[var(--status-bad-bg)] text-[var(--status-bad-fg)]'
-    return (
-      <span className={`text-xs px-2 py-0.5 rounded-md ${classes}`}>{status}</span>
+    recordSrvRef.current.callService(
+      new ROSLIB.ServiceRequest({ name: recordName, joints: recordJoints }),
+      (res: any) => setRecordMsg(res?.message || ''),
     )
   }
 
+  const spine: SpineNode[] = useMemo(
+    () => [
+      {
+        id: 'api',
+        title: 'API',
+        subtitle: hostName || 'backend',
+        status: apiStatus,
+        detail: apiBase,
+        icon: <Cable className="h-5 w-5" />,
+      },
+      {
+        id: 'ros',
+        title: 'rosbridge',
+        subtitle: 'DDS bridge',
+        status: rosStatus,
+        detail: rosbridgeUrl,
+        icon: <Radio className="h-5 w-5" />,
+      },
+      {
+        id: 'arm',
+        title: 'Arm',
+        subtitle: '/joint_states',
+        status: armStatus,
+        detail: armStale ? 'No fresh joint_states' : 'Joint stream live',
+        icon: <Bot className="h-5 w-5" />,
+      },
+      {
+        id: 'scale',
+        title: 'Scale',
+        subtitle: WEIGHT_TOPIC,
+        status: scaleStatus,
+        detail: `Last ${ago(lastWeight, nowTs)}`,
+        icon: <Scale className="h-5 w-5" />,
+      },
+      {
+        id: 'microros',
+        title: 'micro-ROS',
+        subtitle: microRosLifecycleLabel,
+        status: microRosDisplayStatus,
+        detail: `Heartbeat ${ago(lastMicroRosHeartbeat, nowTs)}`,
+        icon: <Waves className="h-5 w-5" />,
+      },
+      {
+        id: 'condor',
+        title: 'Condor',
+        subtitle: integrations?.condor?.base_url?.replace(/^https?:\/\//, '') || ':5002',
+        status: condorStatus,
+        detail:
+          integrations?.condor?.websocket?.detail ||
+          integrationsError ||
+          (integrations?.condor?.http?.reachable
+            ? `HTTP ${integrations.condor.http.latency_ms ?? '—'}ms`
+            : 'Agent unreachable'),
+        icon: <Cloud className="h-5 w-5" />,
+      },
+    ],
+    [
+      apiStatus,
+      hostName,
+      apiBase,
+      rosStatus,
+      rosbridgeUrl,
+      armStatus,
+      armStale,
+      scaleStatus,
+      lastWeight,
+      nowTs,
+      microRosDisplayStatus,
+      microRosLifecycleLabel,
+      lastMicroRosHeartbeat,
+      condorStatus,
+      integrations,
+      integrationsError,
+    ],
+  )
+
+  const downCount = spine.filter((n) => n.status === 'disconnected').length
+  const warnCount = spine.filter((n) =>
+    ['stale', 'degraded', 'connecting', 'unknown'].includes(n.status),
+  ).length
+  const allLive = downCount === 0 && warnCount === 0 && !clockSkewWarn
+
   return (
-          <div className="px-5 py-5 lg:px-6">
-        <SectionHeader
-          title="Controls & Sensors"
-          description="Monitor subsystem connectivity and send low-latency ROS commands."
-        />
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <SubsystemCard
-            title="Weighing Scale"
-            statusLabel={weightStatus}
-            statusTone={weightStatus === 'connected' ? 'good' : weightStatus === 'stale' ? 'warn' : 'bad'}
-            lastSeen={lastWeight ? `${Math.max(0, Math.round((nowTs - lastWeight) / 1000))}s ago` : 'never'}
-          >
-            <div className="space-y-3 text-sm">
-              <div className="text-xs text-[var(--text-muted)]">
-                Topic: {WEIGHT_TOPIC} — live when weight frames arrive.
-              </div>
-              <div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-xs text-[var(--text-secondary)]">
-                Scale is started by Compose (<code className="font-mono">scale_launcher</code>), not a ROS
-                lifecycle node. The old “Lifecycle / Start scale” controls targeted{' '}
-                <code className="font-mono">/weighing_scale_launcher</code>, which is not running — so that
-                row stayed disconnected even when the scale was live.
-              </div>
-              <div className="text-xs text-[var(--text-faint)]">
-                To restart: <code className="font-mono">docker compose … restart scale_launcher</code>
-              </div>
-            </div>
-          </SubsystemCard>
-
-          <SubsystemCard
-            title="micro-ROS"
-            statusLabel={microRosDisplayLabel}
-            statusTone={microRosDisplayStatus === 'connected' ? 'good' : microRosDisplayStatus === 'connecting' ? 'warn' : 'bad'}
-            lastSeen={
-              lastMicroRosHeartbeat
-                ? `${Math.round((nowTs - lastMicroRosHeartbeat) / 1000)}s ago`
-                : 'never'
-            }
-          >
-            <div className="space-y-3 text-sm">
-              <div className="text-xs text-[var(--text-muted)]">Node: /micro_ros_launcher</div>
-              <Button
-                onClick={async () => {
-                  if (!ros || microRosPending) return
-                  setMicroRosLifecycleStatus('connecting')
-                  try {
-                    const nextAction = microRosLifecycleLabel === 'active' ? 'stop' : 'start'
-                    setMicroRosPending(nextAction)
-                    await driveMicroRosLifecycle()
-                  } catch {
-                    setMicroRosPending(null)
-                    setMicroRosLifecycleStatus('disconnected')
-                  }
-                }}
-                disabled={!ros || !!microRosPending}
-              >
-                {microRosLifecycleLabel === 'active' ? 'Stop micro-ROS' : 'Start micro-ROS'}
-              </Button>
-            </div>
-          </SubsystemCard>
-
-          <SubsystemCard
-            title="Camera"
-            statusLabel={cameraStatus}
-            statusTone={cameraStatus === 'connected' ? 'good' : cameraStatus === 'stale' ? 'warn' : 'bad'}
-            lastSeen={lastCamera ? `${Math.max(0, Math.round((nowTs - lastCamera) / 1000))}s ago` : 'never'}
-          >
-            <div className="text-xs text-[var(--text-muted)]">Topic: /scan_qr/camera_info</div>
-          </SubsystemCard>
-
-          <SubsystemCard
-            title="Vibration"
-            statusLabel={vibrationPubStatus}
-            statusTone={vibrationPubStatus === 'connected' ? 'good' : 'bad'}
-            lastSeen={
-              lastVibrationSent
-                ? `${Math.round((nowTs - lastVibrationSent) / 1000)}s ago`
-                : 'never'
-            }
-          >
-            <div className="space-y-3">
-              <div className="font-display text-3xl font-semibold font-tabular">
-                {vibValue.toFixed(2)}
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.01}
-                value={vibValue}
-                onChange={(e) => setVibValue(parseFloat(e.target.value))}
-                className="w-full"
-              />
-              <div className="flex gap-2">
-                <Button onClick={publishVibration} disabled={!ros}>
-                  Publish
-                </Button>
-                <Button variant="outline" onClick={() => setVibValue(0)} disabled={!ros}>
-                  Stop
-                </Button>
-              </div>
-            </div>
-          </SubsystemCard>
-
-          <SubsystemCard title="Record Target" statusLabel={ros ? 'ready' : 'offline'} statusTone={ros ? 'info' : 'bad'}>
-            <div className="space-y-3">
-              <input
-                placeholder="Target name"
-                value={recordName}
-                onChange={(e) => setRecordName(e.target.value)}
-                className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm"
-              />
-              <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                <input
-                  type="checkbox"
-                  checked={recordJoints}
-                  onChange={(e) => setRecordJoints(e.target.checked)}
-                />
-                Record joints (not pose)
-              </label>
-              <Button onClick={recordTarget} disabled={!ros || !recordName}>
-                Record
-              </Button>
-              {recordMsg && <div className="text-xs text-[var(--text-muted)]">{recordMsg}</div>}
-            </div>
-          </SubsystemCard>
+    <div className="signal-deck px-5 py-5 lg:px-6">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <div className="mb-1 inline-flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-[var(--accent)]">
+            <Sparkles className="h-3.5 w-3.5" />
+            Cell signal deck
+          </div>
+          <h2 className="font-display text-2xl font-semibold tracking-tight text-[var(--text-primary)] md:text-3xl">
+            Link integrity
+          </h2>
+          <p className="mt-1 max-w-2xl text-sm text-[var(--text-muted)]">
+            Live path from this browser through the Pi stack to the arm, sensors, and Condor MES bridge.
+            Fix red nodes here before starting a weighment.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge
+            label={allLive ? 'Cell clear' : downCount ? `${downCount} down` : `${warnCount} attention`}
+            tone={allLive ? 'good' : downCount ? 'bad' : 'warn'}
+            pulse={allLive}
+          />
+          <StatusBadge
+            label={clockSkewWarn ? 'Clock skew' : 'Clocks OK'}
+            tone={clockSkewWarn ? 'warn' : 'good'}
+            title={`Warn threshold ±${CLOCK_SKEW_WARN_S}s`}
+          />
+          <StatusBadge
+            label={webhookStatus === 'connected' ? 'Webhook OK' : `Webhook ${labelFor(webhookStatus)}`}
+            tone={toneFor(webhookStatus)}
+            title={integrations?.webhook?.health_url}
+          />
+          <Button variant="ghost" size="sm" onClick={() => setEndpointsOpen((v) => !v)}>
+            <Settings2 className="mr-1.5 h-3.5 w-3.5" />
+            Endpoints
+          </Button>
         </div>
       </div>
+
+      {/* Signal spine */}
+      <section className="signal-spine relative overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--card-surface)] p-5 shadow-card md:p-6">
+        <div className="pointer-events-none absolute inset-0 signal-spine-glow" aria-hidden />
+        <div className="relative flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+          {spine.map((node, i) => (
+            <SignalNode key={node.id} node={node} index={i} total={spine.length} />
+          ))}
+        </div>
+
+        {/* Condor callout */}
+        <div className="relative mt-6 grid gap-3 border-t border-[var(--border)] pt-5 md:grid-cols-3">
+          <div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+            <div className="text-[11px] uppercase tracking-wider text-[var(--text-faint)]">Condor agent</div>
+            <div className="mt-1 font-display text-lg font-semibold">
+              {labelFor(condorStatus)}
+            </div>
+            <p className="mt-1 text-xs text-[var(--text-muted)]">
+              HTTP listener
+              {integrations?.condor?.http?.latency_ms != null
+                ? ` · ${integrations.condor.http.latency_ms}ms`
+                : ''}
+              {integrations?.condor?.http?.http_status != null
+                ? ` · status ${integrations.condor.http.http_status}`
+                : ''}
+            </p>
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">
+              Cloud WS:{' '}
+              {integrations?.condor?.websocket?.status || '—'}
+              {integrations?.condor?.websocket?.age_s != null
+                ? ` · log ${integrations.condor.websocket.age_s}s old`
+                : ''}
+            </p>
+          </div>
+          <div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 md:col-span-2">
+            <div className="text-[11px] uppercase tracking-wider text-[var(--text-faint)]">Clock strip</div>
+            <div className="mt-2 grid gap-2 font-mono text-xs sm:grid-cols-3">
+              <div>
+                <span className="text-[var(--text-faint)]">Browser </span>
+                {formatClock(browserUnix)}
+              </div>
+              <div>
+                <span className="text-[var(--text-faint)]">Pi </span>
+                {formatClock(piUnix)}
+                {piSkew != null ? (
+                  <span className={Math.abs(piSkew) > CLOCK_SKEW_WARN_S ? ' text-[var(--status-warn-fg)]' : ''}>
+                    {' '}
+                    ({skewLabel(piSkew)})
+                  </span>
+                ) : null}
+              </div>
+              <div>
+                <span className="text-[var(--text-faint)]">Niryo </span>
+                {formatClock(niryoUnix)}
+                {niryoSkew != null ? (
+                  <span className={Math.abs(niryoSkew) > CLOCK_SKEW_WARN_S ? ' text-[var(--status-warn-fg)]' : ''}>
+                    {' '}
+                    ({skewLabel(niryoSkew)})
+                  </span>
+                ) : (
+                  armStale && <span className=" text-[var(--status-bad-fg)]"> (no joint_states)</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {endpointsOpen && (
+          <div className="relative mt-4 grid gap-3 rounded-[var(--radius-sm)] border border-dashed border-[var(--border-strong)] bg-[var(--surface-2)] p-4 md:grid-cols-2">
+            <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">
+              API base
+              <input
+                value={apiInput}
+                onChange={(e) => setApiInput(e.target.value)}
+                className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-1)] px-3 py-2 text-sm text-[var(--text-primary)]"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">
+              rosbridge URL
+              <input
+                value={rosInput}
+                onChange={(e) => setRosInput(e.target.value)}
+                className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-1)] px-3 py-2 text-sm text-[var(--text-primary)]"
+              />
+            </label>
+            <div className="md:col-span-2">
+              <Button
+                onClick={() => {
+                  if (!apiInput.trim() || !rosInput.trim()) return
+                  setApiBase(apiInput.trim())
+                  setRosbridgeUrl(rosInput.trim())
+                }}
+              >
+                Save & reconnect
+              </Button>
+              <span className="ml-3 text-xs text-[var(--text-faint)]">Stored in this browser only.</span>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Actuator bay */}
+      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <section className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--card-surface)] p-5 shadow-card lg:col-span-1">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="font-display text-base font-semibold">Vibration</h3>
+            <StatusBadge label={ros ? 'Ready' : 'Offline'} tone={ros ? 'info' : 'bad'} />
+          </div>
+          <div className="font-display text-4xl font-semibold font-tabular tracking-tight">
+            {vibValue.toFixed(2)}
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={vibValue}
+            onChange={(e) => setVibValue(parseFloat(e.target.value))}
+            className="mt-4 w-full accent-[var(--accent)]"
+          />
+          <div className="mt-4 flex gap-2">
+            <Button onClick={publishVibration} disabled={!ros}>
+              Publish
+            </Button>
+            <Button variant="outline" onClick={() => setVibValue(0)} disabled={!ros}>
+              Zero
+            </Button>
+          </div>
+          <p className="mt-3 text-xs text-[var(--text-faint)]">
+            Last send: {ago(lastVibrationSent, nowTs)}
+          </p>
+        </section>
+
+        <section className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--card-surface)] p-5 shadow-card">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="font-display text-base font-semibold">micro-ROS</h3>
+            <StatusBadge
+              label={microRosHeartbeatFresh ? 'Heartbeat' : microRosLifecycleLabel}
+              tone={toneFor(microRosDisplayStatus)}
+              pulse={microRosHeartbeatFresh}
+            />
+          </div>
+          <p className="text-xs text-[var(--text-muted)]">
+            Lifecycle node <code className="font-mono">/micro_ros_launcher</code>. Heartbeat topic{' '}
+            <code className="font-mono">{MICROROS_HEARTBEAT_TOPIC}</code>.
+          </p>
+          <Button
+            className="mt-4"
+            disabled={!ros || !!microRosPending}
+            onClick={async () => {
+              if (!ros || microRosPending) return
+              setMicroRosLifecycleStatus('connecting')
+              try {
+                const next = microRosLifecycleLabel === 'active' ? 'stop' : 'start'
+                setMicroRosPending(next)
+                await driveMicroRosLifecycle()
+              } catch {
+                setMicroRosPending(null)
+                setMicroRosLifecycleStatus('disconnected')
+              }
+            }}
+          >
+            {microRosLifecycleLabel === 'active' ? 'Stop micro-ROS' : 'Start micro-ROS'}
+          </Button>
+        </section>
+
+        <section className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--card-surface)] p-5 shadow-card">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="font-display text-base font-semibold">Record target</h3>
+            <StatusBadge label={ros ? 'Ready' : 'Offline'} tone={ros ? 'info' : 'bad'} />
+          </div>
+          <input
+            placeholder="Target name"
+            value={recordName}
+            onChange={(e) => setRecordName(e.target.value)}
+            className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm"
+          />
+          <label className="mt-3 flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+            <input
+              type="checkbox"
+              checked={recordJoints}
+              onChange={(e) => setRecordJoints(e.target.checked)}
+            />
+            Record joints (not pose)
+          </label>
+          <Button className="mt-4" onClick={recordTarget} disabled={!ros || !recordName}>
+            Record
+          </Button>
+          {recordMsg && <p className="mt-2 text-xs text-[var(--text-muted)]">{recordMsg}</p>}
+        </section>
+      </div>
+
+      {/* Secondary sensors */}
+      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <section className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--card-surface-soft)] p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="font-display text-sm font-semibold">Camera</h3>
+              <p className="text-xs text-[var(--text-faint)]">/scan_qr/camera_info · {ago(lastCamera, nowTs)}</p>
+            </div>
+            <StatusBadge label={labelFor(cameraStatus)} tone={toneFor(cameraStatus)} />
+          </div>
+        </section>
+        <section className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--card-surface-soft)] p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="font-display text-sm font-semibold">Scale notes</h3>
+              <p className="text-xs text-[var(--text-faint)]">
+                Compose <code className="font-mono">scale_launcher</code> · not a ROS lifecycle node
+              </p>
+            </div>
+            <Activity className="h-4 w-4 text-[var(--text-faint)]" />
+          </div>
+        </section>
+      </div>
+    </div>
   )
 }
-
-

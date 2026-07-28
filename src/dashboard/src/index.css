@@ -166,3 +166,68 @@ body::before {
   background-size: 200% 100%;
   animation: skeleton-shimmer 1.4s ease-in-out infinite;
 }
+
+/* Cell Signal Deck (Controls) */
+.signal-spine-glow {
+  background:
+    radial-gradient(600px circle at 15% 0%, var(--accent-muted) 0%, transparent 55%),
+    radial-gradient(500px circle at 85% 100%, rgba(52, 211, 153, 0.06) 0%, transparent 50%);
+}
+
+.signal-orb--pulse {
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--status-good-fg) 35%, transparent);
+  animation: signal-orb-pulse 2.4s ease-out infinite;
+}
+
+@keyframes signal-orb-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--status-good-fg) 35%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 12px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.signal-link {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--border-strong) 80%, transparent),
+    color-mix(in srgb, var(--border) 60%, transparent)
+  );
+}
+
+.signal-link--live {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--status-good-fg) 55%, transparent),
+    color-mix(in srgb, var(--accent) 45%, transparent),
+    color-mix(in srgb, var(--status-good-fg) 55%, transparent)
+  );
+  background-size: 200% 100%;
+  animation: signal-flow 2.8s linear infinite;
+}
+
+.signal-link--dead {
+  opacity: 0.45;
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--border-strong) 0 6px,
+    transparent 6px 12px
+  );
+}
+
+@keyframes signal-flow {
+  0% { background-position: 0% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@media (max-width: 767px) {
+  .signal-node + .signal-node {
+    margin-top: 0.25rem;
+    padding-top: 0.75rem;
+    border-top: 1px dashed var(--border);
+  }
+}

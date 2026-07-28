@@ -2,12 +2,14 @@ import asyncio
 import json
 import logging
 import os
+import re
 import socket
 import threading
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
-from urllib import error, request
+from urllib import error, parse, request
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -357,6 +359,204 @@ def host_info() -> dict:
         # surface Pi vs browser vs Niryo time skew (MoveIt is sensitive to this).
         'utc_unix': now.timestamp(),
         'utc_iso': now.isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
+    }
+
+
+def _http_probe(url: str, timeout_s: float = 2.0) -> dict[str, Any]:
+    started = time.monotonic()
+    try:
+        req = request.Request(url, method='GET')
+        with request.urlopen(req, timeout=timeout_s) as resp:
+            code = getattr(resp, 'status', None) or resp.getcode()
+            latency_ms = round((time.monotonic() - started) * 1000)
+            return {
+                'reachable': True,
+                'http_status': int(code),
+                'latency_ms': latency_ms,
+                'error': None,
+            }
+    except error.HTTPError as exc:
+        # Condor often returns 404 on `/` — still means the listener is up.
+        latency_ms = round((time.monotonic() - started) * 1000)
+        return {
+            'reachable': True,
+            'http_status': int(exc.code),
+            'latency_ms': latency_ms,
+            'error': None,
+        }
+    except Exception as exc:  # noqa: BLE001 — surface any probe failure to UI
+        latency_ms = round((time.monotonic() - started) * 1000)
+        return {
+            'reachable': False,
+            'http_status': None,
+            'latency_ms': latency_ms,
+            'error': str(exc)[:200],
+        }
+
+
+def _condor_base_url() -> str:
+    override = (os.environ.get('CONDOR_AGENT_URL') or '').strip()
+    if override:
+        return override.rstrip('/')
+    parsed = parse.urlparse(WEIGHMENT_URL)
+    if parsed.scheme and parsed.netloc:
+        return f'{parsed.scheme}://{parsed.netloc}'
+    return 'http://127.0.0.1:5002'
+
+
+def _newest_condor_log(root: Path) -> Path | None:
+    if not root.is_dir():
+        return None
+    newest: Path | None = None
+    newest_mtime = -1.0
+    try:
+        for path in root.rglob('*.log'):
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                continue
+            if mtime > newest_mtime:
+                newest = path
+                newest_mtime = mtime
+    except OSError:
+        return None
+    return newest
+
+
+def _parse_condor_websocket(log_path: Path | None) -> dict[str, Any]:
+    """Infer Condor cloud WS health from the agent's file logger."""
+    if log_path is None:
+        return {
+            'status': 'unknown',
+            'detail': 'no log file under /data/condor-agent/logs',
+            'log_path': None,
+            'age_s': None,
+        }
+    try:
+        raw = log_path.read_bytes()
+        # Windows agent logs may use UTF-16; fall back to latin-1.
+        text = None
+        for encoding in ('utf-8', 'utf-16', 'latin-1'):
+            try:
+                text = raw.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        if text is None:
+            text = raw.decode('latin-1', errors='replace')
+        tail = text[-12000:]
+        age_s = round(time.time() - log_path.stat().st_mtime, 1)
+    except OSError as exc:
+        return {
+            'status': 'unknown',
+            'detail': f'log read failed: {exc}',
+            'log_path': str(log_path),
+            'age_s': None,
+        }
+
+    lower = tail.lower()
+    # Prefer the most recent decisive line.
+    lines = [ln.strip() for ln in tail.splitlines() if ln.strip()]
+    last_ws = None
+    for line in reversed(lines):
+        if 'websocket' in line.lower() or 'register' in line.lower():
+            last_ws = line
+            break
+
+    if re.search(r'register[_ ]?error|registration failed|unauthorized', lower):
+        status = 'disconnected'
+        detail = last_ws or 'registration error in log'
+    elif re.search(
+        r'websocket:\s*(waiting for messages|connected|connection established)',
+        lower,
+    ):
+        # Stale "Waiting" lines after a long gap mean the process may be hung.
+        status = 'connected' if age_s is not None and age_s < 90 else 'stale'
+        detail = last_ws or 'WebSocket healthy'
+    elif re.search(r'websocket:\s*(disconnected|closed|error)', lower):
+        status = 'disconnected'
+        detail = last_ws or 'WebSocket disconnected'
+    else:
+        status = 'unknown'
+        detail = last_ws or 'no WebSocket lines in recent log'
+
+    return {
+        'status': status,
+        'detail': detail[:240],
+        'log_path': str(log_path),
+        'age_s': age_s,
+    }
+
+
+@app.get('/integrations/status')
+def integrations_status() -> dict:
+    """Fleet/MES link health for the robot dashboard Controls panel.
+
+    Condor agent:
+      - HTTP listener (WEIGHMENT_URL host, often :5002)
+      - Cloud WebSocket inferred from persistent agent logs under /data
+    Webhook:
+      - GET /health on the local webhook_service
+    """
+    condor_base = _condor_base_url()
+    webhook_health = (
+        os.environ.get('WEBHOOK_HEALTH_URL') or 'http://webhook_service:5000/health'
+    ).strip()
+
+    condor_http = _http_probe(f'{condor_base}/')
+    webhook = _http_probe(webhook_health)
+
+    log_roots = [
+        Path(p)
+        for p in (
+            os.environ.get('CONDOR_LOG_ROOT') or '',
+            '/data/condor-agent/logs/promtek-condor-rhapsodi-agent',
+            '/data/condor-agent/logs',
+            '/data/condor-agent',
+        )
+        if p
+    ]
+    log_file = None
+    for root in log_roots:
+        log_file = _newest_condor_log(root)
+        if log_file is not None:
+            break
+    ws = _parse_condor_websocket(log_file)
+
+    if not condor_http['reachable']:
+        condor_status = 'disconnected'
+    elif ws['status'] == 'disconnected':
+        condor_status = 'disconnected'
+    elif ws['status'] == 'stale':
+        condor_status = 'stale'
+    elif ws['status'] == 'connected':
+        condor_status = 'connected'
+    else:
+        # HTTP listener up — weighment posts can reach the agent even if we
+        # cannot read the Windows-style log tree from this container mount.
+        condor_status = 'connected'
+
+    webhook_status = (
+        'connected'
+        if webhook['reachable'] and webhook['http_status'] == 200
+        else ('degraded' if webhook['reachable'] else 'disconnected')
+    )
+
+    return {
+        'checked_at': datetime.now(tz=timezone.utc)
+        .isoformat(timespec='milliseconds')
+        .replace('+00:00', 'Z'),
+        'condor': {
+            'status': condor_status,
+            'base_url': condor_base,
+            'http': condor_http,
+            'websocket': ws,
+        },
+        'webhook': {
+            'status': webhook_status,
+            'health_url': webhook_health,
+            'http': webhook,
+        },
     }
 
 
