@@ -228,9 +228,11 @@ services:
       "
 
   # Development pouring controller: rebuilds a mounted source overlay at container start.
-  # Use this instead of `pouring_controller` when iterating on pouring_controller code on the Pi.
+  # Opt-in only — never start on edge with plain `compose up` (crash-loops without full src/).
+  #   docker compose ... --profile edge-dev up -d pouring_controller_dev
   pouring_controller_dev:
     <<: *ros-robot-service
+    profiles: ["edge-dev"]
     volumes:
       - .:/workspace:rw
       - ./data:/data
@@ -298,9 +300,11 @@ services:
       -p tree_file:=${BT_TREE:-/ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml}
 
   # Development orchestrator: rebuilds a mounted source overlay at container start.
-  # Use this instead of `orchestrator` when iterating on robot_orchestrator code on the Pi.
+  # Opt-in only — never start on edge with plain `compose up` (crash-loops without full src/).
+  #   docker compose ... --profile edge-dev up -d orchestrator_dev
   orchestrator_dev:
     <<: *ros-robot-service
+    profiles: ["edge-dev"]
     volumes:
       - .:/workspace:rw
       - ./data:/data
