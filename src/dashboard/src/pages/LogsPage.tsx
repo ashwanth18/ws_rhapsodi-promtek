@@ -1,6 +1,5 @@
 import { type ReactNode, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import SidebarLayout from './SidebarLayout'
 import DateTimeText from '../components/DateTimeText'
 import DateTimeRangeField from '../components/DateTimeRangeField'
 import GlassCard from '../components/GlassCard'
@@ -403,8 +402,7 @@ export default function LogsPage() {
     : null
 
   return (
-    <SidebarLayout>
-      <div className="px-5 py-5 lg:px-6">
+          <div className="px-5 py-5 lg:px-6">
         <SectionHeader
           title="Run History"
           description="Processed robot traces and derived pour/scoop metrics."
@@ -801,7 +799,6 @@ export default function LogsPage() {
           </div>
         </div>
       </div>
-    </SidebarLayout>
   )
 }
 

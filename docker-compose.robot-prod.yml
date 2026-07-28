@@ -30,6 +30,7 @@ services:
       - "5432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
   backend:
     image: ${BACKEND_IMAGE:-iserenity/rhapsodi-promtek:backend}
@@ -55,6 +56,7 @@ services:
       - "host.docker.internal:host-gateway"
     depends_on:
       - db
+    restart: unless-stopped
 
   processing:
     image: ${PROCESSING_IMAGE:-iserenity/rhapsodi-promtek:processing}
@@ -68,6 +70,7 @@ services:
       - ./data:/data
     depends_on:
       - db
+    restart: unless-stopped
 
   webhook_service:
     image: ${WEBHOOK_IMAGE:-iserenity/rhapsodi-promtek:webhook}
@@ -79,6 +82,7 @@ services:
       - ./data:/data
     depends_on:
       - db
+    restart: unless-stopped
 
   condor_agent:
     image: ${CONDOR_AGENT_IMAGE:-iserenity/rhapsodi-promtek:condor-agent}
@@ -101,8 +105,11 @@ services:
     image: ${DASHBOARD_IMAGE:-iserenity/rhapsodi-promtek:dashboard}
     ports:
       - "${DASHBOARD_PORT:-8080}:80"
+    volumes:
+      - ./docker/nginx-dashboard.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - backend
+    restart: unless-stopped
 
   rosbridge:
     <<: *ros-robot-service
@@ -147,7 +154,7 @@ services:
     command: >
       ros2 launch weighing_scale_driver weighing_scale.launch.py
       port:=${SCALE_DEVICE:-/dev/ttyUSB0}
-      baud:=${SCALE_BAUD:-115200}
+      baud:=${SCALE_BAUD:-9600}
       topic:=/weight
 
   micro_ros_agent:

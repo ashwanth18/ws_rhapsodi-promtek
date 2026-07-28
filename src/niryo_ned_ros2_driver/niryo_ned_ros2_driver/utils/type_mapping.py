@@ -54,7 +54,16 @@ def convert_ros1_to_ros2_type(ros1_type: str, interface_type: str) -> str:
             f"Invalid interface type '{interface_type}'. Expected 'srv', 'msg' or 'action'."
         )
 
-    pkg, type = ros1_type.split("/")
+    if not isinstance(ros1_type, str) or "/" not in ros1_type:
+        raise ValueError(
+            f"Invalid ROS1 type '{ros1_type!r}'. Expected 'package/Type'."
+        )
+
+    pkg, type = ros1_type.split("/", 1)
+    if not pkg or not type:
+        raise ValueError(
+            f"Invalid ROS1 type '{ros1_type}'. Expected 'package/Type'."
+        )
     if interface_type == "action":
         type = type.replace("Action", "")
 

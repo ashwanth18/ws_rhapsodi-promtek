@@ -254,7 +254,13 @@ class ROS2Driver:
                 f"Registering action {action_name} of type {ros1_type}"
             )
 
-            ros2_type = convert_ros1_to_ros2_type(ros1_type, "action")
+            try:
+                ros2_type = convert_ros1_to_ros2_type(ros1_type, "action")
+            except ValueError as e:
+                self._node.get_logger().warn(
+                    f"Skipping action {action_name}: {e}"
+                )
+                continue
 
             action_type = ROSTypes(ros1_type=ros1_type, ros2_type=ros2_type)
 
@@ -337,7 +343,13 @@ class ROS2Driver:
                 f"Registering service {service_name} of type {ros1_type}"
             )
 
-            ros2_type = convert_ros1_to_ros2_type(ros1_type, "srv")
+            try:
+                ros2_type = convert_ros1_to_ros2_type(ros1_type, "srv")
+            except ValueError as e:
+                self._node.get_logger().warn(
+                    f"Skipping service {service_name}: {e}"
+                )
+                continue
 
             service_type = ROSTypes(ros1_type=ros1_type, ros2_type=ros2_type)
 
@@ -435,6 +447,16 @@ class ROS2Driver:
                 interface = future_to_interface[future]
                 try:
                     interface_type = future.result()
+                    if not interface_type or not isinstance(interface_type, str):
+                        self._node.get_logger().warn(
+                            f"Skipping {interface}: empty/invalid type {interface_type!r}"
+                        )
+                        continue
+                    if "/" not in interface_type:
+                        self._node.get_logger().warn(
+                            f"Skipping {interface}: type missing package prefix: {interface_type!r}"
+                        )
+                        continue
                     interface_type_map[interface] = interface_type
                 except Exception as e:
                     self._node.get_logger().warn(
@@ -464,7 +486,13 @@ class ROS2Driver:
                 f"Registering topic {topic_name} of type {ros1_type}"
             )
 
-            ros2_type = convert_ros1_to_ros2_type(ros1_type, "msg")
+            try:
+                ros2_type = convert_ros1_to_ros2_type(ros1_type, "msg")
+            except ValueError as e:
+                self._node.get_logger().warn(
+                    f"Skipping topic {topic_name}: {e}"
+                )
+                continue
 
             topic_type = ROSTypes(ros1_type=ros1_type, ros2_type=ros2_type)
 

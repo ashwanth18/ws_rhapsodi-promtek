@@ -4,16 +4,21 @@ import { useRuntimeConfig } from '../config/RuntimeConfig'
 
 export type ConnStatus = 'connected' | 'connecting' | 'disconnected'
 
+function rosIsConnected(ros: { isConnected?: boolean } | null): boolean {
+  return Boolean(ros && ros.isConnected)
+}
+
 export function useConnectionStatus(weightStale?: boolean) {
   const ros = useRos()
   const { apiBase } = useRuntimeConfig()
   const [apiStatus, setApiStatus] = useState<ConnStatus>('connecting')
-  const [rosStatus, setRosStatus] = useState<ConnStatus>('connecting')
+  const [rosStatus, setRosStatus] = useState<ConnStatus>(() =>
+    rosIsConnected(ros) ? 'connected' : ros ? 'connecting' : 'disconnected',
+  )
   const [hostName, setHostName] = useState('—')
 
   useEffect(() => {
     let cancelled = false
-    setApiStatus('connecting')
     const ping = async () => {
       try {
         const res = await fetch(`${apiBase}/host_info`, { cache: 'no-store' })
@@ -28,7 +33,7 @@ export function useConnectionStatus(weightStale?: boolean) {
         setHostName('—')
       }
     }
-    ping()
+    void ping()
     const id = window.setInterval(ping, 5000)
     return () => {
       cancelled = true
@@ -41,7 +46,9 @@ export function useConnectionStatus(weightStale?: boolean) {
       setRosStatus('disconnected')
       return
     }
-    setRosStatus('connecting')
+    // Page remounts must not flash "connecting" — the shared RosProvider
+    // socket is often already open, and 'connection' will not fire again.
+    setRosStatus(rosIsConnected(ros) ? 'connected' : 'connecting')
     const onConnect = () => setRosStatus('connected')
     const onDisconnect = () => setRosStatus('disconnected')
     ros.on('connection', onConnect)
