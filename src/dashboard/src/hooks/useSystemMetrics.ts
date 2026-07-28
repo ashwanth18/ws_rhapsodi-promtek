@@ -16,6 +16,8 @@ export type HostMetrics = {
   load1?: number | null
   load5?: number | null
   load15?: number | null
+  cpu_cores?: number | null
+  load_pressure_pct?: number | null
   mem_pct?: number | null
   mem_used_bytes?: number | null
   mem_total_bytes?: number | null

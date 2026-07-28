@@ -828,8 +828,14 @@ export default function ControlsPage() {
           ) : (
             <div className="space-y-3">
               <MetricRow
-                label="CPU"
-                value={pi?.cpu_pct != null ? `${pi.cpu_pct.toFixed(0)}%` : '—'}
+                label="CPU busy"
+                value={
+                  pi?.cpu_pct != null
+                    ? `${pi.cpu_pct.toFixed(0)}%${
+                        pi.cpu_cores != null ? ` of ${pi.cpu_cores} cores` : ''
+                      }`
+                    : '—'
+                }
                 pct={pi?.cpu_pct}
               />
               <MetricRow
@@ -862,6 +868,12 @@ export default function ControlsPage() {
                     {' / '}
                     {pi?.load15 != null ? pi.load15.toFixed(2) : '—'}
                   </div>
+                  {pi?.load_pressure_pct != null && pi.cpu_cores != null ? (
+                    <div className="mt-1 text-[10px] text-[var(--text-faint)]">
+                      ≈ {pi.load_pressure_pct.toFixed(0)}% queue pressure vs{' '}
+                      {pi.cpu_cores} cores
+                    </div>
+                  ) : null}
                 </div>
                 <div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2">
                   <div className="text-[10px] uppercase tracking-wider text-[var(--text-faint)]">

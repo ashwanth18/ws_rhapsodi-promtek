@@ -366,43 +366,30 @@ def _sys_root() -> Path:
     return Path('/sys')
 
 
-def _read_loadavg(proc: Path) -> dict[str, float | None]:
+_CPU_CACHE: dict[str, Any] = {'at': 0.0, 'pct': None}
+
+
+def _nproc(proc: Path) -> int:
     try:
-        parts = (proc / 'loadavg').read_text(encoding='utf-8').split()
-        return {
-            'load1': float(parts[0]),
-            'load5': float(parts[1]),
-            'load15': float(parts[2]),
-        }
-    except (OSError, IndexError, ValueError):
-        return {'load1': None, 'load5': None, 'load15': None}
+        n = 0
+        for line in (proc / 'stat').read_text(encoding='utf-8').splitlines():
+            if line.startswith('cpu') and len(line) > 3 and line[3].isdigit():
+                n += 1
+        return n or 1
+    except OSError:
+        return 1
 
 
-def _read_mem(proc: Path) -> dict[str, float | int | None]:
-    try:
-        info: dict[str, int] = {}
-        for line in (proc / 'meminfo').read_text(encoding='utf-8').splitlines():
-            if ':' not in line:
-                continue
-            key, raw = line.split(':', 1)
-            num = raw.strip().split()[0]
-            info[key] = int(num) * 1024  # kB → bytes
-        total = info.get('MemTotal')
-        available = info.get('MemAvailable')
-        if total and available is not None and total > 0:
-            used = total - available
-            return {
-                'mem_total_bytes': total,
-                'mem_used_bytes': used,
-                'mem_pct': round(100.0 * used / total, 1),
-            }
-    except (OSError, ValueError, IndexError):
-        pass
-    return {'mem_total_bytes': None, 'mem_used_bytes': None, 'mem_pct': None}
+def _read_cpu_pct(proc: Path, sample_s: float = 0.75) -> float | None:
+    """Host CPU busy % from two /proc/stat samples (cached ~2s).
 
-
-def _read_cpu_pct(proc: Path, sample_s: float = 0.15) -> float | None:
-    """Instant CPU busy % from two /proc/stat samples."""
+    Short windows (e.g. 150ms) read very high on bursty ROS cells; a ~1s
+    window matches what operators expect from top/`uptime`.
+    """
+    now = time.monotonic()
+    cached_at = float(_CPU_CACHE.get('at') or 0.0)
+    if now - cached_at < 2.0 and _CPU_CACHE.get('pct') is not None:
+        return _CPU_CACHE['pct']  # type: ignore[return-value]
 
     def snapshot() -> tuple[int, int] | None:
         try:
@@ -428,7 +415,59 @@ def _read_cpu_pct(proc: Path, sample_s: float = 0.15) -> float | None:
     if total_d <= 0:
         return None
     busy = max(0.0, min(100.0, 100.0 * (1.0 - idle_d / total_d)))
-    return round(busy, 1)
+    pct = round(busy, 1)
+    _CPU_CACHE['at'] = time.monotonic()
+    _CPU_CACHE['pct'] = pct
+    return pct
+
+
+def _read_loadavg(proc: Path) -> dict[str, float | int | None]:
+    try:
+        parts = (proc / 'loadavg').read_text(encoding='utf-8').split()
+        load1 = float(parts[0])
+        load5 = float(parts[1])
+        load15 = float(parts[2])
+        cores = _nproc(proc)
+        # Load relative to core count (can exceed 100% when runnable > CPUs).
+        pressure = round(100.0 * load1 / max(cores, 1), 1)
+        return {
+            'load1': load1,
+            'load5': load5,
+            'load15': load15,
+            'cpu_cores': cores,
+            'load_pressure_pct': pressure,
+        }
+    except (OSError, IndexError, ValueError):
+        return {
+            'load1': None,
+            'load5': None,
+            'load15': None,
+            'cpu_cores': None,
+            'load_pressure_pct': None,
+        }
+
+
+def _read_mem(proc: Path) -> dict[str, float | int | None]:
+    try:
+        info: dict[str, int] = {}
+        for line in (proc / 'meminfo').read_text(encoding='utf-8').splitlines():
+            if ':' not in line:
+                continue
+            key, raw = line.split(':', 1)
+            num = raw.strip().split()[0]
+            info[key] = int(num) * 1024  # kB → bytes
+        total = info.get('MemTotal')
+        available = info.get('MemAvailable')
+        if total and available is not None and total > 0:
+            used = total - available
+            return {
+                'mem_total_bytes': total,
+                'mem_used_bytes': used,
+                'mem_pct': round(100.0 * used / total, 1),
+            }
+    except (OSError, ValueError, IndexError):
+        pass
+    return {'mem_total_bytes': None, 'mem_used_bytes': None, 'mem_pct': None}
 
 
 def _read_temp_c(sys_root: Path) -> float | None:
