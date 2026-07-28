@@ -26,11 +26,13 @@ Robot/Pi-only changes do **not** require a Jetson redeploy (use the edge/Pi path
 
 ```bash
 bash scripts/deploy_jetson_fleet_console.sh
-# or, if monitoring compose/config also changed:
+# monitoring compose/config also changed:
 WITH_MONITORING=1 bash scripts/deploy_jetson_fleet_console.sh
+# GitHub push blocked / need laptop tree immediately:
+LOCAL_SYNC=1 bash scripts/deploy_jetson_fleet_console.sh
 ```
 
-The script SSHes via Tailscale (`tailscale ip -4 jetson`), `git pull --ff-only`, then
+The script SSHes via Tailscale (`tailscale ip -4 jetson`), syncs code (`git pull` or `LOCAL_SYNC=1` rsync), then
 `docker compose -f monitoring/docker-compose.fleet-console.yml --env-file fleet-console.env up -d --build`.
 
 ## SSH note
