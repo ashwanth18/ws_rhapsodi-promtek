@@ -1,0 +1,49 @@
+---
+description: After Jetson hub / Fleet Console changes, always redeploy the Jetson (do not leave laptop-only).
+alwaysApply: true
+---
+
+# Jetson auto-deploy
+
+When you change anything that runs on the **Jetson hub**, finish by **deploying to Jetson in the same session**. Do not stop at commit/laptop-only.
+
+## What counts as Jetson changes
+
+- `src/fleet_console/**` (API + UI)
+- `monitoring/docker-compose.fleet-console.yml`
+- `monitoring/fleet-console.env.example`
+- Hub monitoring: `monitoring/docker-compose.monitoring.yml`, `monitoring/loki/**`, Grafana/Prometheus provisioning used on Jetson
+- `scripts/deploy_jetson_fleet_console.sh`, `scripts/setup_jetson_builder.sh`
+- Docs/env that only affect the Jetson control plane
+
+Robot/Pi-only changes do **not** require a Jetson redeploy (use the edge/Pi path instead).
+
+## Required deploy steps
+
+1. **Commit** the Jetson-related change (per commit-important-changes).
+2. **Push** the branch Jetson tracks (usually `feature/fleet-console` until merged to `main`).
+3. **Redeploy** with:
+
+```bash
+bash scripts/deploy_jetson_fleet_console.sh
+# or, if monitoring compose/config also changed:
+WITH_MONITORING=1 bash scripts/deploy_jetson_fleet_console.sh
+```
+
+The script SSHes via Tailscale (`tailscale ip -4 jetson`), `git pull --ff-only`, then
+`docker compose -f monitoring/docker-compose.fleet-console.yml --env-file fleet-console.env up -d --build`.
+
+## SSH note
+
+On some laptops `jetson` resolves to a LAN IP that times out. Prefer Tailscale IP / MagicDNS (`jetson.tail….ts.net`) or let the script pick `tailscale ip -4 jetson`.
+
+## Verify
+
+- Container up: `rhapsodi-fleet-console-fleet-console-1`
+- UI: `http://jetson:8090` (or Tailscale IP `:8090`)
+- Tell the user the console was redeployed and the URL.
+
+## Forbidden
+
+- Changing Fleet Console and only saying “restart on Jetson later”
+- `docker cp` into the fleet-console container as the permanent fix (same permanence rule as Pi)
