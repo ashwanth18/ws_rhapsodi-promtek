@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import SidebarLayout from './SidebarLayout'
 import GlassCard from '../components/GlassCard'
 import Button from '../components/ui/button'
 import { useRos } from '../ros/RosContext'
@@ -72,8 +71,7 @@ export default function TrainingPage() {
   }
 
   return (
-    <SidebarLayout>
-      <div className="px-6 py-6">
+          <div className="px-6 py-6">
         <div className="flex items-end justify-between mb-4">
           <div>
             <h1 className="text-2xl font-bold" style={{ fontFamily: 'Space Grotesk' }}>Training</h1>
@@ -179,7 +177,6 @@ export default function TrainingPage() {
           </div>
         </div>
       )}
-    </SidebarLayout>
   )
 }
 

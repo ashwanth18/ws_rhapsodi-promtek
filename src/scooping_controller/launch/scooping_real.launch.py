@@ -376,7 +376,10 @@ def generate_launch_description():
             declare_drivers_list_file,
             declare_whitelist_params_file,
             declare_driver_log_level,
-            driver_launch,
+            # Start the Niryo rosbridge driver slightly later so a cold robot boot
+            # is less likely to miss the first connection attempt. Respawn in
+            # niryo_ned_ros2_driver/launch/driver.launch.py covers remaining races.
+            TimerAction(period=3.0, actions=[driver_launch]),
             robot_state_publisher,
             TimerAction(period=2.0, actions=[move_group_node]),
             TimerAction(period=4.0, actions=[move_to_server]),

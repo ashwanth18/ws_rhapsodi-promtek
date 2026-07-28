@@ -25,6 +25,7 @@ type Props = {
   tone?: StatusTone
   pulse?: boolean
   className?: string
+  title?: string
 }
 
 export default function StatusBadge({
@@ -32,9 +33,11 @@ export default function StatusBadge({
   tone = 'neutral',
   pulse = false,
   className,
+  title,
 }: Props) {
   return (
     <span
+      title={title}
       className={cn(
         'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium',
         toneStyles[tone],

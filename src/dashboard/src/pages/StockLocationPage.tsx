@@ -4,7 +4,6 @@ import Button from '../components/ui/button'
 import DataTable, { Column } from '../components/ui/DataTable'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { useRuntimeConfig } from '../config/RuntimeConfig'
-import SidebarLayout from './SidebarLayout'
 
 type Row = {
   id: number
@@ -50,8 +49,7 @@ export default function StockLocationPage() {
   ]
 
   return (
-    <SidebarLayout>
-      <div className="px-5 py-5 lg:px-6">
+          <div className="px-5 py-5 lg:px-6">
         <SectionHeader
           title="Location Allocations"
           description="MES stock location allocation events used for robot target mapping."
@@ -72,6 +70,5 @@ export default function StockLocationPage() {
           />
         )}
       </div>
-    </SidebarLayout>
   )
 }

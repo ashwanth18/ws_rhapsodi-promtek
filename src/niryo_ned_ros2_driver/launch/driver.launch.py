@@ -101,6 +101,10 @@ def launch_setup(context):
             name=f"ros2_driver_{ns if ns else 'default'}",
             parameters=params,
             arguments=["--ros-args", "--log-level", log_level],
+            # Arm rosbridge often comes up after the Pi stack. Without respawn the
+            # driver dies once on timeout and MoveIt keeps running with no /joint_states.
+            respawn=True,
+            respawn_delay=5.0,
         )
 
         driver_nodes.append(driver_node)
