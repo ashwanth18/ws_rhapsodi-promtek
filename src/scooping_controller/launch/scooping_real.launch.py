@@ -284,6 +284,10 @@ def generate_launch_description():
         package="robot_moveit",
         executable="move_to_server_node",
         output="screen",
+        # Wait for robot_state_publisher / move_group to advertise robot_description.
+        # Without this, cold starts race and move_to_server dies (empty URDF).
+        respawn=True,
+        respawn_delay=3.0,
         parameters=[
             {
                 "planning_group": "arm",
@@ -308,6 +312,8 @@ def generate_launch_description():
         package="robot_moveit",
         executable="target_recorder_node",
         output="screen",
+        respawn=True,
+        respawn_delay=3.0,
         parameters=[
             {
                 "planning_group": "arm",
@@ -382,9 +388,10 @@ def generate_launch_description():
             TimerAction(period=3.0, actions=[driver_launch]),
             robot_state_publisher,
             TimerAction(period=2.0, actions=[move_group_node]),
-            TimerAction(period=4.0, actions=[move_to_server]),
-            TimerAction(period=4.2, actions=[target_recorder]),
-            TimerAction(period=4.8, actions=[scooping_task_frame]),
+            # After move_group + RSP have published robot_description (was 4s; raced).
+            TimerAction(period=12.0, actions=[move_to_server]),
+            TimerAction(period=12.2, actions=[target_recorder]),
+            TimerAction(period=5.0, actions=[scooping_task_frame]),
             TimerAction(period=5.0, actions=[marker_server]),
             TimerAction(period=5.5, actions=[container_marker]),
             TimerAction(period=5.7, actions=[planning_scene_collisions]),
