@@ -2,7 +2,9 @@
 # Discovers all Docker containers via the Docker socket and pushes to Loki.
 #
 # Labels:
-#   host      — from /etc/hostname (matches Prometheus instance / device_id)
+#   host      — fleet identity (HOST_LABEL / Tailscale short name), NOT necessarily
+#               /etc/hostname. Must match Fleet Console device_id / Prometheus
+#               `instance` (e.g. rhapsodi-pi5).
 #   container — Docker container name (leading slash stripped)
 #   stream    — stdout | stderr
 server:

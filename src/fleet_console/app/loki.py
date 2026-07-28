@@ -62,13 +62,80 @@ def escape_label(value: str) -> str:
     return value.replace('\\', '\\\\').replace('"', '\\"')
 
 
+def resolve_loki_hosts(device_id: str) -> list[str]:
+    """Map fleet device_id → Loki `host` label values that may have streams.
+
+    Promtail historically labeled with `/etc/hostname` (e.g. rhapsodiNiryo) while
+    the fleet inventory key is the Tailscale short name (rhapsodi-pi5). Prefer an
+    exact match, then inventory aliases, then other Loki hosts that look like the
+    robot cell (have scooping/condor streams) when the device_id itself is empty.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def add(value: str | None) -> None:
+        v = (value or '').strip()
+        if v and v not in seen:
+            seen.add(v)
+            out.append(v)
+
+    add(device_id)
+    try:
+        from .inventory import get_device
+
+        device = get_device(device_id)
+        if device:
+            add(device.get('hostname'))
+            add(device.get('id'))
+    except Exception:  # noqa: BLE001 — inventory is optional for log lookup
+        pass
+
+    known = label_values('host')
+    known_lower = {h.lower(): h for h in known}
+    for candidate in list(out):
+        match = known_lower.get(candidate.lower())
+        if match:
+            add(match)
+
+    # If none of the preferred ids exist in Loki yet, attach robot-looking hosts
+    # so the UI still shows historical streams (hostname rename case).
+    if not any(h in known for h in out):
+        for h in known:
+            if h.lower() in {'jetson', 'jetson-local'}:
+                continue
+            services = set(containers_for_host_raw(h))
+            if services & {
+                'scooping_stack',
+                'condor_agent',
+                'scale_launcher',
+                'rosbridge',
+                'backend',
+                'webhook_service',
+            }:
+                add(h)
+
+    return out or [device_id]
+
+
+def host_label_matcher(hosts: list[str]) -> str:
+    """LogQL host matcher: exact for one host, regex for aliases."""
+    cleaned = [h for h in hosts if h]
+    if not cleaned:
+        return 'host=""'
+    if len(cleaned) == 1:
+        return f'host="{escape_label(cleaned[0])}"'
+    joined = '|'.join(escape_label(h) for h in cleaned)
+    return f'host=~"{joined}"'
+
+
 def build_logql(
     host: str,
     *,
     container: str | None = None,
     q: str | None = None,
+    hosts: list[str] | None = None,
 ) -> str:
-    h = escape_label(host)
+    host_match = host_label_matcher(hosts or [host])
     text = (q or '').strip()
     line_filter = ''
     if text:
@@ -82,18 +149,14 @@ def build_logql(
         # of two selectors (Loki rejects some forms as parse errors).
         if re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]*', container.lstrip('/')):
             # Exact compose service, or container name containing it.
-            selector = (
-                '{'
-                + f'host="{h}",compose_service="{c}"'
-                + '}'
-            )
+            selector = '{' + f'{host_match},compose_service="{c}"' + '}'
             # Also match when the UI picked a full docker name.
             if '-' in c and c.count('-') >= 2:
-                selector = '{' + f'host="{h}",container="{c}"' + '}'
+                selector = '{' + f'{host_match},container="{c}"' + '}'
             return selector + line_filter
-        return '{' + f'host="{h}",container=~".*{c}.*"' + '}' + line_filter
+        return '{' + f'{host_match},container=~".*{c}.*"' + '}' + line_filter
 
-    return '{' + f'host="{h}"' + '}' + line_filter
+    return '{' + host_match + '}' + line_filter
 
 
 def query_range(
@@ -149,14 +212,9 @@ def label_values(label: str, match: str | None = None) -> list[str]:
     return sorted({str(v) for v in values if v})
 
 
-def containers_for_host(host: str) -> list[str]:
-    """List compose services / containers that actually have streams for host.
-
-    Loki's label-values `match[]` is not always host-scoped, so we use the
-    series API and extract labels from matching streams.
-    """
+def containers_for_host_raw(host: str) -> list[str]:
+    """List compose services / containers for an exact Loki host label."""
     match = '{' + f'host="{escape_label(host)}"' + '}'
-    # /loki/api/v1/series?match[]={host="..."}
     end = int(time.time())
     start = end - 86400
     payload = _get(
@@ -184,7 +242,6 @@ def containers_for_host(host: str) -> list[str]:
                 seen_name.add(cont)
                 names.append(cont)
     if not services and not names:
-        # Fallback to label API (may be broader than host).
         names = label_values('container', match=match)
         services = label_values('compose_service', match=match)
     out: list[str] = []
@@ -194,6 +251,18 @@ def containers_for_host(host: str) -> list[str]:
         if key and key not in seen:
             seen.add(key)
             out.append(key)
+    return out
+
+
+def containers_for_host(host: str) -> list[str]:
+    """List compose services / containers for a fleet device (with host aliases)."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for candidate in resolve_loki_hosts(host):
+        for name in containers_for_host_raw(candidate):
+            if name not in seen:
+                seen.add(name)
+                out.append(name)
     return out
 
 
@@ -222,6 +291,7 @@ def flatten_lines(result: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     'container': container,
                     'stream': stream_name,
                     'text': entry[1],
+                    'host': labels.get('host') or '',
                 }
             )
     lines.sort(key=lambda row: row['ts'])
@@ -239,7 +309,8 @@ def device_logs(
     limit: int = 500,
     direction: str = 'backward',
 ) -> dict[str, Any]:
-    logql = build_logql(device_id, container=container, q=q)
+    hosts = resolve_loki_hosts(device_id)
+    logql = build_logql(device_id, container=container, q=q, hosts=hosts)
     start_ts = start if start is not None else float(parse_since(since))
     end_ts = end if end is not None else time.time()
     payload = query_range(
@@ -254,6 +325,7 @@ def device_logs(
     # ascending. For live-tail UX keep chronological (oldest → newest).
     return {
         'device_id': device_id,
+        'loki_hosts': hosts,
         'query': logql,
         'start': start_ts,
         'end': end_ts,

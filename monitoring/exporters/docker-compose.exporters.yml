@@ -1,5 +1,6 @@
-# Host/container metrics exporters for edge devices (Pi / Jetson).
-# Started by scripts/provision_device.sh and shipped in the slim deploy bundle.
+# Host/container metrics exporters + log shipper for edge devices (Pi / Jetson).
+# Started by scripts/provision_device.sh / fleet-agent and shipped in the slim
+# deploy bundle.
 services:
   node_exporter:
     image: quay.io/prometheus/node-exporter:v1.8.2
@@ -26,3 +27,45 @@ services:
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
+
+  # Ships every container's stdout/stderr to the central Loki on the Jetson.
+  # LOKI_URL defaults to Tailscale MagicDNS; override in robot-prod.env for
+  # local/dev (e.g. http://127.0.0.1:3100/loki/api/v1/push on the monitoring host).
+  #
+  # HOST_LABEL must match the Fleet Console / Tailscale device id (e.g.
+  # rhapsodi-pi5). If unset we prefer the Tailscale short name, then /etc/hostname.
+  promtail:
+    image: grafana/promtail:3.1.1
+    network_mode: host
+    restart: unless-stopped
+    user: root
+    environment:
+      LOKI_URL: ${LOKI_URL:-http://jetson:3100/loki/api/v1/push}
+      HOST_LABEL: ${HOST_LABEL:-}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        if [ -n "$$HOST_LABEL" ]; then
+          export HOSTNAME="$$HOST_LABEL";
+        elif command -v tailscale >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+          TS="$$(tailscale status --json 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("Self") or {}).get("DNSName","").split(".")[0])' 2>/dev/null || true)";
+          if [ -n "$$TS" ]; then export HOSTNAME="$$TS";
+          else export HOSTNAME="$$(tr -d '\n' </etc/hostname)"; fi;
+        else
+          export HOSTNAME="$$(tr -d '\n' </etc/hostname)";
+        fi;
+        echo "promtail host label=$$HOSTNAME";
+        exec /usr/bin/promtail
+        -config.file=/etc/promtail/promtail-config.yml
+        -config.expand-env=true
+    volumes:
+      - ./promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /etc/hostname:/etc/hostname:ro
+      - /usr/bin/tailscale:/usr/bin/tailscale:ro
+      - /var/run/tailscale:/var/run/tailscale:ro
+      - promtail_positions:/tmp
+
+volumes:
+  promtail_positions:
