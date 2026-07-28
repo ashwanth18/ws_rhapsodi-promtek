@@ -13,19 +13,28 @@ services:
       - /:/host:ro,rslave
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    # Docker 29+ defaults to containerd-snapshotter (storage driver "overlayfs").
+    # cAdvisor <0.54 looks for legacy overlay2 layerdb mount-id files and spams:
+    #   failed to identify the read-write layer ID ... mount-id: no such file
+    # v0.54+ understands the new layout (google/cadvisor#3709 / #3749).
+    image: gcr.io/cadvisor/cadvisor:v0.55.1
     network_mode: host
     privileged: true
     restart: unless-stopped
     command:
       - --port=9190
+      - --docker_only=true
+      # Disk/fs layer metrics still flake on some overlayfs hosts; CPU/mem/net stay.
+      - --disable_metrics=disk,diskIO,referenced_memory,tcp,udp,advtcp,sched,process
     devices:
       - /dev/kmsg
     volumes:
-      - /:/rootfs:ro
+      - /:/rootfs:ro,rslave
       - /var/run:/var/run:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
+      - /var/lib/docker/:/var/lib/docker:ro,rslave
+      - /var/lib/containerd/:/var/lib/containerd:ro,rslave
       - /dev/disk/:/dev/disk:ro
 
   # Ships every container's stdout/stderr to the central Loki on the Jetson.
