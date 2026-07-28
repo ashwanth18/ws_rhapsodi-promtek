@@ -47,6 +47,26 @@ On the robot (`niryo` @ `169.254.200.200`), `/etc/systemd/timesyncd.conf`:
 ```ini
 [Time]
 NTP=169.254.200.201
+# Default max poll is ~34min — arm can drift tens of seconds between syncs
+# and MoveIt then rejects /joint_states (freshness ~1s).
+PollIntervalMaxSec=64
+```
+
+SSH (from the Pi eth0 / laptop that can reach the link-local):
+
+```bash
+# Password auth — key-only / BatchMode=yes will look like "Permission denied"
+sshpass -p 'robotics' ssh -o PreferredAuthentications=password \
+  -o PubkeyAuthentication=no niryo@169.254.200.200
+```
+
+After a large clock step, **restart the Niryo ROS stack** so message stamps
+pick up the new time (OS sync alone is not enough if ROS1 time was stuck):
+
+```bash
+sudo systemctl restart niryo_robot_ros.service
+# then on the Pi:
+docker restart rhapsodi-promtek-robot-prod-scooping_stack-1
 ```
 
 Also give the arm a **default route via the Pi** and DNS (`8.8.8.8` / `1.1.1.1`)
