@@ -1,0 +1,34 @@
+---
+description: Pi/edge live hotfixes must be synced into git and the deploy path — never leave temporary container patches as the fix.
+alwaysApply: true
+---
+
+# Edge / Pi hotfix permanence
+
+When debugging or fixing a running robot (Pi, Jetson, or any edge host), **do not treat live patches as the finished fix**.
+
+## Forbidden as the only deliverable
+
+- `docker cp` / `scp` into a running container as the sole fix
+- Editing files only under `/ws/install/...` or other image layers on the device
+- Hand-editing `robot-prod.env` or host systemd/chrony **without** capturing the same change in repo (compose, ansible, examples, docs)
+
+Those are allowed only as **temporary validation** while the permanent change is written.
+
+## Required sync (same session unless user says otherwise)
+
+1. **Source of truth** — land the change in the workspace git tree (`src/`, `compose/`, `docker/`, `ansible/`, `*.env.example`, etc.).
+2. **Deploy path** — ensure recreate/pull picks it up: image rebuild inputs, bind mounts, deploy bundle (`scripts/publish_deploy_bundle.sh`), or Ansible — whichever this repo uses for that artifact.
+3. **Commit / PR** — commit (or open a PR) when the user wants the fix kept; do not leave “only on the Pi”.
+4. **Call out leftovers** — if something must stay host-local (NTP, NAT, Tailscale), say so and point to the ansible/docs place it should live.
+
+## Compose on device
+
+Prefer workspace-root relative mounts and `--project-directory <workspace>` (or the root compose shim). Do not rely on paths that only work after ad-hoc `docker cp`.
+
+## Example
+
+```text
+❌ BAD: docker cp ros2_driver.py into scooping_stack → restart → done
+✅ GOOD: patch src/niryo_ned_ros2_driver/... → (optional live validate) → commit → rebuild/redeploy ros-prod
+```

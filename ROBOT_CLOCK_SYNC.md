@@ -36,11 +36,18 @@ The Pi and laptop should both be able to act as NTP servers.
 
 ## Pi Setup
 
-Install and run `chrony` on the Pi:
+Production Pi5 cells also NAT the robot subnet onto Wi‑Fi so the arm can reach
+DNS/public NTP. That host setup (systemd unit + chrony allow) lives in
+[docs/pi-niryo-link-networking.md](docs/pi-niryo-link-networking.md) and
+`ansible/tasks/pi_niryo_link.yml`.
+
+Install and run `chrony` on the Pi (minimum for time serving):
 
 ```bash
 sudo apt-get install -y chrony
-echo "allow 169.254.0.0/16" | sudo tee -a /etc/chrony/chrony.conf
+# Prefer the Ansible block; equivalent manual lines:
+#   allow 169.254.0.0/16
+#   local stratum 10
 sudo systemctl restart chrony
 systemctl status chrony --no-pager
 ```

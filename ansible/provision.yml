@@ -148,6 +148,11 @@
         state: started
         enabled: true
 
+    # Pi ↔ Niryo link-local NAT + chrony (host OS; not in Docker).
+    - name: Configure Pi Niryo link networking and chrony
+      ansible.builtin.include_tasks: tasks/pi_niryo_link.yml
+      when: robot_type | default('') == 'niryo'
+
     - name: Ensure workspace parent exists
       ansible.builtin.file:
         path: "{{ workspace_dir | dirname }}"

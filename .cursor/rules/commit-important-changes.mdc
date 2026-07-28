@@ -1,0 +1,34 @@
+---
+description: Important fixes and ops changes must be committed so history is a reliable audit trail.
+alwaysApply: true
+---
+
+# Commit important changes
+
+Do not leave meaningful work only in the working tree, a running container, or chat notes. **Git history is the track log.**
+
+## Commit (or open a PR) in the same session when you
+
+- Fix a bug that was validated on device or in CI
+- Change deploy/runtime behavior (compose, env examples, launch files, ansible, CI)
+- Add or update Cursor rules / operator docs that others rely on
+- Capture host-level edge setup that must be reproducible (networking, NTP, systemd)
+
+## How
+
+- Prefer a focused commit with a clear why (not a kitchen-sink dump)
+- Do **not** commit secrets (`.env`, vault plaintext, tokens, `robot-prod.env` with credentials)
+- If the user has not asked to commit yet, finish the source sync and **ask to commit** before ending — do not silently skip permanence
+- Push / PR when the user wants the change shared or deployed
+
+## Not required
+
+- Pure exploration, throwaway scratch, or formatting-only noise the user told you to discard
+- Interactive rebase / force-push unless the user explicitly requests it
+
+## Example
+
+```text
+❌ BAD: Fix scale baud on Pi + edit compose locally → leave uncommitted
+✅ GOOD: Edit compose + env.example → commit → note IMAGE_TAG rebuild needed
+```

@@ -411,7 +411,8 @@ Use this if the **Pi connects directly to the Niryo** *and* to your **laptop**.
 ### Topology
 
 - `eth0` (Pi built‑in) → **Niryo** (link‑local)
-- `enx…` (USB‑Ethernet) → **Laptop** (shared network)
+- `wlan0` → site Wi‑Fi (internet / NTP upstream) — see [docs/pi-niryo-link-networking.md](docs/pi-niryo-link-networking.md) for NAT + chrony
+- `enx…` (USB‑Ethernet) → **Laptop** (shared network) — optional dual‑NIC layout below
 
 ### IP plan
 

@@ -1,0 +1,70 @@
+---
+# Host networking for Pi5 ↔ Niryo link-local eth0 + Wi-Fi upstream.
+# Enables NAT so the arm can reach DNS/NTP/internet via the Pi, and allows
+# chrony clients on 169.254.0.0/16. See docs/pi-niryo-link-networking.md.
+#
+# Include from provision when robot_type=niryo (and optionally device_class=pi5):
+#   - ansible.builtin.include_tasks: tasks/pi_niryo_link.yml
+#     when: robot_type | default('') == 'niryo'
+
+- name: Install iptables and chrony for Niryo link
+  ansible.builtin.apt:
+    name:
+      - iptables
+      - chrony
+    state: present
+    update_cache: true
+
+- name: Install rhapsodi-robot-netshare script
+  ansible.builtin.copy:
+    src: rhapsodi-robot-netshare.sh
+    dest: /usr/local/sbin/rhapsodi-robot-netshare.sh
+    mode: "0755"
+    owner: root
+    group: root
+  register: netshare_script
+
+- name: Install rhapsodi-robot-netshare systemd unit
+  ansible.builtin.template:
+    src: rhapsodi-robot-netshare.service.j2
+    dest: /etc/systemd/system/rhapsodi-robot-netshare.service
+    mode: "0644"
+    owner: root
+    group: root
+  register: netshare_unit
+
+- name: Enable and start rhapsodi-robot-netshare
+  ansible.builtin.systemd:
+    name: rhapsodi-robot-netshare.service
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Re-run netshare when unit or script changed
+  ansible.builtin.systemd:
+    name: rhapsodi-robot-netshare.service
+    state: restarted
+  when: netshare_script.changed or netshare_unit.changed
+
+- name: Ensure chrony allows Niryo link-local clients
+  ansible.builtin.blockinfile:
+    path: /etc/chrony/chrony.conf
+    marker: "# {mark} RHAPSODI NIRYO LINK"
+    block: |
+      # Rhapsodi: allow Niryo on eth0 link-local to sync time from Pi
+      allow 169.254.0.0/16
+      local stratum 10
+    create: false
+  register: chrony_niryo
+
+- name: Restart chrony after Niryo allow block
+  ansible.builtin.systemd:
+    name: chrony
+    state: restarted
+  when: chrony_niryo.changed
+
+- name: Ensure chrony is running
+  ansible.builtin.systemd:
+    name: chrony
+    enabled: true
+    state: started
