@@ -1,5 +1,13 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Activity, Server, Settings } from 'lucide-react'
+import {
+  Activity,
+  HeartPulse,
+  KeyRound,
+  LayoutDashboard,
+  Package,
+  Server,
+  Settings,
+} from 'lucide-react'
 import { useState } from 'react'
 import { getToken, setToken } from '../lib/api'
 import { Button } from '../components/ui'
@@ -7,12 +15,16 @@ import { cn } from '../lib/cn'
 
 const NAV = [
   { to: '/', label: 'Devices', icon: Server, end: true },
+  { to: '/monitoring', label: 'Monitoring', icon: HeartPulse, end: false },
+  { to: '/dashboards', label: 'Dashboards', icon: LayoutDashboard, end: false },
+  { to: '/releases', label: 'Releases', icon: Package, end: false },
   { to: '/deployments', label: 'Deployments', icon: Activity, end: false },
+  { to: '/settings', label: 'Settings', icon: Settings, end: false },
 ]
 
 export default function Layout() {
   const [tokenDraft, setTokenDraft] = useState(getToken())
-  const [showSettings, setShowSettings] = useState(false)
+  const [showSession, setShowSession] = useState(false)
 
   return (
     <div className="flex min-h-full">
@@ -22,8 +34,11 @@ export default function Layout() {
             Rhapsodi Fleet
           </div>
           <div className="mt-1 text-xs text-[var(--text-muted)]">
-            Deploy · provision · observe
+            Fleet management · deploy · observe
           </div>
+          <p className="mt-2 text-[11px] leading-snug text-[var(--text-faint)]">
+            Control plane for the fleet. Open each device’s robot dashboard for cell operator UI.
+          </p>
         </div>
         <nav className="flex flex-1 flex-col gap-1 p-3">
           {NAV.map((item) => (
@@ -49,28 +64,30 @@ export default function Layout() {
           <Button
             variant="ghost"
             className="w-full justify-start"
-            onClick={() => setShowSettings((v) => !v)}
+            onClick={() => setShowSession((v) => !v)}
           >
-            <Settings className="h-4 w-4" />
-            API token
+            <KeyRound className="h-4 w-4" />
+            Session token
           </Button>
-          {showSettings ? (
+          {showSession ? (
             <div className="mt-2 space-y-2">
               <input
                 className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] px-2 py-1.5 text-xs"
                 value={tokenDraft}
                 onChange={(e) => setTokenDraft(e.target.value)}
-                placeholder="Bearer token (optional)"
+                placeholder="Bearer for this browser"
+                type="password"
+                autoComplete="off"
               />
               <Button
                 size="sm"
                 className="w-full"
                 onClick={() => {
                   setToken(tokenDraft.trim())
-                  setShowSettings(false)
+                  setShowSession(false)
                 }}
               >
-                Save
+                Use in browser
               </Button>
             </div>
           ) : null}

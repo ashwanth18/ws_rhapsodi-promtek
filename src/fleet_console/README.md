@@ -37,6 +37,11 @@ docker compose -f docker-compose.fleet-console.yml --env-file fleet-console.env 
 
 Open `http://<jetson-tailscale-ip>:8090`.
 
+The console is the **fleet management control plane** (provision, desired
+release/profile, deployments, monitoring). Each robot’s operator SPA
+(weighment UI / Cell Signal Deck) is linked from Devices as
+`http://<hostname>:8080` (override with `ROBOT_DASHBOARD_PORT`).
+
 ## Desired state
 
 Each device has a SQLite `device_targets` row:

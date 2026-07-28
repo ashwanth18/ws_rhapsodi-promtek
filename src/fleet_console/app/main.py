@@ -6,6 +6,7 @@ import json
 import os
 import secrets
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,15 @@ from pydantic import BaseModel, Field
 
 from .ansible_runner import cancel_playbook, log_path_for, run_playbook
 from .auth import require_agent, require_ci_token, require_token
-from .db import Deployment, DeviceTarget, Release, SessionLocal, init_db, utc_now
+from .db import (
+    CustomDashboard,
+    Deployment,
+    DeviceTarget,
+    Release,
+    SessionLocal,
+    init_db,
+    utc_now,
+)
 from .github import (
     latest_workflow_runs,
     list_branches,
@@ -25,9 +34,57 @@ from .github import (
     version_check,
 )
 from .inventory import get_device, list_devices
-from .profiles import get_profile, list_profiles, list_robot_types
-from .prometheus import device_metrics
+from .metric_catalog import load_metric_catalog
+from .profiles import (
+    compose_for_device_class,
+    get_device_class,
+    get_profile,
+    list_device_classes,
+    list_profiles,
+    list_robot_types,
+    profile_allows_device_class,
+)
+from . import alerts as alerts_mod
+from . import loki as loki_mod
+from .prometheus import (
+    device_metrics,
+    device_series,
+    fleet_summary,
+    label_names as prom_label_names,
+    label_values as prom_label_values,
+    metric_names as prom_metric_names,
+    query_instant,
+    query_range as prom_query_range,
+)
 from .robot_poll import enrich_device, enrich_devices
+from . import settings_store
+from .platforms import (
+    infer_device_class,
+    manifest_supports_platform,
+    normalize_platform,
+    parse_device_classes,
+    parse_platforms,
+    platforms_from_timings,
+    release_device_classes,
+    release_platforms,
+    release_supports_device_class,
+    release_supports_platform,
+)
+
+
+def _image_registry() -> str:
+    return settings_store.get('image_registry', 'iserenity/rhapsodi-promtek')
+
+
+def _fleet_console_url() -> str:
+    return settings_store.get('fleet_console_url', 'http://127.0.0.1:8090')
+
+
+def _grafana_url() -> str:
+    return settings_store.get(
+        'grafana_pi_overview_url',
+        'http://127.0.0.1:3001/d/pi-overview/rhapsodi-pi-overview',
+    )
 
 
 def _write_log(deployment_id: int, text: str, *, append: bool = False) -> Path:
@@ -53,9 +110,6 @@ app.add_middleware(
 )
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / 'static'
-DEFAULT_REGISTRY = os.environ.get(
-    'IMAGE_REGISTRY', 'iserenity/rhapsodi-promtek'
-).strip()
 IMAGE_ROLES = (
     'ros-prod',
     'backend',
@@ -76,6 +130,10 @@ class ReleaseReportRequest(BaseModel):
     error_message: str | None = None
     duration_seconds: int | None = None
     build_timings: dict[str, Any] | None = None
+    # OCI platforms this release was built for, e.g. ["linux/amd64","linux/arm64"]
+    platforms: list[str] | None = None
+    # Hardware classes this release is intended for, e.g. ["pi5"]
+    device_classes: list[str] | None = None
 
 
 class ProvisionRequest(BaseModel):
@@ -101,6 +159,48 @@ class TargetUpdateRequest(BaseModel):
     auto_update: bool | None = None
     robot_type: str | None = None
     site_id: str | None = None
+    platform: str | None = None
+    device_class: str | None = None
+
+
+class SettingsUpdateRequest(BaseModel):
+    fleet_console_url: str | None = None
+    image_registry: str | None = None
+    github_repo: str | None = None
+    prometheus_url: str | None = None
+    loki_url: str | None = None
+    alertmanager_url: str | None = None
+    grafana_pi_overview_url: str | None = None
+    # Secrets: omit or null = leave unchanged; empty string clears.
+    fleet_api_token: str | None = None
+    ci_report_token: str | None = None
+    github_token: str | None = None
+
+
+class SettingsTestRequest(BaseModel):
+    """Optional draft values from the Settings form (unsaved)."""
+    fleet_console_url: str | None = None
+    image_registry: str | None = None
+    github_repo: str | None = None
+    prometheus_url: str | None = None
+    loki_url: str | None = None
+    alertmanager_url: str | None = None
+    grafana_pi_overview_url: str | None = None
+    fleet_api_token: str | None = None
+    ci_report_token: str | None = None
+    github_token: str | None = None
+
+
+class DashboardCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=256)
+    scope: str = 'fleet'  # fleet | device_template
+    panels: list[dict[str, Any]] | None = None
+
+
+class DashboardUpdateRequest(BaseModel):
+    name: str | None = None
+    scope: str | None = None
+    panels: list[dict[str, Any]] | None = None
 
 
 class BuildRequest(BaseModel):
@@ -113,6 +213,10 @@ class AgentReportRequest(BaseModel):
     status: str = Field(min_length=1)  # success | rolled_back | failed | applying | converged
     message: str | None = None
     image_tag: str | None = None
+    # Host identity for arch-aware deploy filtering
+    platform: str | None = None  # linux/arm64 | linux/amd64 | aarch64 | …
+    device_class: str | None = None  # pi5 | jetson | x86
+    arch: str | None = None  # raw uname -m fallback
 
 
 def _repo_root() -> Path:
@@ -166,16 +270,20 @@ def _serialize_release(row: Release) -> dict[str, Any]:
     duration = getattr(row, 'duration_seconds', None)
     if duration is None and isinstance(timings, dict):
         duration = timings.get('total_seconds')
+    plats = release_platforms(row)
+    classes = release_device_classes(row)
     return {
         'id': row.id,
         'branch': row.branch,
         'git_sha': row.git_sha,
         'status': row.status,
         'images': images,
-        'image_registry': row.image_registry or DEFAULT_REGISTRY,
+        'image_registry': row.image_registry or _image_registry(),
         'workflow_run_url': row.workflow_run_url,
         'duration_seconds': duration,
         'build_timings': timings or None,
+        'platforms': plats,
+        'device_classes': classes,
         'error_message': row.error_message,
         'reported_at': row.reported_at.isoformat() if row.reported_at else None,
         'subject': _commit_subject(row.git_sha),
@@ -205,6 +313,7 @@ def _serialize_deployment(row: Deployment) -> dict[str, Any]:
 
 def _serialize_target(row: DeviceTarget | None, device_id: str) -> dict[str, Any]:
     if row is None:
+        inferred = infer_device_class(device_id=device_id, hostname=device_id)
         return {
             'device_id': device_id,
             'tracked_branch': 'main',
@@ -213,6 +322,9 @@ def _serialize_target(row: DeviceTarget | None, device_id: str) -> dict[str, Any
             'auto_update': False,
             'robot_type': None,
             'site_id': None,
+            'platform': None,
+            'device_class': inferred,
+            'compose_file': compose_for_device_class(inferred),
             'agent_status': None,
             'agent_message': None,
             'agent_applied_release_id': None,
@@ -220,6 +332,11 @@ def _serialize_target(row: DeviceTarget | None, device_id: str) -> dict[str, Any
             'has_agent_token': False,
             'updated_at': None,
         }
+    device_class = row.device_class or infer_device_class(
+        device_id=row.device_id,
+        hostname=row.device_id,
+        platform=row.platform,
+    )
     return {
         'device_id': row.device_id,
         'tracked_branch': row.tracked_branch,
@@ -228,6 +345,9 @@ def _serialize_target(row: DeviceTarget | None, device_id: str) -> dict[str, Any
         'auto_update': bool(row.auto_update),
         'robot_type': row.robot_type,
         'site_id': row.site_id,
+        'platform': row.platform,
+        'device_class': device_class,
+        'compose_file': compose_for_device_class(device_class),
         'agent_status': row.agent_status,
         'agent_message': row.agent_message,
         'agent_applied_release_id': row.agent_applied_release_id,
@@ -292,7 +412,7 @@ def _registry_tag_exists(repository: str, tag: str) -> bool | None:
 
 def _release_images_on_registry(release: Release) -> tuple[bool, str]:
     """Best-effort check that the primary backend image exists in the registry."""
-    registry = (release.image_registry or DEFAULT_REGISTRY).strip()
+    registry = (release.image_registry or _image_registry()).strip()
     if registry.count('/') != 1:
         return True, 'skipped (non Docker Hub-style registry)'
     tag = f'backend-{release.git_sha}'
@@ -307,7 +427,12 @@ def _release_images_on_registry(release: Release) -> tuple[bool, str]:
     return True, 'registry check unavailable; allowing'
 
 
-def _assert_release_deployable(release: Release) -> None:
+def _assert_release_deployable(
+    release: Release,
+    *,
+    device_platform: str | None = None,
+    device_class: str | None = None,
+) -> None:
     if release.status != 'success':
         raise HTTPException(
             status_code=400,
@@ -319,10 +444,79 @@ def _assert_release_deployable(release: Release) -> None:
             status_code=400,
             detail=f'Release {release.id} ({release.git_sha}) not deployable: {reason}',
         )
+    if not release_supports_device_class(release, device_class):
+        allowed = release_device_classes(release)
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f'Release {release.id} ({release.git_sha}) is for device_classes '
+                f'{allowed} but device is {device_class}'
+            ),
+        )
+    want = normalize_platform(device_platform)
+    if not want:
+        return
+    recorded = release_platforms(release)
+    if recorded and want not in recorded:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f'Release {release.id} ({release.git_sha}) was built for '
+                f'[{", ".join(recorded)}] but device needs {want}'
+            ),
+        )
+    registry = (release.image_registry or _image_registry()).strip()
+    tag = f'backend-{release.git_sha}'
+    supported, mreason = manifest_supports_platform(registry, tag, want)
+    if supported is False:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f'Release {release.id} ({release.git_sha}) not deployable on '
+                f'{want}: {mreason}'
+            ),
+        )
 
 
 def _mint_agent_token() -> str:
     return secrets.token_urlsafe(32)
+
+
+def _resolve_device_platform(device_id: str) -> str | None:
+    """Best-known OCI platform for a device (agent report → class heuristic)."""
+    db = SessionLocal()
+    try:
+        row = db.query(DeviceTarget).filter(DeviceTarget.device_id == device_id).first()
+        if row and row.platform:
+            return normalize_platform(row.platform)
+        dclass = (row.device_class if row else None) or infer_device_class(
+            device_id=device_id, hostname=device_id
+        )
+        class_info = get_device_class(dclass)
+        if class_info and class_info.get('platform'):
+            return normalize_platform(class_info['platform'])
+        if dclass in ('pi5', 'jetson'):
+            return 'linux/arm64'
+        if dclass == 'x86':
+            return 'linux/amd64'
+        return None
+    finally:
+        db.close()
+
+
+def _resolve_device_class(device_id: str) -> str | None:
+    db = SessionLocal()
+    try:
+        row = db.query(DeviceTarget).filter(DeviceTarget.device_id == device_id).first()
+        if row and row.device_class:
+            return row.device_class
+        return infer_device_class(
+            device_id=device_id,
+            hostname=device_id,
+            platform=row.platform if row else None,
+        )
+    finally:
+        db.close()
 
 
 def _get_or_create_target(
@@ -333,6 +527,8 @@ def _get_or_create_target(
     site_id: str | None = None,
     profile_id: str | None = None,
     tracked_branch: str | None = None,
+    platform: str | None = None,
+    device_class: str | None = None,
 ) -> DeviceTarget:
     row = db.query(DeviceTarget).filter(DeviceTarget.device_id == device_id).first()
     if row is None:
@@ -340,22 +536,39 @@ def _get_or_create_target(
             profile_id
             or ('prod-jaka' if robot_type == 'jaka' else 'prod-niryo')
         )
+        plat = normalize_platform(platform)
+        dclass = device_class or infer_device_class(
+            device_id=device_id, hostname=device_id, platform=plat
+        )
         row = DeviceTarget(
             device_id=device_id,
             tracked_branch=tracked_branch or 'main',
             profile_id=default_profile,
             robot_type=robot_type,
             site_id=site_id,
+            platform=plat,
+            device_class=dclass,
             agent_token=_mint_agent_token(),
             updated_at=utc_now(),
         )
         db.add(row)
         db.commit()
         db.refresh(row)
-    elif not row.agent_token:
-        row.agent_token = _mint_agent_token()
-        db.commit()
-        db.refresh(row)
+    else:
+        dirty = False
+        if not row.agent_token:
+            row.agent_token = _mint_agent_token()
+            dirty = True
+        if not row.device_class:
+            row.device_class = infer_device_class(
+                device_id=device_id,
+                hostname=device_id,
+                platform=row.platform,
+            )
+            dirty = True
+        if dirty:
+            db.commit()
+            db.refresh(row)
     return row
 
 
@@ -368,6 +581,8 @@ def _upsert_target(
     auto_update: bool | None = None,
     robot_type: str | None = None,
     site_id: str | None = None,
+    platform: str | None = None,
+    device_class: str | None = None,
     allow_robot_type_change: bool = False,
 ) -> DeviceTarget:
     db = SessionLocal()
@@ -379,16 +594,41 @@ def _upsert_target(
             site_id=site_id,
             profile_id=profile_id,
             tracked_branch=tracked_branch,
+            platform=platform,
+            device_class=device_class,
         )
         if tracked_branch is not None:
             row.tracked_branch = tracked_branch
+        if platform is not None:
+            row.platform = normalize_platform(platform)
+        if device_class is not None:
+            row.device_class = device_class.strip() or infer_device_class(
+                device_id=device_id, platform=row.platform
+            )
+            class_info = get_device_class(row.device_class)
+            if class_info and not row.platform:
+                row.platform = normalize_platform(class_info.get('platform'))
         if profile_id is not None:
             if get_profile(profile_id) is None:
                 raise HTTPException(status_code=400, detail=f'Unknown profile {profile_id}')
+            if row.device_class and not profile_allows_device_class(
+                profile_id, row.device_class
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f'Profile {profile_id} is not allowed on device_class '
+                        f'{row.device_class}'
+                    ),
+                )
             row.profile_id = profile_id
         if release_id is not None:
             release = _get_release(db, release_id)
-            _assert_release_deployable(release)
+            _assert_release_deployable(
+                release,
+                device_platform=row.platform,
+                device_class=row.device_class,
+            )
             row.release_id = release_id
         if auto_update is not None:
             row.auto_update = auto_update
@@ -410,6 +650,10 @@ def _upsert_target(
             row.robot_type = robot_type
         if site_id is not None:
             row.site_id = site_id
+        if not row.device_class:
+            row.device_class = infer_device_class(
+                device_id=device_id, platform=row.platform
+            )
         row.updated_at = utc_now()
         db.commit()
         db.refresh(row)
@@ -559,13 +803,13 @@ def _sync_releases_from_git_tags() -> int:
                         exists.status = 'failed'
                         exists.error_message = reason
                 continue
-            images = _default_images(sha, DEFAULT_REGISTRY)
+            images = _default_images(sha, _image_registry())
             probe = Release(
                 branch='main',
                 git_sha=sha,
                 status='success',
                 images=json.dumps(images),
-                image_registry=DEFAULT_REGISTRY,
+                image_registry=_image_registry(),
                 error_message='imported from git tag ' + tag,
                 reported_at=utc_now(),
             )
@@ -615,8 +859,11 @@ def _list_picker_releases(
     *,
     branch: str | None = None,
     limit: int = 50,
+    platform: str | None = None,
+    device_class: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Releases the UI may offer: success + images present on registry."""
+    """Releases the UI may offer: success + images + matching platform/class."""
+    want = normalize_platform(platform)
     db = SessionLocal()
     try:
         q = (
@@ -637,6 +884,16 @@ def _list_picker_releases(
                 row.error_message = reason
                 dirty = True
                 continue
+            if want and not release_supports_platform(row, want):
+                continue
+            if not release_supports_device_class(row, device_class):
+                continue
+            if want:
+                registry = (row.image_registry or _image_registry()).strip()
+                tag = f'backend-{row.git_sha}'
+                supported, _mreason = manifest_supports_platform(registry, tag, want)
+                if supported is False:
+                    continue
             out.append(_serialize_release(row))
         if dirty:
             db.commit()
@@ -659,6 +916,32 @@ def _merge_metrics(device: dict[str, Any], metrics: dict[str, dict]) -> dict[str
         'disk_pct': m.get('disk_pct'),
     }
     return device
+
+
+def _attach_robot_urls(device: dict[str, Any]) -> None:
+    """Derive per-device robot SPA / API URLs for fleet operators.
+
+    Prefer MagicDNS hostname (works in Tailscale browsers); fall back to the
+    Tailscale IPv4. Ports match compose/devices/pi5.yml defaults.
+    """
+    host = (device.get('hostname') or device.get('id') or '').strip()
+    ip = (device.get('ip') or '').strip()
+    reach = host or ip
+    if not reach:
+        device['dashboard_url'] = None
+        device['api_url'] = None
+        return
+    dash_port = (os.environ.get('ROBOT_DASHBOARD_PORT') or '8080').strip() or '8080'
+    api_port = (os.environ.get('ROBOT_API_PORT') or '8000').strip() or '8000'
+    device['dashboard_url'] = f'http://{reach}:{dash_port}'
+    device['api_url'] = f'http://{reach}:{api_port}'
+    # IP variants when hostname differs (handy if MagicDNS is slow).
+    if ip and ip != reach:
+        device['dashboard_url_ip'] = f'http://{ip}:{dash_port}'
+        device['api_url_ip'] = f'http://{ip}:{api_port}'
+    else:
+        device['dashboard_url_ip'] = device['dashboard_url']
+        device['api_url_ip'] = device['api_url']
 
 
 def _attach_desired_and_drift(
@@ -804,25 +1087,34 @@ def _resolve_agent_target(target: DeviceTarget) -> dict[str, Any]:
             release = (
                 db.query(Release).filter(Release.id == target.release_id).first()
             )
+        device_class = target.device_class or infer_device_class(
+            device_id=target.device_id, platform=target.platform
+        )
+        compose_file = compose_for_device_class(device_class)
+        class_info = get_device_class(device_class)
         profile = get_profile(target.profile_id) or {
             'id': target.profile_id,
-            'compose_file': 'docker-compose.robot-prod.yml',
             'env': {},
+        }
+        base = {
+            'device_id': target.device_id,
+            'profile_id': target.profile_id,
+            'tracked_branch': target.tracked_branch,
+            'robot_type': target.robot_type,
+            'site_id': target.site_id,
+            'platform': target.platform
+            or (class_info or {}).get('platform'),
+            'device_class': device_class,
+            'compose_file': compose_file,
+            'env': profile.get('env') or {},
+            'image_registry': _image_registry(),
         }
         if release is None:
             return {
-                'device_id': target.device_id,
+                **base,
                 'release_id': None,
                 'git_sha': None,
-                'profile_id': target.profile_id,
-                'tracked_branch': target.tracked_branch,
-                'robot_type': target.robot_type,
-                'site_id': target.site_id,
-                'compose_file': profile.get('compose_file')
-                or 'docker-compose.robot-prod.yml',
-                'env': profile.get('env') or {},
                 'images': {},
-                'image_registry': DEFAULT_REGISTRY,
                 'noop': True,
             }
         images = {}
@@ -831,20 +1123,13 @@ def _resolve_agent_target(target: DeviceTarget) -> dict[str, Any]:
                 images = json.loads(release.images)
             except json.JSONDecodeError:
                 images = {}
-        registry = release.image_registry or DEFAULT_REGISTRY
+        registry = release.image_registry or _image_registry()
         if not images:
             images = _default_images(release.git_sha, registry)
         return {
-            'device_id': target.device_id,
+            **base,
             'release_id': release.id,
             'git_sha': release.git_sha,
-            'profile_id': target.profile_id,
-            'tracked_branch': target.tracked_branch,
-            'robot_type': target.robot_type,
-            'site_id': target.site_id,
-            'compose_file': profile.get('compose_file')
-            or 'docker-compose.robot-prod.yml',
-            'env': profile.get('env') or {},
             'images': images,
             'image_registry': registry,
             'noop': False,
@@ -863,9 +1148,61 @@ def health() -> dict:
     return {'status': 'ok'}
 
 
+@app.get('/api/settings', dependencies=[Depends(require_token)])
+def api_get_settings() -> dict:
+    return settings_store.public_view()
+
+
+@app.put('/api/settings', dependencies=[Depends(require_token)])
+def api_put_settings(body: SettingsUpdateRequest) -> dict:
+    patch = body.model_dump(exclude_unset=True)
+    for key in settings_store.SECRET_KEYS:
+        if key not in patch:
+            continue
+        value = patch[key]
+        if value is None:
+            del patch[key]
+            continue
+        text = str(value).strip()
+        # Reject masked placeholders pasted back from GET.
+        if '…' in text or text.startswith('••••'):
+            del patch[key]
+            continue
+        patch[key] = text
+    settings_store.update(patch)
+    return settings_store.public_view()
+
+
+@app.post('/api/settings/test', dependencies=[Depends(require_token)])
+def api_test_settings(
+    request: Request,
+    body: SettingsTestRequest | None = None,
+) -> dict:
+    """Probe GitHub / Prometheus / Grafana / console URL / tokens."""
+    from .settings_checks import run_all
+
+    overrides = (body.model_dump(exclude_unset=True) if body else {}) or {}
+    bearer = request.headers.get('Authorization') or ''
+    request_token = ''
+    if bearer.lower().startswith('bearer '):
+        request_token = bearer[7:].strip()
+    request_token = request_token or (request.query_params.get('access_token') or '')
+    return run_all(overrides, request_token=request_token or None)
+
+
 @app.get('/api/profiles', dependencies=[Depends(require_token)])
-def api_list_profiles(robot_type: str | None = None) -> dict:
-    return {'profiles': list_profiles(robot_type=robot_type)}
+def api_list_profiles(
+    robot_type: str | None = None,
+    device_class: str | None = None,
+) -> dict:
+    return {
+        'profiles': list_profiles(robot_type=robot_type, device_class=device_class),
+    }
+
+
+@app.get('/api/device_classes', dependencies=[Depends(require_token)])
+def api_list_device_classes(production_only: bool = False) -> dict:
+    return {'device_classes': list_device_classes(production_only=production_only)}
 
 
 @app.get('/api/robot_types', dependencies=[Depends(require_token)])
@@ -888,18 +1225,38 @@ def api_list_releases(
     limit: int = 50,
     sync: bool = False,
     deployable_only: bool = True,
+    platform: str | None = None,
+    device_id: str | None = None,
+    device_class: str | None = None,
 ) -> dict:
-    """List Releases. Default: only versions whose images exist on the registry."""
+    """List Releases. Default: only versions whose images exist on the registry.
+
+    When platform/device_class or device_id is set, filter to matching Releases.
+    """
     synced = 0
     demoted = 0
     if sync:
         synced = _sync_releases_from_git_tags()
         demoted = _prune_undeliverable_releases()
+    want = normalize_platform(platform)
+    dclass = (device_class or '').strip() or None
+    if device_id:
+        if not want:
+            want = _resolve_device_platform(device_id)
+        if not dclass:
+            dclass = _resolve_device_class(device_id)
     if deployable_only and (status is None or status == 'success'):
         return {
-            'releases': _list_picker_releases(branch=branch, limit=limit),
+            'releases': _list_picker_releases(
+                branch=branch,
+                limit=limit,
+                platform=want,
+                device_class=dclass,
+            ),
             'synced': synced,
             'demoted': demoted,
+            'platform': want,
+            'device_class': dclass,
         }
     db = SessionLocal()
     try:
@@ -943,7 +1300,7 @@ def api_get_release(release_id: int) -> dict:
 def api_report_release(body: ReleaseReportRequest) -> dict:
     git_sha = body.git_sha.strip()
     short = git_sha[:7] if len(git_sha) >= 7 else git_sha
-    registry = (body.image_registry or DEFAULT_REGISTRY).strip()
+    registry = (body.image_registry or _image_registry()).strip()
     images = body.images or (
         _default_images(short, registry) if body.status == 'success' else {}
     )
@@ -964,6 +1321,15 @@ def api_report_release(body: ReleaseReportRequest) -> dict:
             raw_total = body.build_timings.get('total_seconds')
             if isinstance(raw_total, int):
                 duration = raw_total
+        plats = parse_platforms(body.platforms)
+        if not plats:
+            plats = platforms_from_timings(body.build_timings)
+        platforms_json = json.dumps(plats) if plats else None
+        classes = parse_device_classes(body.device_classes)
+        # Default production robot product line when CI omits the field.
+        if not classes and body.status == 'success':
+            classes = ['pi5']
+        classes_json = json.dumps(classes) if classes else None
         if existing:
             existing.status = body.status
             existing.images = json.dumps(images)
@@ -972,6 +1338,10 @@ def api_report_release(body: ReleaseReportRequest) -> dict:
             existing.error_message = body.error_message
             existing.duration_seconds = duration
             existing.timings = timings_json
+            if platforms_json:
+                existing.platforms = platforms_json
+            if classes_json:
+                existing.device_classes = classes_json
             existing.reported_at = utc_now()
             db.commit()
             db.refresh(existing)
@@ -984,6 +1354,8 @@ def api_report_release(body: ReleaseReportRequest) -> dict:
             image_registry=registry,
             workflow_run_url=body.workflow_run_url,
             error_message=body.error_message,
+            platforms=platforms_json,
+            device_classes=classes_json,
             duration_seconds=duration,
             timings=timings_json,
             reported_at=utc_now(),
@@ -1019,6 +1391,9 @@ async def api_list_devices() -> dict:
         target = targets.get(device['id']) or _serialize_target(None, device['id'])
         _attach_desired_and_drift(device, target, releases)
         _attach_update_status(device, target)
+        _attach_robot_urls(device)
+        device['platform'] = target.get('platform')
+        device['device_class'] = target.get('device_class')
     return {'devices': robots}
 
 
@@ -1044,7 +1419,7 @@ async def api_get_device(device_id: str) -> dict:
             db.query(Deployment)
             .filter(Deployment.device_id == device_id)
             .order_by(Deployment.started_at.desc())
-            .limit(50)
+            .limit(20)
             .all()
         )
         history = [_serialize_deployment(r) for r in rows]
@@ -1064,12 +1439,12 @@ async def api_get_device(device_id: str) -> dict:
         db.close()
     _attach_desired_and_drift(device, target, releases)
     _attach_update_status(device, target)
+    _attach_robot_urls(device)
+    device['platform'] = target.get('platform')
+    device['device_class'] = target.get('device_class')
     device['deployments'] = history
     device['last_deployment'] = history[0] if history else None
-    device['grafana_url'] = os.environ.get(
-        'GRAFANA_PI_OVERVIEW_URL',
-        'http://127.0.0.1:3001/d/pi-overview/rhapsodi-pi-overview',
-    )
+    device['grafana_url'] = _grafana_url()
     return {'device': device}
 
 
@@ -1087,6 +1462,8 @@ def api_put_target(device_id: str, body: TargetUpdateRequest) -> dict:
         auto_update=body.auto_update,
         robot_type=body.robot_type,
         site_id=body.site_id,
+        platform=body.platform,
+        device_class=body.device_class,
         allow_robot_type_change=False,
     )
     return {'target': _serialize_target(row, device_id)}
@@ -1146,10 +1523,24 @@ def api_provision(device_id: str, body: ProvisionRequest) -> dict:
             detail=f'Device already has a running job (deployment_id={running.id})',
         )
 
+    device_platform = _resolve_device_platform(device_id) or 'linux/arm64'
+    device_class = _resolve_device_class(device_id) or infer_device_class(
+        device_id=device_id, hostname=device.get('hostname'), platform=device_platform
+    )
+    # Hostname heuristics (rhapsodi-pi5 → pi5 → arm64) apply before first agent report.
+    _upsert_target(
+        device_id,
+        platform=device_platform,
+        device_class=device_class,
+    )
     db = SessionLocal()
     try:
         release = _get_release(db, body.release_id)
-        _assert_release_deployable(release)
+        _assert_release_deployable(
+            release,
+            device_platform=device_platform,
+            device_class=device_class,
+        )
         image_tag = release.git_sha
     finally:
         db.close()
@@ -1161,6 +1552,8 @@ def api_provision(device_id: str, body: ProvisionRequest) -> dict:
         release_id=body.release_id,
         robot_type=body.robot_type,
         site_id=body.site_id,
+        platform=device_platform,
+        device_class=device_class,
         allow_robot_type_change=True,
     )
 
@@ -1208,9 +1601,7 @@ def api_provision(device_id: str, body: ProvisionRequest) -> dict:
                 'robot_id': body.robot_id or body.device_id or device_id,
                 'profile': body.profile_id,
                 'agent_token': agent_token or '',
-                'fleet_console_url': os.environ.get(
-                    'FLEET_CONSOLE_URL', 'http://127.0.0.1:8090'
-                ),
+                'fleet_console_url': _fleet_console_url(),
                 'release_id': str(body.release_id),
             },
             on_complete=_on_playbook_complete,
@@ -1243,10 +1634,16 @@ def api_deploy(device_id: str, body: DeployRequest) -> dict:
             detail=f'Device already has a running job (deployment_id={running.id})',
         )
 
+    device_platform = _resolve_device_platform(device_id)
+    device_class = _resolve_device_class(device_id)
     db = SessionLocal()
     try:
         release = _get_release(db, body.release_id)
-        _assert_release_deployable(release)
+        _assert_release_deployable(
+            release,
+            device_platform=device_platform,
+            device_class=device_class,
+        )
         image_tag = release.git_sha
         branch = body.tracked_branch or release.branch
     finally:
@@ -1257,6 +1654,8 @@ def api_deploy(device_id: str, body: DeployRequest) -> dict:
         profile_id=body.profile_id,
         tracked_branch=branch,
         release_id=body.release_id,
+        platform=device_platform,
+        device_class=device_class,
     )
     profile_id = body.profile_id or target.profile_id
 
@@ -1314,23 +1713,26 @@ def api_deploy(device_id: str, body: DeployRequest) -> dict:
         db.close()
 
 
-@app.post('/api/devices/{device_id}/build', dependencies=[Depends(require_token)])
-def api_build(device_id: str, body: BuildRequest) -> dict:
-    """Trigger GitHub Actions workflow_dispatch for the device's tracked branch."""
-    if get_device(device_id) is None:
-        raise HTTPException(
-            status_code=404, detail='Device not found in Tailscale inventory'
-        )
+def _dispatch_build(
+    *,
+    branch: str,
+    device_id: str = 'fleet',
+    robot_type: str | None = None,
+    site_id: str | None = None,
+    profile_id: str | None = None,
+) -> dict:
+    """Record a build job and dispatch GitHub Actions workflow_dispatch."""
+    branch = (branch or 'main').strip()
+    if not branch:
+        raise HTTPException(status_code=400, detail='branch is required')
     db = SessionLocal()
     try:
-        target = _get_or_create_target(db, device_id)
-        branch = (body.branch or target.tracked_branch or 'main').strip()
         row = Deployment(
             device_id=device_id,
             action='build',
-            robot_type=target.robot_type,
-            site_id=target.site_id,
-            profile_id=target.profile_id,
+            robot_type=robot_type,
+            site_id=site_id,
+            profile_id=profile_id,
             tracked_branch=branch,
             image_tag='',
             status='running',
@@ -1372,17 +1774,45 @@ def api_build(device_id: str, body: BuildRequest) -> dict:
                 row.error_message = str(exc)
                 db.commit()
                 db.refresh(row)
-                return {'deployment': _serialize_deployment(row)}
+                return {'deployment': _serialize_deployment(row), 'workflow': None}
         finally:
             db.close()
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     raise HTTPException(status_code=500, detail='Build dispatch failed unexpectedly')
 
 
-@app.get('/api/workflow_runs', dependencies=[Depends(require_token)])
-def api_workflow_runs(branch: str | None = None) -> dict:
+@app.post('/api/builds', dependencies=[Depends(require_token)])
+def api_fleet_build(body: BuildRequest) -> dict:
+    """Fleet-level CI build — not tied to a single device."""
+    return _dispatch_build(branch=body.branch or 'main', device_id='fleet')
+
+
+@app.post('/api/devices/{device_id}/build', dependencies=[Depends(require_token)])
+def api_build(device_id: str, body: BuildRequest) -> dict:
+    """Legacy: device-scoped build. Prefer POST /api/builds."""
+    if get_device(device_id) is None:
+        raise HTTPException(
+            status_code=404, detail='Device not found in Tailscale inventory'
+        )
+    db = SessionLocal()
     try:
-        return {'runs': latest_workflow_runs(branch=branch)}
+        target = _get_or_create_target(db, device_id)
+        branch = (body.branch or target.tracked_branch or 'main').strip()
+        return _dispatch_build(
+            branch=branch,
+            device_id=device_id,
+            robot_type=target.robot_type,
+            site_id=target.site_id,
+            profile_id=target.profile_id,
+        )
+    finally:
+        db.close()
+
+
+@app.get('/api/workflow_runs', dependencies=[Depends(require_token)])
+def api_workflow_runs(branch: str | None = None, limit: int = 20) -> dict:
+    try:
+        return {'runs': latest_workflow_runs(branch=branch, limit=limit)}
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -1411,6 +1841,15 @@ def api_agent_report(
         row.agent_reported_at = utc_now()
         if body.applied_release_id is not None:
             row.agent_applied_release_id = body.applied_release_id
+        plat = normalize_platform(body.platform) or normalize_platform(body.arch)
+        if plat:
+            row.platform = plat
+        if body.device_class:
+            row.device_class = body.device_class.strip()
+        elif plat and not row.device_class:
+            row.device_class = infer_device_class(
+                device_id=row.device_id, platform=plat
+            )
         db.commit()
 
         image_tag = body.image_tag or ''
@@ -1563,8 +2002,11 @@ def api_agent_report(
 def api_list_deployments(
     device_id: str | None = None,
     status: str | None = None,
-    limit: int = 100,
+    page: int = 1,
+    limit: int = 20,
 ) -> dict:
+    page = max(1, page)
+    limit = max(1, min(limit, 20))
     db = SessionLocal()
     try:
         q = db.query(Deployment).order_by(Deployment.started_at.desc())
@@ -1572,8 +2014,18 @@ def api_list_deployments(
             q = q.filter(Deployment.device_id == device_id)
         if status:
             q = q.filter(Deployment.status == status)
-        rows = q.limit(max(1, min(limit, 500))).all()
-        return {'deployments': [_serialize_deployment(r) for r in rows]}
+        total = q.count()
+        pages = max(1, (total + limit - 1) // limit) if total else 1
+        if page > pages:
+            page = pages
+        rows = q.offset((page - 1) * limit).limit(limit).all()
+        return {
+            'deployments': [_serialize_deployment(r) for r in rows],
+            'page': page,
+            'limit': limit,
+            'total': total,
+            'pages': pages,
+        }
     finally:
         db.close()
 
@@ -1728,6 +2180,356 @@ async def api_stream_logs(
             'X-Accel-Buffering': 'no',
         },
     )
+
+
+def _serialize_dashboard(row: CustomDashboard) -> dict[str, Any]:
+    try:
+        panels = json.loads(row.panels or '[]')
+    except json.JSONDecodeError:
+        panels = []
+    if not isinstance(panels, list):
+        panels = []
+    return {
+        'id': row.id,
+        'name': row.name,
+        'scope': row.scope,
+        'panels': panels,
+        'created_at': row.created_at.isoformat() if row.created_at else None,
+        'updated_at': row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+def _substitute_device(expr: str, device_id: str | None) -> str:
+    if not device_id:
+        return expr
+    return (
+        expr.replace('$device_id', device_id)
+        .replace('${device_id}', device_id)
+        .replace('$instance', device_id)
+    )
+
+
+@app.get('/api/metrics/catalog', dependencies=[Depends(require_token)])
+def api_metrics_catalog() -> dict:
+    """Curated named metrics (PromQL/LogQL pre-baked) for the panel picker."""
+    return {'metrics': load_metric_catalog()}
+
+
+@app.get('/api/metrics/fleet', dependencies=[Depends(require_token)])
+def api_metrics_fleet() -> dict:
+    summary = fleet_summary()
+    summary['alert_counts'] = alerts_mod.alert_counts_by_instance()
+    summary['alerts_total'] = sum(summary['alert_counts'].values())
+    return summary
+
+
+@app.get(
+    '/api/metrics/devices/{device_id}/series',
+    dependencies=[Depends(require_token)],
+)
+def api_device_series(
+    device_id: str,
+    since: str = '1h',
+    step: str = '30s',
+) -> dict:
+    # parse_since returns absolute unix start; convert to duration.
+    since_seconds = max(60, int(time.time()) - loki_mod.parse_since(since, 3600))
+    return device_series(device_id, since_seconds=since_seconds, step=step)
+
+
+@app.get('/api/alerts', dependencies=[Depends(require_token)])
+def api_alerts(instance: str | None = None) -> dict:
+    return {
+        'alerts': alerts_mod.list_alerts(instance=instance),
+        'counts_by_instance': alerts_mod.alert_counts_by_instance(),
+    }
+
+
+@app.get(
+    '/api/logs/devices/{device_id}/containers',
+    dependencies=[Depends(require_token)],
+)
+def api_device_log_containers(device_id: str) -> dict:
+    return {
+        'device_id': device_id,
+        'containers': loki_mod.containers_for_host(device_id),
+    }
+
+
+@app.get(
+    '/api/logs/devices/{device_id}/query',
+    dependencies=[Depends(require_token)],
+)
+def api_device_logs_query(
+    device_id: str,
+    container: str | None = None,
+    q: str | None = None,
+    since: str = '15m',
+    start: float | None = None,
+    end: float | None = None,
+    limit: int = 500,
+    direction: str = 'backward',
+) -> dict:
+    return loki_mod.device_logs(
+        device_id,
+        container=container,
+        q=q,
+        since=since,
+        start=start,
+        end=end,
+        limit=max(1, min(limit, 5000)),
+        direction=direction,
+    )
+
+
+@app.get('/api/query', dependencies=[Depends(require_token)])
+def api_query_proxy(
+    ds: str,
+    expr: str,
+    start: float | None = None,
+    end: float | None = None,
+    step: str = '30s',
+    limit: int = 500,
+    direction: str = 'backward',
+    device_id: str | None = None,
+) -> dict:
+    """Generic Prometheus / Loki query proxy for custom dashboard panels."""
+    resolved = _substitute_device(expr, device_id)
+    now = time.time()
+    end_ts = float(end if end is not None else now)
+    start_ts = float(start if start is not None else end_ts - 3600)
+    ds_norm = (ds or '').strip().lower()
+    if ds_norm in ('prometheus', 'prom'):
+        if start is None and end is None:
+            # Instant query when no range given — useful for stat/table panels.
+            if step == 'instant' or step == '0':
+                return {
+                    'ds': 'prometheus',
+                    'expr': resolved,
+                    **query_instant(resolved),
+                }
+        return {
+            'ds': 'prometheus',
+            'expr': resolved,
+            'start': start_ts,
+            'end': end_ts,
+            **prom_query_range(resolved, start=start_ts, end=end_ts, step=step),
+        }
+    if ds_norm == 'loki':
+        payload = loki_mod.query_range(
+            resolved,
+            start=start_ts,
+            end=end_ts,
+            limit=max(1, min(limit, 5000)),
+            direction=direction,
+        )
+        lines = loki_mod.flatten_lines(payload.get('result') or [])
+        return {
+            'ds': 'loki',
+            'expr': resolved,
+            'start': start_ts,
+            'end': end_ts,
+            'status': payload.get('status'),
+            'resultType': payload.get('resultType'),
+            'result': payload.get('result'),
+            'lines': lines,
+        }
+    raise HTTPException(
+        status_code=400,
+        detail='ds must be prometheus or loki',
+    )
+
+
+@app.get(
+    '/api/query/meta/prometheus/metrics',
+    dependencies=[Depends(require_token)],
+)
+def api_meta_prom_metrics(match: str | None = None, limit: int = 2000) -> dict:
+    return {'metrics': prom_metric_names(prefix=match, limit=limit)}
+
+
+@app.get(
+    '/api/query/meta/prometheus/labels',
+    dependencies=[Depends(require_token)],
+)
+def api_meta_prom_labels(metric: str | None = None) -> dict:
+    return {'labels': prom_label_names(metric=metric)}
+
+
+@app.get(
+    '/api/query/meta/prometheus/label-values',
+    dependencies=[Depends(require_token)],
+)
+def api_meta_prom_label_values(
+    label: str,
+    metric: str | None = None,
+    match: str | None = None,
+) -> dict:
+    if not label.strip():
+        raise HTTPException(status_code=400, detail='label is required')
+    return {
+        'label': label,
+        'values': prom_label_values(label, metric=metric, match=match),
+    }
+
+
+@app.get(
+    '/api/query/meta/loki/labels',
+    dependencies=[Depends(require_token)],
+)
+def api_meta_loki_labels() -> dict:
+    return {'labels': loki_mod.labels()}
+
+
+@app.get(
+    '/api/query/meta/loki/label-values',
+    dependencies=[Depends(require_token)],
+)
+def api_meta_loki_label_values(
+    label: str,
+    match: str | None = None,
+) -> dict:
+    if not label.strip():
+        raise HTTPException(status_code=400, detail='label is required')
+    return {
+        'label': label,
+        'values': loki_mod.label_values(label, match=match),
+    }
+
+
+@app.get('/api/dashboards', dependencies=[Depends(require_token)])
+def api_list_dashboards(scope: str | None = None) -> dict:
+    db = SessionLocal()
+    try:
+        q = db.query(CustomDashboard).order_by(CustomDashboard.updated_at.desc())
+        if scope:
+            q = q.filter(CustomDashboard.scope == scope)
+        return {'dashboards': [_serialize_dashboard(r) for r in q.all()]}
+    finally:
+        db.close()
+
+
+@app.post('/api/dashboards', dependencies=[Depends(require_token)])
+def api_create_dashboard(body: DashboardCreateRequest) -> dict:
+    scope = (body.scope or 'fleet').strip()
+    if scope not in ('fleet', 'device_template'):
+        raise HTTPException(
+            status_code=400, detail='scope must be fleet or device_template'
+        )
+    panels = body.panels if isinstance(body.panels, list) else []
+    db = SessionLocal()
+    try:
+        row = CustomDashboard(
+            name=body.name.strip(),
+            scope=scope,
+            panels=json.dumps(panels),
+            created_at=utc_now(),
+            updated_at=utc_now(),
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return {'dashboard': _serialize_dashboard(row)}
+    finally:
+        db.close()
+
+
+@app.get('/api/dashboards/{dashboard_id}', dependencies=[Depends(require_token)])
+def api_get_dashboard(dashboard_id: int) -> dict:
+    db = SessionLocal()
+    try:
+        row = (
+            db.query(CustomDashboard)
+            .filter(CustomDashboard.id == dashboard_id)
+            .first()
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail='Dashboard not found')
+        return {'dashboard': _serialize_dashboard(row)}
+    finally:
+        db.close()
+
+
+@app.put('/api/dashboards/{dashboard_id}', dependencies=[Depends(require_token)])
+def api_update_dashboard(dashboard_id: int, body: DashboardUpdateRequest) -> dict:
+    db = SessionLocal()
+    try:
+        row = (
+            db.query(CustomDashboard)
+            .filter(CustomDashboard.id == dashboard_id)
+            .first()
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail='Dashboard not found')
+        if body.name is not None:
+            name = body.name.strip()
+            if not name:
+                raise HTTPException(status_code=400, detail='name cannot be empty')
+            row.name = name
+        if body.scope is not None:
+            scope = body.scope.strip()
+            if scope not in ('fleet', 'device_template'):
+                raise HTTPException(
+                    status_code=400, detail='scope must be fleet or device_template'
+                )
+            row.scope = scope
+        if body.panels is not None:
+            if not isinstance(body.panels, list):
+                raise HTTPException(status_code=400, detail='panels must be a list')
+            row.panels = json.dumps(body.panels)
+        row.updated_at = utc_now()
+        db.commit()
+        db.refresh(row)
+        return {'dashboard': _serialize_dashboard(row)}
+    finally:
+        db.close()
+
+
+@app.delete('/api/dashboards/{dashboard_id}', dependencies=[Depends(require_token)])
+def api_delete_dashboard(dashboard_id: int) -> dict:
+    db = SessionLocal()
+    try:
+        row = (
+            db.query(CustomDashboard)
+            .filter(CustomDashboard.id == dashboard_id)
+            .first()
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail='Dashboard not found')
+        db.delete(row)
+        db.commit()
+        return {'ok': True, 'id': dashboard_id}
+    finally:
+        db.close()
+
+
+@app.post(
+    '/api/dashboards/{dashboard_id}/duplicate',
+    dependencies=[Depends(require_token)],
+)
+def api_duplicate_dashboard(dashboard_id: int) -> dict:
+    db = SessionLocal()
+    try:
+        row = (
+            db.query(CustomDashboard)
+            .filter(CustomDashboard.id == dashboard_id)
+            .first()
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail='Dashboard not found')
+        copy = CustomDashboard(
+            name=f'{row.name} (copy)',
+            scope=row.scope,
+            panels=row.panels,
+            created_at=utc_now(),
+            updated_at=utc_now(),
+        )
+        db.add(copy)
+        db.commit()
+        db.refresh(copy)
+        return {'dashboard': _serialize_dashboard(copy)}
+    finally:
+        db.close()
 
 
 # Serve built UI if present (production). Dev UI uses Vite proxy.

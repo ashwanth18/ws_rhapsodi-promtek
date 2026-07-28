@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { RefreshCw } from 'lucide-react'
+import { ExternalLink, LayoutDashboard, RefreshCw } from 'lucide-react'
 import { api, type Device } from '../lib/api'
 import {
   Button,
@@ -21,6 +21,7 @@ function aliveTone(device: Device): 'good' | 'bad' | 'warn' | 'neutral' {
 export default function DevicesPage() {
   const navigate = useNavigate()
   const [devices, setDevices] = useState<Device[]>([])
+  const [alertCounts, setAlertCounts] = useState<Record<string, number>>({})
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -28,8 +29,15 @@ export default function DevicesPage() {
     setLoading(true)
     setError(null)
     try {
-      const payload = await api.listDevices()
+      const [payload, alerts] = await Promise.all([
+        api.listDevices(),
+        api.listAlerts().catch(() => ({
+          alerts: [],
+          counts_by_instance: {} as Record<string, number>,
+        })),
+      ])
       setDevices(payload.devices)
+      setAlertCounts(alerts.counts_by_instance || {})
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -52,7 +60,7 @@ export default function DevicesPage() {
     <div>
       <SectionHeader
         title="Fleet devices"
-        description="Only CI-built Releases can be deployed. Unbuilt git commits will not appear in the picker until you run Build CI."
+        description="Fleet management view: provision, deploy, and observe robots here. Open each cell’s operator dashboard for live weighment controls."
         action={
           <Button variant="outline" onClick={load} disabled={loading}>
             <RefreshCw className="h-4 w-4" />
@@ -98,26 +106,81 @@ export default function DevicesPage() {
             render: (d) => (
               <div>
                 <div className="font-medium text-[var(--text-primary)]">{d.hostname}</div>
-                <div className="text-xs text-[var(--text-muted)]">{d.ip}</div>
+                <div className="text-xs text-[var(--text-muted)]">
+                  {d.ip}
+                  {d.device_class || d.platform
+                    ? ` · ${d.device_class || '?'}${d.platform ? ` / ${d.platform.replace('linux/', '')}` : ''}`
+                    : ''}
+                </div>
               </div>
             ),
           },
           {
+            key: 'dashboard',
+            header: 'Robot UI',
+            render: (d) =>
+              d.dashboard_url ? (
+                <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
+                  <a
+                    href={d.dashboard_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-sm font-medium text-[var(--accent)] hover:underline"
+                    title={d.dashboard_url}
+                  >
+                    <LayoutDashboard className="h-3.5 w-3.5" />
+                    Dashboard
+                    <ExternalLink className="h-3 w-3 opacity-70" />
+                  </a>
+                  {d.dashboard_url_ip && d.dashboard_url_ip !== d.dashboard_url ? (
+                    <a
+                      href={d.dashboard_url_ip}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] text-[var(--text-muted)] hover:text-[var(--accent)]"
+                      title="Tailscale IP fallback"
+                    >
+                      via IP
+                    </a>
+                  ) : (
+                    <span className="text-[11px] text-[var(--text-faint)]">:8080</span>
+                  )}
+                </div>
+              ) : (
+                <span className="text-xs text-[var(--text-muted)]">—</span>
+              ),
+          },
+          {
             key: 'alive',
             header: 'Alive / active',
-            render: (d) => (
-              <div className="flex flex-col gap-1">
-                <StatusBadge
-                  label={d.alive ? 'alive' : d.online ? 'online' : 'down'}
-                  tone={aliveTone(d)}
-                  pulse={Boolean(d.alive)}
-                />
-                <StatusBadge
-                  label={d.active ? 'running' : 'idle'}
-                  tone={d.active ? 'info' : 'neutral'}
-                />
-              </div>
-            ),
+            render: (d) => {
+              const alerts =
+                alertCounts[d.hostname] ||
+                alertCounts[d.id] ||
+                0
+              return (
+                <div className="flex flex-col gap-1">
+                  <div className="flex flex-wrap items-center gap-1">
+                    <StatusBadge
+                      label={d.alive ? 'alive' : d.online ? 'online' : 'down'}
+                      tone={aliveTone(d)}
+                      pulse={Boolean(d.alive)}
+                    />
+                    {alerts > 0 ? (
+                      <StatusBadge
+                        label={`${alerts} alert${alerts === 1 ? '' : 's'}`}
+                        tone="bad"
+                        pulse
+                      />
+                    ) : null}
+                  </div>
+                  <StatusBadge
+                    label={d.active ? 'running' : 'idle'}
+                    tone={d.active ? 'info' : 'neutral'}
+                  />
+                </div>
+              )
+            },
           },
           {
             key: 'desired',

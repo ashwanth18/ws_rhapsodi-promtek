@@ -28,7 +28,11 @@ services:
       CI_REPORT_TOKEN: ${CI_REPORT_TOKEN:-}
       FLEET_CONSOLE_URL: ${FLEET_CONSOLE_URL:-http://127.0.0.1:8090}
       PROMETHEUS_URL: ${PROMETHEUS_URL:-http://127.0.0.1:9091}
+      LOKI_URL: ${LOKI_URL:-http://127.0.0.1:3100}
+      ALERTMANAGER_URL: ${ALERTMANAGER_URL:-http://127.0.0.1:9093}
       GRAFANA_PI_OVERVIEW_URL: ${GRAFANA_PI_OVERVIEW_URL:-http://127.0.0.1:3001/d/pi-overview/rhapsodi-pi-overview}
+      ROBOT_DASHBOARD_PORT: ${ROBOT_DASHBOARD_PORT:-8080}
+      ROBOT_API_PORT: ${ROBOT_API_PORT:-8000}
       IMAGE_REGISTRY: ${IMAGE_REGISTRY:-iserenity/rhapsodi-promtek}
       REPO_ROOT: /repo
       ANSIBLE_DIR: /repo/ansible
