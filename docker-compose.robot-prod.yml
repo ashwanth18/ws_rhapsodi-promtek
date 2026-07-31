@@ -1,0 +1,6 @@
+# Compatibility shim — production Pi5 stack lives at compose/devices/pi5.yml.
+# Kept so older agents / COMPOSE_FILE=docker-compose.robot-prod.yml keep working.
+# New code should use compose/devices/{device_class}.yml via device_class.
+
+include:
+  - path: compose/devices/pi5.yml
