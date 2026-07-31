@@ -40,6 +40,29 @@ REMOTE="${REMOTE:-origin}"
 # origin pointed at this working tree and never reach GitHub.
 REMOTE_URL="$(git remote get-url "${REMOTE}")"
 
+# actions/checkout stores GITHUB_TOKEN in the workspace git config, not in the
+# remote URL. After `git clone --local` + `remote set-url` to bare https://,
+# pushes fail with: could not read Username for 'https://github.com'.
+# Prefer an authenticated URL when CI provides a token.
+auth_remote_url() {
+  local url="$1"
+  local token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+  if [[ -z "${token}" ]]; then
+    printf '%s\n' "${url}"
+    return
+  fi
+  if [[ "${url}" =~ ^https://([^/]+)/(.+)$ ]]; then
+    local host="${BASH_REMATCH[1]}"
+    local path="${BASH_REMATCH[2]}"
+    path="${path%.git}.git"
+    # x-access-token is the documented GitHub Actions HTTPS user.
+    printf 'https://x-access-token:%s@%s/%s\n' "${token}" "${host}" "${path}"
+    return
+  fi
+  printf '%s\n' "${url}"
+}
+PUSH_URL="$(auth_remote_url "${REMOTE_URL}")"
+
 BUNDLE_FILES=(
   docker-compose.robot-prod.yml
   compose/README.md
@@ -73,11 +96,12 @@ cleanup() { rm -rf "${TMP_DIR}"; }
 trap cleanup EXIT
 
 echo "Preparing slim deploy bundle @ ${GIT_SHA}"
+# Never print credentials (PUSH_URL may embed a token).
 echo "Remote: ${REMOTE_URL}"
 git clone --local --no-hardlinks --shared "${ROOT_DIR}" "${TMP_DIR}/repo" >/dev/null 2>&1 \
   || git clone --local "${ROOT_DIR}" "${TMP_DIR}/repo" >/dev/null
 cd "${TMP_DIR}/repo"
-git remote set-url origin "${REMOTE_URL}"
+git remote set-url origin "${PUSH_URL}"
 
 
 # Orphan branch with only the bundle files.

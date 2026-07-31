@@ -142,6 +142,10 @@ jobs:
 
       - name: Publish slim deploy bundle
         id: bundle
+        env:
+          # Used by publish_deploy_bundle.sh to push deploy branch/tag over HTTPS
+          # (temp clone does not inherit checkout's credential helper).
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
