@@ -2,7 +2,7 @@
 
 This repo uses a three-layer edge strategy:
 
-1. **Fast builds** — native ARM64 on the Jetson Orin Nano via `docker buildx`, plus BuildKit cache mounts + `ccache` so ROS package changes do not rebuild the whole workspace from scratch.
+1. **Fast builds** — native ARM64 on the Jetson Orin Nano via `docker buildx`, BuildKit **registry** cache (`:buildcache-<role>` on Docker Hub) so CI does not re-download apt/npm/pip every run, plus Dockerfile cache mounts + `ccache` so ROS package changes do not rebuild the whole workspace from scratch.
 2. **Verified Releases** — GitHub Actions builds images + slim deploy bundle for a branch, then reports a Release row to the Fleet Console. Only successful Releases are selectable.
 3. **Pull-based fleet** — each robot runs `fleet-agent`, which polls the Fleet Console for desired `release_id` + `profile_id`, applies locally, health-checks, and rolls back without SSH.
 
@@ -119,6 +119,20 @@ Use only for the first Tailscale join on a brand-new image (`scripts/provision_d
 4. Watch **Agent** status: `applying` → `success` / `converged`, or `rolled_back` on health failure.
 
 No Ansible SSH is involved. Drift and agent reports show on the devices list.
+
+## How to read a Release (what build is what)
+
+Each successful CI run becomes one **Release** row in Fleet Console:
+
+| Field | Meaning |
+|-------|---------|
+| **`#N (abcdef0)`** | Deployable version label. `N` is the console Release id; `abcdef0` is the **git short sha** of the commit that was built. Image tags are `…:dashboard-abcdef0`, `…:backend-abcdef0`, etc. |
+| **Subject** | Commit subject of that sha (`git log -1`) — best one-line “what’s in this build”. |
+| **Branch** | Git branch CI checked out (`main`, `feature/…`). |
+| **Workflow URL** | Link to the GitHub Actions run (full log, which jobs ran). |
+| **Device running** | Device detail shows **desired** vs **running** sha; drift means agent has not converged yet. |
+
+**Robot dashboard SemVer** (`v1.1.0 · abcdef0` in the sidebar) is separate: product UI version from `src/dashboard/package.json`, plus the same git sha baked at image build. Use SemVer to see which *UI generation* you have; use Release `#N (sha)` to pick *what the fleet should pull*.
 
 ### Break-glass push (optional)
 

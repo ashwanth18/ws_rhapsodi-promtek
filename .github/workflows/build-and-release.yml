@@ -126,6 +126,9 @@ jobs:
         env:
           BUILDER_NAME: ${{ vars.BUILDER_NAME }}
           PLATFORMS: linux/amd64,linux/arm64
+          # Persist BuildKit layers on Docker Hub across ephemeral runners.
+          # Without this, every CI run re-downloads apt/npm/pip/colcon from scratch.
+          BUILD_CACHE_BACKEND: registry
         run: |
           set -euo pipefail
           export BUILDER_NAME="${BUILDER_NAME:-multiarch}"

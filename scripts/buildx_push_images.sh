@@ -8,6 +8,10 @@ BUILDER_NAME="${BUILDER_NAME:-multiarch}"
 PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
 COLCON_PARALLEL_WORKERS="${COLCON_PARALLEL_WORKERS:-8}"
 BUILD_CACHE_DIR="${BUILD_CACHE_DIR:-.buildx-cache}"
+# registry = persist across GitHub Actions runs (recommended for CI).
+# local = laptop-only .buildx-cache (lost on ephemeral runners).
+# auto = registry when GITHUB_ACTIONS=true, else local.
+BUILD_CACHE_BACKEND="${BUILD_CACHE_BACKEND:-auto}"
 VITE_API_BASE="${VITE_API_BASE:-http://localhost:8000}"
 VITE_ROSBRIDGE_URL="${VITE_ROSBRIDGE_URL:-ws://localhost:9090}"
 VITE_MICROROS_HEARTBEAT_TOPIC="${VITE_MICROROS_HEARTBEAT_TOPIC:-/microros/heartbeat}"
@@ -18,7 +22,18 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
 GIT_SHA="$(git rev-parse --short HEAD)"
+DASHBOARD_APP_VERSION="$(node -p "require('./src/dashboard/package.json').version")"
 echo "Building images for ${REGISTRY}/${REPOSITORY} @ ${GIT_SHA} (builder=${BUILDER_NAME})"
+echo "Dashboard app version ${DASHBOARD_APP_VERSION}"
+
+if [[ "${BUILD_CACHE_BACKEND}" == "auto" ]]; then
+  if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+    BUILD_CACHE_BACKEND=registry
+  else
+    BUILD_CACHE_BACKEND=local
+  fi
+fi
+echo "Build cache backend: ${BUILD_CACHE_BACKEND}"
 
 if docker buildx inspect "${BUILDER_NAME}" >/dev/null 2>&1; then
   docker buildx use "${BUILDER_NAME}"
@@ -32,9 +47,9 @@ else
   exit 1
 fi
 
-mkdir -p "${BUILD_CACHE_DIR}"
-TMP_CACHE_DIR="${BUILD_CACHE_DIR}-new"
-rm -rf "${TMP_CACHE_DIR}"
+if [[ "${BUILD_CACHE_BACKEND}" == "local" ]]; then
+  mkdir -p "${BUILD_CACHE_DIR}"
+fi
 
 # role=seconds lines collected for JSON export
 TIMING_LINES=()
@@ -54,15 +69,38 @@ build_with_cache() {
   local role="$1"
   shift
   local -a tags
+  local -a cache_args=()
   local start end elapsed
+  local role_tag="${REGISTRY}/${REPOSITORY}:${role}"
+  local cache_ref="${REGISTRY}/${REPOSITORY}:buildcache-${role}"
   mapfile -t tags < <(image_tags "${role}")
   start="$(date +%s)"
   echo "=== Building ${role} (platforms=${PLATFORMS}) ==="
+
+  # Always try previous image layers (cheap if tag missing).
+  cache_args+=(--cache-from="type=registry,ref=${role_tag}")
+
+  if [[ "${BUILD_CACHE_BACKEND}" == "registry" ]]; then
+    # Survives ephemeral GHA runners; per-role so ros-prod cache is not wiped by dashboard.
+    cache_args+=(
+      --cache-from="type=registry,ref=${cache_ref}"
+      --cache-to="type=registry,ref=${cache_ref},mode=max"
+    )
+    echo "Using registry cache ${cache_ref}"
+  else
+    local role_cache="${BUILD_CACHE_DIR}/${role}"
+    mkdir -p "${role_cache}"
+    cache_args+=(
+      --cache-from="type=local,src=${role_cache}"
+      --cache-to="type=local,dest=${role_cache}-new,mode=max"
+    )
+    echo "Using local cache ${role_cache}"
+  fi
+
   docker buildx build \
     --builder "${BUILDER_NAME}" \
     --platform "${PLATFORMS}" \
-    --cache-from=type=local,src="${BUILD_CACHE_DIR}" \
-    --cache-to=type=local,dest="${TMP_CACHE_DIR}",mode=max \
+    "${cache_args[@]}" \
     "${tags[@]}" \
     --push \
     "$@"
@@ -70,8 +108,12 @@ build_with_cache() {
   elapsed=$((end - start))
   TIMING_LINES+=("${role}=${elapsed}")
   echo "TIMING role=${role} seconds=${elapsed}"
-  rm -rf "${BUILD_CACHE_DIR}"
-  mv "${TMP_CACHE_DIR}" "${BUILD_CACHE_DIR}"
+
+  if [[ "${BUILD_CACHE_BACKEND}" == "local" ]]; then
+    local role_cache="${BUILD_CACHE_DIR}/${role}"
+    rm -rf "${role_cache}"
+    mv "${role_cache}-new" "${role_cache}"
+  fi
 }
 
 build_with_cache \
@@ -96,6 +138,8 @@ build_with_cache \
   --build-arg VITE_API_BASE="${VITE_API_BASE}" \
   --build-arg VITE_ROSBRIDGE_URL="${VITE_ROSBRIDGE_URL}" \
   --build-arg VITE_MICROROS_HEARTBEAT_TOPIC="${VITE_MICROROS_HEARTBEAT_TOPIC}" \
+  --build-arg VITE_APP_VERSION="${DASHBOARD_APP_VERSION}" \
+  --build-arg VITE_GIT_SHA="${GIT_SHA}" \
   -f docker/dashboard.Dockerfile .
 
 build_with_cache \
