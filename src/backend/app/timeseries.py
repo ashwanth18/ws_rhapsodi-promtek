@@ -10,10 +10,22 @@ from .models import RobotWeightmentRun
 
 logger = logging.getLogger('uvicorn.error')
 
-TIMESERIES_ORGANISATION_ID = 'RHAPSODI_1'
-TIMESERIES_SITE_ID = 'RHAPSODI_1'
-TIMESERIES_USER_ID = 'RHAPSODI_1'
-TIMESERIES_CONTEXT_TYPE = 'batch'
+# Condor / Promtek gateway rejects placeholder IDs like "RHAPSODI_1" with
+# HTTP 400. Defaults match the Pi Condor agent appsettings
+# (OrganisationId / SiteId / UserId); override per-site via env.
+TIMESERIES_ORGANISATION_ID = os.environ.get(
+    'TIMESERIES_ORGANISATION_ID',
+    '6647A41A-8FEB-4082-86F4-3D14964161AD',
+)
+TIMESERIES_SITE_ID = os.environ.get(
+    'TIMESERIES_SITE_ID',
+    '76454DA2-683C-4706-A88E-4E2FC6773685',
+)
+TIMESERIES_USER_ID = os.environ.get(
+    'TIMESERIES_USER_ID',
+    '15de0997-1508-4f2e-91de-14745f295d9e',
+)
+TIMESERIES_CONTEXT_TYPE = os.environ.get('TIMESERIES_CONTEXT_TYPE', 'batch')
 TIMESERIES_METRIC_WEIGHT = os.environ.get(
     'TIMESERIES_METRIC_WEIGHT', 'weight_g'
 )

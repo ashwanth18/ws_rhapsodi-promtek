@@ -76,6 +76,9 @@ services:
       WEIGHMENT_URL: http://host.docker.internal:5002/batch/weighment
       BATCH_END_URL: http://host.docker.internal:5002/batch/end
       TIMESERIES_URL: http://host.docker.internal:5002/timeseries
+      TIMESERIES_ORGANISATION_ID: ${TIMESERIES_ORGANISATION_ID:-6647A41A-8FEB-4082-86F4-3D14964161AD}
+      TIMESERIES_SITE_ID: ${TIMESERIES_SITE_ID:-76454DA2-683C-4706-A88E-4E2FC6773685}
+      TIMESERIES_USER_ID: ${TIMESERIES_USER_ID:-15de0997-1508-4f2e-91de-14745f295d9e}
       PATH_MAP_FROM: ${WORKSPACE_ROOT:-/home/ashwanth/ws_rhapsodi-promtek-dev}/data
       PATH_MAP_TO: /data
       ROBOT_START_ADAPTER_URL: http://host.docker.internal:8010/start_webhook_weightment

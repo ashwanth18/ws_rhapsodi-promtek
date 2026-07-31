@@ -44,6 +44,10 @@ services:
       WEIGHMENT_URL: ${WEIGHMENT_URL:-http://host.docker.internal:5002/batch/weighment}
       BATCH_END_URL: ${BATCH_END_URL:-http://host.docker.internal:5002/batch/end}
       TIMESERIES_URL: ${TIMESERIES_URL:-http://host.docker.internal:5002/timeseries}
+      # Must match Condor agent OrganisationId/SiteId/UserId (not RHAPSODI_1).
+      TIMESERIES_ORGANISATION_ID: ${TIMESERIES_ORGANISATION_ID:-6647A41A-8FEB-4082-86F4-3D14964161AD}
+      TIMESERIES_SITE_ID: ${TIMESERIES_SITE_ID:-76454DA2-683C-4706-A88E-4E2FC6773685}
+      TIMESERIES_USER_ID: ${TIMESERIES_USER_ID:-15de0997-1508-4f2e-91de-14745f295d9e}
       PATH_MAP_FROM: ${WORKSPACE_ROOT:-/home/ashwanth/ws_rhapsodi-promtek-dev}/data
       PATH_MAP_TO: /data
       ROBOT_START_ADAPTER_URL: ${ROBOT_START_ADAPTER_URL:-http://host.docker.internal:8010/start_webhook_weightment}
@@ -122,9 +126,10 @@ services:
       - "${DASHBOARD_PORT:-8080}:80"
     # SPA deep links (/batches, etc.) need try_files → index.html.
     # Mount keeps hostaware/older images working without a rebuild.
-    # Path is relative to workspace root (requires --project-directory).
+    # Path is relative to this file (compose/devices/), not project root —
+    # `include:` from docker-compose.robot-prod.yml resolves mounts that way.
     volumes:
-      - ./docker/nginx-dashboard.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../../docker/nginx-dashboard.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - backend
     restart: unless-stopped
