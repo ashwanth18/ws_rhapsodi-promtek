@@ -56,7 +56,7 @@ src/dashboard/node_modules/**
 !src/jaka_planner/lib/**
 
 # Keep published Condor agent artifacts in build context
-!Rhapsodi Condor Agent WIP Apr 8 2026/**
+!Rhapsodi Condor Agent July 13 2026/**
 
 # Big/irrelevant media (avoid shipping into the image unless you really need it)
 src/video_solution.mp4

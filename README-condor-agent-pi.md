@@ -41,7 +41,7 @@ docker run -it --rm -v /dev:/dev --privileged --net=host microros/micro-ros-agen
 - `robot-prod.env`
 - `docker/condor-agent.Dockerfile`
 - `docker/condor-agent-entrypoint.sh`
-- `Rhapsodi Condor Agent WIP Apr 8 2026/appsettings.json`
+- `Rhapsodi Condor Agent July 13 2026/appsettings.json`
 
 Each file has a different job:
 
@@ -158,7 +158,7 @@ Notes:
 
 - Run each `docker buildx build ... --push` as its own command.
 - Do not paste multiple build commands onto one shell line.
-- The Condor agent bundle must remain included in the build context. The `.dockerignore` exception for `Rhapsodi Condor Agent WIP Apr 8 2026/` is required.
+- The Condor agent bundle must remain included in the build context. The `.dockerignore` exception for `Rhapsodi Condor Agent July 13 2026/` is required.
 
 ## First-Time Pi Setup
 
@@ -358,7 +358,7 @@ If they vanish, check whether `./data/ros_home:/root/.ros` is still mounted in `
 
 ## Pitfalls To Avoid
 
-- Do not assume editing the bundled `Rhapsodi Condor Agent WIP Apr 8 2026/appsettings.json` will change a Pi that already has seeded persistent config.
+- Do not assume editing the bundled `Rhapsodi Condor Agent July 13 2026/appsettings.json` will change a Pi that already has seeded persistent config.
 - Do not delete `data/condor-agent/home` unless you intentionally want to reset Condor runtime state.
 - Do not change `CONDOR_AGENT_RHAPSODI_URL` away from `http://webhook_service:5000` for the Compose-internal path.
 - Do not revert `FASTDDS_BUILTIN_TRANSPORTS=UDPv4` unless you are deliberately retesting DDS transport behavior.

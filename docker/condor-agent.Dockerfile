@@ -2,7 +2,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0-jammy
 
 WORKDIR /opt/condor-agent
 
-COPY ["Rhapsodi Condor Agent WIP Apr 8 2026/", "/opt/condor-agent/"]
+COPY ["Rhapsodi Condor Agent July 13 2026/", "/opt/condor-agent/"]
 COPY ["docker/condor-agent-entrypoint.sh", "/condor-agent-entrypoint.sh"]
 
 RUN mkdir -p /data/condor-agent/logs /data/condor-agent/home
