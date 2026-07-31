@@ -100,6 +100,15 @@ export type Branch = {
   protected?: boolean
 }
 
+export type BranchTip = {
+  sha?: string
+  short_sha?: string
+  html_url?: string | null
+  message?: string
+  date?: string | null
+  branch?: string
+}
+
 export type DeviceTarget = {
   device_id: string
   tracked_branch: string
@@ -398,6 +407,10 @@ export const api = {
   },
   listRobotTypes: () => request<{ robot_types: string[] }>('/api/robot_types'),
   listBranches: () => request<{ branches: Branch[] }>('/api/branches'),
+  getBranchTip: (branch: string) =>
+    request<{ tip: BranchTip }>(
+      `/api/branches/${encodeURIComponent(branch)}/tip`,
+    ),
   listReleases: (params?: {
     branch?: string
     status?: string

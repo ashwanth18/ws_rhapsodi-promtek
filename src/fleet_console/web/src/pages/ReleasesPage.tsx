@@ -6,7 +6,9 @@ import {
   formatDuration,
   releaseSummary,
   releaseVersion,
+  shortSha,
   type Branch,
+  type BranchTip,
   type Device,
   type Release,
 } from '../lib/api'
@@ -90,6 +92,7 @@ export default function ReleasesPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [confirmBuild, setConfirmBuild] = useState(false)
+  const [branchTip, setBranchTip] = useState<BranchTip | null>(null)
 
   /** Deep-link from Devices “Update available”: ?focus=<releaseId|sha> */
   const focusKey = (searchParams.get('focus') || '').trim()
@@ -108,8 +111,19 @@ export default function ReleasesPage() {
       setReleases(r.releases)
       setRuns(w.runs)
       setDevices(d.devices)
+      const selected = branch || b.branches[0]?.name
       if (!branch && b.branches[0]?.name) {
         setBranch(b.branches[0].name)
+      }
+      if (selected) {
+        try {
+          const tip = await api.getBranchTip(selected)
+          setBranchTip(tip.tip)
+        } catch {
+          setBranchTip(null)
+        }
+      } else {
+        setBranchTip(null)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -150,6 +164,21 @@ export default function ReleasesPage() {
     const idx = releases.findIndex((r) => r.id === highlightRelease.id)
     return idx >= 0 && idx + 1 < releases.length ? releases[idx + 1] : null
   }, [highlightRelease, releases])
+
+  const tipSha = shortSha(branchTip?.sha || branchTip?.short_sha)
+  const tipHasSuccessfulRelease = useMemo(() => {
+    if (!tipSha || tipSha === '—') return true
+    return releases.some((r) => {
+      const rs = shortSha(r.git_sha)
+      return (
+        rs === tipSha ||
+        (r.git_sha || '').toLowerCase().startsWith(tipSha.toLowerCase()) ||
+        tipSha.toLowerCase().startsWith(rs.toLowerCase())
+      )
+    })
+  }, [releases, tipSha])
+
+  const needsCiBuild = Boolean(branchTip?.sha) && !tipHasSuccessfulRelease
 
   useEffect(() => {
     void load()
@@ -227,6 +256,43 @@ export default function ReleasesPage() {
           Dispatches GitHub Actions <code>build-and-release.yml</code> (multi-arch).
           When it finishes, the Release shows up for device Deploy.
         </p>
+
+        {needsCiBuild ? (
+          <div className="mt-3 rounded-[var(--radius-sm)] border border-[var(--status-warn-fg)]/40 bg-[var(--status-warn-bg)] px-3 py-2.5 text-sm text-[var(--status-warn-fg)]">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge label="Needs CI build" tone="warn" pulse />
+              <span className="font-medium text-[var(--text-primary)]">
+                Newest git on <code>{branch}</code> is not a Release yet
+              </span>
+            </div>
+            <div className="mt-1 text-[var(--text-primary)]">
+              Tip <code>{tipSha}</code>
+              {branchTip?.message ? (
+                <>
+                  {' '}
+                  — {branchTip.message}
+                </>
+              ) : null}
+            </div>
+            <div className="mt-1 text-xs text-[var(--text-muted)]">
+              Latest verified Release is still{' '}
+              {latestRelease ? (
+                <strong>{releaseVersion(latestRelease)}</strong>
+              ) : (
+                'none'
+              )}
+              . Click <strong>Build CI</strong> for this tip; after success, Latest
+              becomes this sha and Devices show Update available.
+            </div>
+          </div>
+        ) : branchTip?.sha ? (
+          <div className="mt-3 text-xs text-[var(--text-muted)]">
+            Branch tip <code>{tipSha}</code> already has a successful Release
+            {latestRelease ? ` (${releaseVersion(latestRelease)})` : ''}.
+            {branchTip.message ? ` “${branchTip.message}”` : ''}
+          </div>
+        ) : null}
+
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <label className="block min-w-[220px] text-xs text-[var(--text-muted)]">
             Branch
@@ -249,7 +315,7 @@ export default function ReleasesPage() {
           </label>
           <Button onClick={() => setConfirmBuild(true)} disabled={busy || !branch}>
             <Rocket className="h-4 w-4" />
-            {busy ? 'Dispatching…' : 'Build CI'}
+            {busy ? 'Dispatching…' : needsCiBuild ? 'Build CI (tip)' : 'Build CI'}
           </Button>
         </div>
       </div>

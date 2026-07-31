@@ -29,6 +29,7 @@ from .db import (
 )
 from .github import (
     latest_workflow_runs,
+    latest_commit,
     list_branches,
     trigger_workflow,
     version_check,
@@ -1234,6 +1235,16 @@ def api_robot_types() -> dict:
 def api_branches() -> dict:
     try:
         return {'branches': list_branches()}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get('/api/branches/{branch}/tip', dependencies=[Depends(require_token)])
+def api_branch_tip(branch: str) -> dict:
+    """Newest git commit on a branch (may not have a successful Release yet)."""
+    try:
+        tip = latest_commit(branch)
+        return {'tip': tip}
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
