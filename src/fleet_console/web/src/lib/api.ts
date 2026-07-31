@@ -407,10 +407,10 @@ export const api = {
   },
   listRobotTypes: () => request<{ robot_types: string[] }>('/api/robot_types'),
   listBranches: () => request<{ branches: Branch[] }>('/api/branches'),
-  getBranchTip: (branch: string) =>
-    request<{ tip: BranchTip }>(
-      `/api/branches/${encodeURIComponent(branch)}/tip`,
-    ),
+  getBranchTip: (branch: string) => {
+    const qs = new URLSearchParams({ branch })
+    return request<{ tip: BranchTip }>(`/api/branches/tip?${qs}`)
+  },
   listReleases: (params?: {
     branch?: string
     status?: string

@@ -1239,9 +1239,12 @@ def api_branches() -> dict:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-@app.get('/api/branches/{branch}/tip', dependencies=[Depends(require_token)])
-def api_branch_tip(branch: str) -> dict:
-    """Newest git commit on a branch (may not have a successful Release yet)."""
+@app.get('/api/branches/tip', dependencies=[Depends(require_token)])
+def api_branch_tip(branch: str = 'main') -> dict:
+    """Newest git commit on a branch (may not have a successful Release yet).
+
+    Query param (not path) so names like feature/fleet-console work.
+    """
     try:
         tip = latest_commit(branch)
         return {'tip': tip}
