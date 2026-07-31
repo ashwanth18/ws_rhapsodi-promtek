@@ -91,6 +91,9 @@ export default function ReleasesPage() {
   const [busy, setBusy] = useState(false)
   const [confirmBuild, setConfirmBuild] = useState(false)
 
+  /** Deep-link from Devices “Update available”: ?focus=<releaseId|sha> */
+  const focusKey = (searchParams.get('focus') || '').trim()
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -120,6 +123,34 @@ export default function ReleasesPage() {
     [devices],
   )
 
+  const latestRelease = releases[0] || null
+
+  const focusedRelease = useMemo(() => {
+    if (!focusKey || !releases.length) return null
+    const byId = Number(focusKey)
+    if (Number.isFinite(byId) && byId > 0) {
+      const hit = releases.find((r) => r.id === byId)
+      if (hit) return hit
+    }
+    const key = focusKey.toLowerCase()
+    return (
+      releases.find(
+        (r) =>
+          r.git_sha?.toLowerCase() === key ||
+          r.git_sha?.toLowerCase().startsWith(key) ||
+          (r.short_sha && r.short_sha.toLowerCase() === key),
+      ) || null
+    )
+  }, [focusKey, releases])
+
+  const highlightRelease = focusedRelease || latestRelease
+
+  const previousRelease = useMemo(() => {
+    if (!highlightRelease) return null
+    const idx = releases.findIndex((r) => r.id === highlightRelease.id)
+    return idx >= 0 && idx + 1 < releases.length ? releases[idx + 1] : null
+  }, [highlightRelease, releases])
+
   useEffect(() => {
     void load()
     const id = window.setInterval(() => void load(), 20000)
@@ -131,9 +162,18 @@ export default function ReleasesPage() {
     if (q && q !== branch) setBranch(q)
   }, [searchParams])
 
+  useEffect(() => {
+    if (!focusedRelease) return
+    const el = document.getElementById(`release-row-${focusedRelease.id}`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [focusedRelease, loading])
+
   const onBranchChange = (next: string) => {
     setBranch(next)
-    setSearchParams(next && next !== 'main' ? { branch: next } : {})
+    const nextParams: Record<string, string> = {}
+    if (next && next !== 'main') nextParams.branch = next
+    if (focusKey) nextParams.focus = focusKey
+    setSearchParams(nextParams)
   }
 
   const triggerBuild = async () => {
@@ -277,8 +317,76 @@ export default function ReleasesPage() {
 
       <SectionHeader
         title="Verified releases"
-        description="Each row is a deployable version (#N). Newest is at the top. Intended devices match the release platform."
+        description="Each row is a deployable version (#N). Newest is at the top — look for the Latest badge. Open from Devices “Update available” to jump here with notes."
       />
+
+      {highlightRelease ? (
+        <div
+          id={`release-spotlight-${highlightRelease.id}`}
+          className={`mb-4 rounded-[var(--radius-md)] border px-4 py-3 text-sm ${
+            focusedRelease
+              ? 'border-[var(--status-warn-fg)]/50 bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]'
+              : 'border-[var(--accent)]/40 bg-[var(--surface-1)] text-[var(--text-secondary)]'
+          }`}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge
+              label={focusedRelease ? 'Opened from Update available' : 'Latest release'}
+              tone={focusedRelease ? 'warn' : 'info'}
+              pulse={Boolean(focusedRelease)}
+            />
+            <span className="font-display font-semibold text-[var(--text-primary)]">
+              {releaseVersion(highlightRelease)}
+            </span>
+            <code className="text-xs text-[var(--text-muted)]">
+              {highlightRelease.git_sha}
+            </code>
+          </div>
+          <div className="mt-2">
+            <div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+              What changed (commit subject)
+            </div>
+            <p className="mt-0.5 whitespace-pre-wrap text-[var(--text-primary)]">
+              {releaseSummary(highlightRelease) || 'No subject recorded for this Release.'}
+            </p>
+          </div>
+          {previousRelease ? (
+            <div className="mt-2 text-xs text-[var(--text-muted)]">
+              Previous on this list:{' '}
+              <span className="text-[var(--text-secondary)]">
+                {releaseVersion(previousRelease)}
+              </span>
+              {' — '}
+              {releaseSummary(previousRelease) || 'no subject'}
+            </div>
+          ) : null}
+          <div className="mt-2 text-xs text-[var(--text-muted)]">
+            Branch <code>{highlightRelease.branch}</code>
+            {highlightRelease.reported_at
+              ? ` · reported ${new Date(highlightRelease.reported_at).toLocaleString()}`
+              : ''}
+            {' · '}
+            {
+              robots.filter(
+                (d) =>
+                  d.image_tag &&
+                  d.image_tag === highlightRelease.git_sha,
+              ).length
+            }{' '}
+            device(s) running this ·{' '}
+            {
+              robots.filter((d) => d.update_available && d.latest_release?.id === highlightRelease.id)
+                .length
+            }{' '}
+            waiting to update to it
+          </div>
+          <div className="mt-2 text-xs">
+            To apply: open the device → select this Release → Deploy. This page does not
+            deploy by itself.
+          </div>
+        </div>
+      ) : null}
+
       <DataTable
         rows={releases}
         rowKey={(r) => r.id}
@@ -287,25 +395,56 @@ export default function ReleasesPage() {
           {
             key: 'version',
             header: 'Version',
-            render: (r) => (
-              <div>
-                <div className="font-medium text-[var(--accent)]">
-                  {releaseVersion(r)}
+            render: (r) => {
+              const isLatest = latestRelease?.id === r.id
+              const isFocus = focusedRelease?.id === r.id
+              const runningN = robots.filter(
+                (d) => d.image_tag && d.image_tag === r.git_sha,
+              ).length
+              return (
+                <div id={`release-row-${r.id}`}>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <div
+                      className={`font-medium ${
+                        isLatest || isFocus
+                          ? 'text-[var(--accent)]'
+                          : 'text-[var(--text-primary)]'
+                      }`}
+                    >
+                      {releaseVersion(r)}
+                    </div>
+                    {isLatest ? (
+                      <StatusBadge label="Latest" tone="info" />
+                    ) : null}
+                    {isFocus && !isLatest ? (
+                      <StatusBadge label="Focused" tone="warn" />
+                    ) : null}
+                    {runningN > 0 ? (
+                      <StatusBadge
+                        label={`Running ×${runningN}`}
+                        tone="good"
+                      />
+                    ) : (
+                      <StatusBadge label="Not on fleet yet" tone="neutral" />
+                    )}
+                  </div>
+                  <div
+                    className={`mt-0.5 text-xs text-[var(--text-secondary)] ${
+                      isLatest || isFocus ? 'max-w-xl whitespace-pre-wrap' : 'max-w-[22rem] truncate'
+                    }`}
+                    title={releaseSummary(r)}
+                  >
+                    {releaseSummary(r)}
+                  </div>
+                  <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">
+                    branch {r.branch}
+                    {r.reported_at
+                      ? ` · ${new Date(r.reported_at).toLocaleString()}`
+                      : ''}
+                  </div>
                 </div>
-                <div
-                  className="mt-0.5 max-w-[22rem] truncate text-xs text-[var(--text-secondary)]"
-                  title={releaseSummary(r)}
-                >
-                  {releaseSummary(r)}
-                </div>
-                <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">
-                  branch {r.branch}
-                  {r.reported_at
-                    ? ` · ${new Date(r.reported_at).toLocaleString()}`
-                    : ''}
-                </div>
-              </div>
-            ),
+              )
+            },
           },
           {
             key: 'sha',

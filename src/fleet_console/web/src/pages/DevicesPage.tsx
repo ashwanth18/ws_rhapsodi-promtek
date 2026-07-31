@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ExternalLink, LayoutDashboard, RefreshCw } from 'lucide-react'
 import {
   api,
@@ -78,8 +78,19 @@ export default function DevicesPage() {
       {updates > 0 ? (
         <div className="mb-4 rounded-[var(--radius-md)] border border-[var(--status-warn-fg)]/40 bg-[var(--status-warn-bg)] px-4 py-3 text-sm text-[var(--status-warn-fg)]">
           {updates === 1
-            ? '1 device has a newer verified Release ready to deploy. Open the device, pick the highlighted Release, then Deploy.'
-            : `${updates} devices have a newer verified Release ready to deploy. Open each device, pick the highlighted Release, then Deploy.`}
+            ? '1 device has a newer verified Release ready to deploy. '
+            : `${updates} devices have a newer verified Release ready to deploy. `}
+          <Link
+            className="font-medium underline underline-offset-2"
+            to={(() => {
+              const latest = devices.find((d) => d.update_available)?.latest_release
+              if (latest?.id) return `/releases?focus=${latest.id}`
+              return '/releases'
+            })()}
+          >
+            See what changed on Releases
+          </Link>
+          , then open the device and Deploy.
         </div>
       ) : null}
 
@@ -268,7 +279,11 @@ export default function DevicesPage() {
               if (d.update_available && d.latest_release) {
                 const latest = d.latest_release
                 return (
-                  <div className="max-w-[16rem] text-xs">
+                  <Link
+                    to={`/releases?focus=${latest.id}`}
+                    className="block max-w-[16rem] text-xs hover:opacity-90"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <StatusBadge label="Update available" tone="warn" pulse />
                     <div className="mt-1 font-medium text-[var(--status-warn-fg)]">
                       → {releaseVersion(latest)}
@@ -279,10 +294,10 @@ export default function DevicesPage() {
                     >
                       {releaseSummary(latest)}
                     </div>
-                    <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">
-                      tracked {d.desired_branch || d.target?.tracked_branch || 'main'}
+                    <div className="mt-0.5 text-[10px] text-[var(--accent)] underline underline-offset-2">
+                      View release notes
                     </div>
-                  </div>
+                  </Link>
                 )
               }
               if (d.needs_build) {

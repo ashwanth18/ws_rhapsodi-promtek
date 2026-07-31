@@ -359,11 +359,18 @@ export default function DeviceDetailPage() {
               ? ` · built ${new Date(device.latest_release.reported_at).toLocaleString()}`
               : ''}
           </div>
-          <div className="mt-2 text-xs">
-            Select{' '}
-            <strong>{releaseVersion(device.latest_release)}</strong> in Release
-            below, then Deploy. Tracked branch:{' '}
-            <code>{trackedBranch || 'main'}</code>
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+            <Link
+              className="font-medium underline underline-offset-2"
+              to={`/releases?focus=${device.latest_release.id}`}
+            >
+              Open on Releases (notes + Latest badge)
+            </Link>
+            <span>
+              Or select{' '}
+              <strong>{releaseVersion(device.latest_release)}</strong> below,
+              then Deploy. Tracked branch: <code>{trackedBranch || 'main'}</code>
+            </span>
           </div>
         </div>
       ) : null}
