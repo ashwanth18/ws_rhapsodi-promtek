@@ -297,35 +297,42 @@ def compose_up(desired: dict[str, Any]) -> None:
     compose = compose_file_path(desired)
     if not compose.is_file():
         raise FileNotFoundError(f'Missing compose file {compose}')
-    _run(
-        [
-            'docker',
-            'compose',
-            '--env-file',
-            str(ENV_FILE),
-            '-f',
-            str(compose),
-            'pull',
-        ]
-    )
-    _run(
-        [
-            'docker',
-            'compose',
-            '--env-file',
-            str(ENV_FILE),
-            '-f',
-            str(compose),
-            'up',
-            '-d',
-            '--remove-orphans',
-        ]
-    )
+    # Keep ./data and ./docker mounts relative to the workspace root even when
+    # the compose file lives under compose/devices/.
+    base = [
+        'docker',
+        'compose',
+        '--project-directory',
+        str(WORKSPACE_DIR),
+        '--env-file',
+        str(ENV_FILE),
+        '-f',
+        str(compose),
+    ]
+    try:
+        _run([*base, 'pull'])
+    except (RuntimeError, subprocess.CalledProcessError) as exc:
+        # Hub blips should not block converge when images are already local.
+        LOG.warning('compose pull failed (continuing with local images): %s', exc)
+    _run([*base, 'up', '-d', '--remove-orphans'])
     exporters = WORKSPACE_DIR / 'monitoring/exporters/docker-compose.exporters.yml'
     if exporters.is_file():
         try:
-            _run(['docker', 'compose', '-f', str(exporters), 'up', '-d'])
-        except subprocess.CalledProcessError as exc:
+            exporter_cmd = ['docker', 'compose']
+            if ENV_FILE.is_file():
+                exporter_cmd.extend(['--env-file', str(ENV_FILE)])
+            exporter_cmd.extend(
+                [
+                    '--project-directory',
+                    str(exporters.parent),
+                    '-f',
+                    str(exporters),
+                    'up',
+                    '-d',
+                ]
+            )
+            _run(exporter_cmd)
+        except (RuntimeError, subprocess.CalledProcessError) as exc:
             LOG.warning('Exporters compose failed (non-fatal): %s', exc)
 
 
