@@ -1,4 +1,4 @@
-"""Phase 3: mode registry, arbitration, NullMesClient."""
+"""Phase 3–4: mode registry, arbitration, NullMesClient, mock-local helpers."""
 
 from __future__ import annotations
 
@@ -13,9 +13,18 @@ from app.modes.manager import (
     ModeSwitchConflict,
     ModeValidationError,
 )
+from app.modes.mock_local import (
+    MOCK_DEFAULT_PICKUP_TARGET,
+    MOCK_DEFAULT_RETURN_TARGET,
+    MOCK_DEFAULT_WEIGH_TARGET,
+    MOCK_EVENT_ID_PREFIX,
+    allocate_mock_batch_id,
+    is_mock_event_id,
+)
 from app.modes.registry import build_default_registry
 from app.modes.state import RuntimeModeState, sim_allowed
 from app.run_spec import OperatingMode, RunSpec
+from app.schemas import MockLocalRunRequest
 
 
 def test_registry_contains_all_modes():
@@ -122,3 +131,53 @@ def test_null_mes_client_noop(caplog):
     assert get_mes_client(OperatingMode.MES_CONDOR).__class__.__name__ == (
         'CondorMesClient'
     )
+
+
+def test_is_mock_event_id():
+    assert is_mock_event_id(f'{MOCK_EVENT_ID_PREFIX}abc')
+    assert is_mock_event_id('mock-1234-5678')
+    assert not is_mock_event_id('webhook-abc')
+    assert not is_mock_event_id(None)
+    assert not is_mock_event_id('')
+
+
+def test_allocate_mock_batch_id_is_negative():
+    """Mock batch ids must be negative ints so they cannot collide with Condor."""
+    batch_id = allocate_mock_batch_id('12345678-1234-5678-1234-567812345678')
+    assert int(batch_id) < 0
+    other = allocate_mock_batch_id('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee')
+    assert int(other) < 0
+    assert batch_id != other
+
+
+def test_mock_local_run_request_schema():
+    req = MockLocalRunRequest(target_weight_g=100.0)
+    assert req.target_weight_g == 100.0
+    assert req.tolerance_g is None
+    assert req.location_code is None
+    full = MockLocalRunRequest(
+        target_weight_g=250.5,
+        tolerance_g=2.0,
+        location_code='LOC-A',
+        pickup_target_name=MOCK_DEFAULT_PICKUP_TARGET,
+        weigh_target_name=MOCK_DEFAULT_WEIGH_TARGET,
+        return_target_name=MOCK_DEFAULT_RETURN_TARGET,
+    )
+    assert full.location_code == 'LOC-A'
+    assert full.pickup_target_name == 'MoveToScoopingContainer'
+
+
+def test_mock_local_mode_defaults_match_webhook_tree():
+    """Mock-local shares WebhookWeightment tree identity with MES family."""
+    adapter = build_default_registry().get(OperatingMode.MOCK_LOCAL)
+    plan = adapter.build_plan(
+        RunSpec(
+            mode=OperatingMode.MOCK_LOCAL,
+            run_key='mock-test',
+            target_weight_g=100.0,
+            tolerance_g=2.0,
+            location_code='MOCK',
+        )
+    )
+    assert plan.tree_id == 'WebhookWeightment'
+    assert plan.blackboard['target_weight_g'] == 100.0

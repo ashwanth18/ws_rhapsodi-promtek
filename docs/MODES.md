@@ -62,3 +62,10 @@ Mode changes are refused with HTTP 409 while `has_active_robot_run` is
 true. Outbound MES posts go through `MesClient` (`CondorMesClient` vs
 `NullMesClient` for mock-local / lights-out). `BT_TREE` / `tree_file` is
 an optional preferred-tree hint only.
+
+Phase 4: `POST /modes/mock/runs` (active mode must already be
+`mock-local`, else 409) inserts a synthetic `WebhookWeightment` with
+`event_id` prefix `mock-` and starts via the production
+`robot_start_adapter` / `/bt_start_webhook_weightment` path. Completion
+short-circuits Condor when `event_id` starts with `mock-`. Dashboard
+**Test** page (`/test`) drives mode switch + mock starts.

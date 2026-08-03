@@ -8,6 +8,17 @@ class RuntimeModeRequest(BaseModel):
     environment: str = 'real'
 
 
+class MockLocalRunRequest(BaseModel):
+    """Operator-triggered single-location test run (mock-local mode)."""
+
+    target_weight_g: float
+    tolerance_g: Optional[float] = None
+    location_code: Optional[str] = None
+    pickup_target_name: Optional[str] = None
+    weigh_target_name: Optional[str] = None
+    return_target_name: Optional[str] = None
+
+
 class ProcessedRequest(BaseModel):
     run_db_id: Optional[int] = None
     robot_weightment_run_id: Optional[int] = None

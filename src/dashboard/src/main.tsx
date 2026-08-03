@@ -8,6 +8,7 @@ import ControlsPage from './pages/ControlsPage'
 import BatchListPage from './pages/BatchListPage'
 import BatchDetailPage from './pages/BatchDetailPage'
 import StockLocationPage from './pages/StockLocationPage'
+import TestPage from './pages/TestPage'
 import SidebarLayout from './pages/SidebarLayout'
 import { RosProvider } from './ros/RosContext'
 import { RuntimeConfigProvider } from './config/RuntimeConfig'
@@ -26,6 +27,7 @@ const router = createBrowserRouter([
       { path: '/webhook-weightments/:eventId', element: <BatchDetailPage /> },
       { path: '/stock-location', element: <StockLocationPage /> },
       { path: '/controls', element: <ControlsPage /> },
+      { path: '/test', element: <TestPage /> },
     ],
   },
 ])

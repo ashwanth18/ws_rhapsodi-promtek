@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any, Dict, Optional
 
 from ..mes_client import NullMesClient
@@ -11,9 +12,31 @@ from .base import ModeAdapter, ResultSink, RunPlan
 
 logger = logging.getLogger('uvicorn.error')
 
+MOCK_EVENT_ID_PREFIX = 'mock-'
+MOCK_DEFAULT_PICKUP_TARGET = 'MoveToScoopingContainer'
+MOCK_DEFAULT_WEIGH_TARGET = 'MoveToWeighingContainer'
+MOCK_DEFAULT_RETURN_TARGET = 'MoveToScoopingContainer'
+MOCK_SITE_ID = 'mock-local'
+MOCK_INGREDIENT_ID = '0'
+
+
+def is_mock_event_id(event_id: str | None) -> bool:
+    """Synthetic mock-local weightments use event_id prefix ``mock-``."""
+    return bool(event_id) and str(event_id).startswith(MOCK_EVENT_ID_PREFIX)
+
+
+def allocate_mock_batch_id(mock_uuid: str) -> str:
+    """Return a negative numeric batch_id that cannot collide with Condor.
+
+    Condor batch ids are positive integers. Mock uses ``-(1..1e9)`` derived
+    from the event UUID so adapter ``batch_id_int`` stays valid.
+    """
+    n = (uuid.UUID(mock_uuid).int % 1_000_000_000) + 1
+    return str(-n)
+
 
 class _MockJobSource:
-    """Phase 4 will accept ``POST /modes/mock/runs``; idle until then."""
+    """Jobs arrive via ``POST /modes/mock/runs`` (not polled)."""
 
     def poll(self) -> Optional[RunSpec]:
         return None

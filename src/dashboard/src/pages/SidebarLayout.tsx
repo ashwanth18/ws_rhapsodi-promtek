@@ -4,6 +4,7 @@ import {
   Activity,
   ChevronLeft,
   ChevronRight,
+  FlaskConical,
   History,
   Layers,
   LayoutDashboard,
@@ -48,6 +49,7 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Operations', icon: <LayoutDashboard className="h-4 w-4" />, group: 'operate' },
   { to: '/batches', label: 'Batches', icon: <Layers className="h-4 w-4" />, group: 'operate' },
+  { to: '/test', label: 'Test', icon: <FlaskConical className="h-4 w-4" />, group: 'operate' },
   { to: '/logs', label: 'Run History', icon: <History className="h-4 w-4" />, group: 'analyze' },
   { to: '/stock-location', label: 'Locations', icon: <MapPin className="h-4 w-4" />, group: 'system' },
   { to: '/controls', label: 'Controls', icon: <SlidersHorizontal className="h-4 w-4" />, group: 'system' },

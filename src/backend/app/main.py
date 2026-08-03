@@ -6,6 +6,7 @@ import re
 import socket
 import threading
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,16 @@ from .modes import (
     ModeValidationError,
     get_mode_manager,
 )
+from .modes.mock_local import (
+    MOCK_DEFAULT_PICKUP_TARGET,
+    MOCK_DEFAULT_RETURN_TARGET,
+    MOCK_DEFAULT_WEIGH_TARGET,
+    MOCK_EVENT_ID_PREFIX,
+    MOCK_INGREDIENT_ID,
+    MOCK_SITE_ID,
+    allocate_mock_batch_id,
+    is_mock_event_id,
+)
 from .run_spec import OperatingMode
 from .models import (
     Base,
@@ -45,6 +56,7 @@ from .timeseries import (
     build_timeseries_payload,
 )
 from .schemas import (
+    MockLocalRunRequest,
     ProcessedRequest,
     ProcessedResponse,
     RobotRunCompletionRequest,
@@ -296,6 +308,192 @@ def put_runtime_mode(payload: RuntimeModeRequest) -> dict:
 @app.get('/runtime/capabilities')
 def get_runtime_capabilities() -> dict:
     return get_mode_manager().capabilities()
+
+
+def build_mock_robot_run_contract(
+    row: WebhookWeightment,
+    *,
+    location_code: str | None,
+    pickup_target_name: str | None,
+    weigh_target_name: str | None,
+    return_target_name: str | None,
+    tolerance_g: float | None,
+) -> dict:
+    """Build adapter contract for a mock-local synthetic weightment row."""
+    if row.target_weight_kg is None:
+        raise HTTPException(
+            status_code=400, detail='Mock weightment is missing target_weight_kg'
+        )
+    mapped = resolve_robot_targets(None, location_code)
+    pickup = (
+        (pickup_target_name or '').strip()
+        or mapped.pickup_target_name
+        or MOCK_DEFAULT_PICKUP_TARGET
+    )
+    weigh = (
+        (weigh_target_name or '').strip()
+        or mapped.weigh_target_name
+        or MOCK_DEFAULT_WEIGH_TARGET
+    )
+    ret = (
+        (return_target_name or '').strip()
+        or mapped.return_target_name
+        or MOCK_DEFAULT_RETURN_TARGET
+    )
+    # Prefer explicit mock defaults when mapping falls back to ReturnHome
+    # and the operator did not override return.
+    if not (return_target_name or '').strip() and ret == 'ReturnHome':
+        ret = MOCK_DEFAULT_RETURN_TARGET
+    target_weight_kg = float(row.target_weight_kg)
+    target_weight_g = target_weight_kg * 1000.0
+    if tolerance_g is not None and float(tolerance_g) > 0:
+        weight_tolerance_g = float(tolerance_g)
+    else:
+        weight_tolerance_g = (
+            float(mapped.weight_tolerance_g)
+            if mapped.weight_tolerance_g > 0
+            else target_weight_g * 0.02
+        )
+    location_id = 0
+    code = (location_code or '').strip() or 'MOCK'
+    try:
+        batch_id_int = int(row.batch_id) if row.batch_id is not None else 0
+        ingredient_id_int = (
+            int(row.ingredient_id) if row.ingredient_id is not None else 0
+        )
+    except ValueError:
+        batch_id_int = 0
+        ingredient_id_int = 0
+    return {
+        'weightment_id': row.id,
+        'event_id': row.event_id,
+        'batch_id': row.batch_id,
+        'batch_id_int': batch_id_int,
+        'ingredient_id': row.ingredient_id or MOCK_INGREDIENT_ID,
+        'ingredient_id_int': ingredient_id_int,
+        'site_id': row.site_id or MOCK_SITE_ID,
+        'location_id': location_id,
+        'location_code': code,
+        'ingredient_name': 'Mock local',
+        'pickup_target_name': pickup,
+        'weigh_target_name': weigh,
+        'return_target_name': ret,
+        'target_weight_kg': target_weight_kg,
+        'target_weight_g': target_weight_g,
+        'weight_tolerance_g': weight_tolerance_g,
+        'expected_lot': row.lot_code or '',
+        'mode': 'mock-local',
+    }
+
+
+@app.post('/modes/mock/runs')
+def create_mock_local_run(payload: MockLocalRunRequest) -> dict:
+    """Start a synthetic single-location robot run in mock-local mode."""
+    manager = get_mode_manager()
+    current = manager.current()
+    if current['mode'] != OperatingMode.MOCK_LOCAL.value:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                'message': (
+                    'Active mode must be mock-local to start a mock run '
+                    f"(current={current['mode']})"
+                ),
+                'mode': current['mode'],
+                'environment': current['environment'],
+            },
+        )
+    if payload.target_weight_g <= 0:
+        raise HTTPException(
+            status_code=400, detail='target_weight_g must be > 0'
+        )
+    if payload.tolerance_g is not None and payload.tolerance_g < 0:
+        raise HTTPException(
+            status_code=400, detail='tolerance_g must be >= 0'
+        )
+
+    db = SessionLocal()
+    row: WebhookWeightment | None = None
+    try:
+        reconcile_stale_robot_runs(db)
+        mock_uuid = str(uuid.uuid4())
+        event_id = f'{MOCK_EVENT_ID_PREFIX}{mock_uuid}'
+        # Negative batch ids cannot collide with Condor (positive) ids.
+        batch_id = allocate_mock_batch_id(mock_uuid)
+        target_weight_kg = float(payload.target_weight_g) / 1000.0
+        row = WebhookWeightment(
+            event_id=event_id,
+            sent_utc=utc_now(),
+            site_id=MOCK_SITE_ID,
+            batch_id=batch_id,
+            batch_number=f'mock{batch_id}',
+            ingredient_id=MOCK_INGREDIENT_ID,
+            target_weight_kg=target_weight_kg,
+            weightment_completed=False,
+            mes_timeseries_sent=False,
+            batch_auto_run_enabled=False,
+            lot_code='',
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+
+        contract = build_mock_robot_run_contract(
+            row,
+            location_code=payload.location_code,
+            pickup_target_name=payload.pickup_target_name,
+            weigh_target_name=payload.weigh_target_name,
+            return_target_name=payload.return_target_name,
+            tolerance_g=payload.tolerance_g,
+        )
+        result = start_robot_run_for_weightment_row(db, row, contract=contract)
+        return {
+            'ok': True,
+            'mode': current['mode'],
+            'environment': current['environment'],
+            'event_id': event_id,
+            'weightment_id': row.id,
+            'run': result.get('run'),
+            'alreadyRunning': bool(result.get('alreadyRunning')),
+            'contract': {
+                'location_code': contract['location_code'],
+                'pickup_target_name': contract['pickup_target_name'],
+                'weigh_target_name': contract['weigh_target_name'],
+                'return_target_name': contract['return_target_name'],
+                'target_weight_g': contract['target_weight_g'],
+                'weight_tolerance_g': contract['weight_tolerance_g'],
+            },
+        }
+    except HTTPException:
+        # Roll back orphaned mock weightment if adapter start failed after insert.
+        if row is not None and row.id is not None:
+            try:
+                orphan = (
+                    db.query(WebhookWeightment)
+                    .filter(WebhookWeightment.id == row.id)
+                    .first()
+                )
+                if orphan is not None and is_mock_event_id(orphan.event_id):
+                    has_run = (
+                        db.query(RobotWeightmentRun)
+                        .filter(RobotWeightmentRun.weightment_id == orphan.id)
+                        .first()
+                    )
+                    if has_run is None:
+                        db.delete(orphan)
+                        db.commit()
+            except Exception:
+                logger.exception(
+                    'Failed to purge orphaned mock weightment_id=%s',
+                    getattr(row, 'id', None),
+                )
+        raise
+    except Exception as exc:
+        db.rollback()
+        logger.exception('Failed to start mock-local run')
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    finally:
+        db.close()
 
 
 def _load_device_identity() -> dict[str, str | None]:
@@ -1072,6 +1270,7 @@ def serialize_active_robot_run(
         'target_weight_kg': run_row.target_weight_kg,
         'location_id': run_row.stock_location_id,
         'location_code': run_row.stock_location_code,
+        'error_message': run_row.error_message,
         'requested_at': (
             run_row.requested_at.isoformat() if run_row.requested_at else None
         ),
@@ -1385,7 +1584,9 @@ def build_robot_run_contract(db, row: WebhookWeightment) -> dict:
     }
 
 
-def start_robot_run_for_weightment_row(db, row: WebhookWeightment) -> dict:
+def start_robot_run_for_weightment_row(
+    db, row: WebhookWeightment, *, contract: dict | None = None
+) -> dict:
     if row.weightment_completed:
         return {
             'ok': True,
@@ -1420,7 +1621,7 @@ def start_robot_run_for_weightment_row(db, row: WebhookWeightment) -> dict:
             'weightmentId': row.id,
             'run': serialize_robot_run(existing_run),
         }
-    contract = build_robot_run_contract(db, row)
+    contract = contract if contract is not None else build_robot_run_contract(db, row)
     run_row = RobotWeightmentRun(
         weightment_id=row.id,
         event_id=row.event_id,
@@ -1570,6 +1771,30 @@ def send_batch_timeseries_to_mes(db, batch_id: str) -> dict:
             'itemCount': 0,
         }
 
+    # Only skip when every row in the batch is mock — never poison a Condor
+    # batch if a mock row somehow shared a batch_id (defensive; mock ids are
+    # negative so this should not happen in practice).
+    batch_rows = (
+        db.query(WebhookWeightment)
+        .filter(WebhookWeightment.batch_id == batch_id)
+        .all()
+    )
+    if batch_rows and all(is_mock_event_id(item.event_id) for item in batch_rows):
+        mark_batch_timeseries_sent(db, batch_id)
+        db.commit()
+        logger.info(
+            'Skipping batch timeseries send for mock-only batch_id=%s rows=%s',
+            batch_id,
+            len(batch_rows),
+        )
+        return {
+            'ok': True,
+            'skipped': True,
+            'reason': 'mock_event',
+            'batchId': batch_id,
+            'itemCount': 0,
+        }
+
     runs = (
         db.query(RobotWeightmentRun)
         .join(
@@ -1642,6 +1867,29 @@ def send_batch_timeseries_to_mes(db, batch_id: str) -> dict:
 
 
 def send_weightment_to_mes(db, row: WebhookWeightment) -> dict:
+    # Mock-local synthetic rows must never call Condor (webhook path binds
+    # CondorMesClient explicitly, bypassing NullMesClient).
+    if is_mock_event_id(row.event_id):
+        row.weightment_completed = True
+        db.commit()
+        logger.info(
+            'Skipping MES weighment send for mock event_id=%s weightment_id=%s',
+            row.event_id,
+            row.id,
+        )
+        return {
+            'weightmentId': row.id,
+            'locationId': None,
+            'weighmentResponse': {
+                'skipped': True,
+                'reason': 'mock_event',
+                'eventId': row.event_id,
+            },
+            'batchEndSent': False,
+            'batchEndResponse': None,
+            'timeseriesResult': None,
+            'skippedMes': True,
+        }
     if row.batch_id is None or row.ingredient_id is None or row.target_weight_kg is None:
         raise HTTPException(
             status_code=400,
@@ -1785,6 +2033,28 @@ def send_processed_weightment_to_mes(
             'ok': True,
             'status': run_row.status,
             'alreadyCompleted': True,
+            'run': serialize_robot_run(run_row),
+        }
+    if is_mock_event_id(weightment_row.event_id) or is_mock_event_id(
+        run_row.event_id
+    ):
+        weightment_row.weightment_completed = True
+        run_row.status = 'succeeded'
+        run_row.error_message = None
+        run_row.mes_weighment_sent = True
+        run_row.mes_batch_end_sent = False
+        db.commit()
+        db.refresh(run_row)
+        logger.info(
+            'Skipping MES send for mock run: run_id=%s weightment_id=%s event_id=%s',
+            run_row.id,
+            weightment_row.id,
+            weightment_row.event_id,
+        )
+        return {
+            'ok': True,
+            'status': run_row.status,
+            'skippedMes': True,
             'run': serialize_robot_run(run_row),
         }
     try:
