@@ -8,6 +8,7 @@ class ProcessedRequest(BaseModel):
     robot_weightment_run_id: Optional[int] = None
     robot_id: Optional[str] = None
     run_id: Optional[str] = None
+    run_key: Optional[str] = None
     batch_id: Optional[str] = None
     ingredient_id: Optional[str] = None
     weightment_id: Optional[str] = None
@@ -15,6 +16,7 @@ class ProcessedRequest(BaseModel):
     location_code: Optional[str] = None
     episode_index: Optional[int] = None
     mode: Optional[str] = None
+    environment: Optional[str] = None
     target_weight_g: Optional[float] = None
     baseline_weight_g: Optional[float] = None
     final_weight_g: Optional[float] = None

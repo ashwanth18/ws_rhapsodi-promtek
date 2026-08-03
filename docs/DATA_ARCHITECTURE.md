@@ -61,24 +61,28 @@ flowchart TB
 
 ## Per-run local layout
 
-Every run - lights-out training episode or webhook weightment - lands
-under one `output_root` (`/data/lightsout` or `/data/webhook` depending
-on the docker-compose profile):
+Every run — lights-out training episode or webhook weightment — lands
+under a **single** `DATA_OUTPUT_ROOT` (default `/data/runs`), with a
+per-mode subdirectory. Profiles no longer point at separate
+`/data/webhook` vs `/data/lightsout` roots; mode is the first path
+segment under the shared root (see [MODES.md](MODES.md)):
 
 ```
-{output_root}/
-  manifest.sqlite            # local run index + outbox state (see below)
-  health.jsonl                # fleet-wide (device-scoped) health events
-  {run_folder}/                # run_key = this folder's name
-    metadata.json              # Tier 0 - run identity, schema_version, phase timestamps
-    events.jsonl                # Tier 0 - health events scoped to this run
-    episode_{N}/  (or webhook_run/)   # Tier 1 - bag_path: rosbag2 MCAP chunks + metadata.yaml
-    *.parquet                   # Tier 0 - written by the `processing` service once it responds
+{output_root}/                 # DATA_OUTPUT_ROOT, default /data/runs
+  manifest.sqlite              # local run index + outbox state (see below)
+  health.jsonl                 # fleet-wide (device-scoped) health events
+  {mode}/                      # e.g. lightsout | webhook | mes-condor | unknown
+    {run_folder}/              # run_key = this folder's name
+      metadata.json            # Tier 0 - schema_version, mode, environment, phase timestamps
+      events.jsonl             # Tier 0 - health events scoped to this run
+      episode_{N}/  (or webhook_run/)   # Tier 1 - bag_path: rosbag2 MCAP chunks + metadata.yaml
+      *.parquet                # Tier 0 - written by the `processing` service once it responds
 ```
 
 `run_key` is just `{run_folder}`'s basename - it's what ties together
 the manifest row, the uplink protocol's URL path segment, and the
-`ingested_runs`/`incidents` rows on the server side.
+`ingested_runs`/`incidents` rows on the server side. Manifest and
+health log stay at the root; only run folders nest under `{mode}/`.
 
 ## Data formats
 

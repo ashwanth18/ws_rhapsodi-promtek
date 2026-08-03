@@ -49,7 +49,7 @@ class DataCollectionManager(Node):
                 f'device_id={device.device_id} robot_id={device.robot_id} '
                 f'robot_type={device.robot_type} site_id={device.site_id}'
             )
-        self.declare_parameter('output_root', 'data/lightsout')
+        self.declare_parameter('output_root', 'data/runs')
         # recording_profiles.yaml (recording-profiles) is the source of
         # truth for which topics get recorded — pour-cycle telemetry and
         # scoop-phase vision live there now instead of only the always-on
@@ -102,6 +102,9 @@ class DataCollectionManager(Node):
         )
         self.declare_parameter('robot_id', device.robot_id)
         self.declare_parameter('mode', 'lightsout')
+        # environment axis (real | sim); see docs/MODES.md. Overridable
+        # per-run via webhook metadata when present.
+        self.declare_parameter('environment', 'real')
         self.declare_parameter('webhook_metadata_wait_seconds', 1.0)
         self.declare_parameter('processing_url', device.processing_url)
 
@@ -133,6 +136,7 @@ class DataCollectionManager(Node):
         ).value
         self._robot_id = str(self.get_parameter('robot_id').value)
         self._mode = str(self.get_parameter('mode').value)
+        self._environment = str(self.get_parameter('environment').value or 'real')
         self._webhook_metadata_wait_seconds = max(
             0.0,
             float(
@@ -169,6 +173,7 @@ class DataCollectionManager(Node):
         self._ingredient_id: Optional[str] = None
         self._target_weight_g: Optional[float] = None
         self._run_mode: Optional[str] = None
+        self._run_environment: Optional[str] = None
         self._weightment_id: Optional[str] = None
         self._location_id: Optional[str] = None
         self._location_code: Optional[str] = None
@@ -228,11 +233,26 @@ class DataCollectionManager(Node):
     def _format_timestamp(self) -> str:
         return datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
 
+    def _resolved_mode(self) -> str:
+        """Mode directory name under output_root; unknown when unset."""
+        mode = (self._run_mode or self._mode or '').strip()
+        return mode if mode else 'unknown'
+
+    def _resolved_environment(self) -> str:
+        env = (self._run_environment or self._environment or '').strip()
+        return env if env else 'real'
+
+    def _mode_output_dir(self) -> Path:
+        """``{output_root}/{mode}/`` — single DATA_OUTPUT_ROOT with per-mode
+        subdirectories (see docs/DATA_ARCHITECTURE.md / docs/MODES.md).
+        """
+        return self._output_root / self._resolved_mode()
+
     def _safe_run_folder(self) -> str:
         ts = self._format_timestamp()
         run_id = self._run_id or ts
         batch_id = self._batch_id or 'batch'
-        mode = self._run_mode or self._mode
+        mode = self._resolved_mode()
         suffix = ''
         if self._recording_source == 'webhook' and self._weightment_id:
             suffix = f'_weightment_{self._weightment_id}'
@@ -240,13 +260,17 @@ class DataCollectionManager(Node):
 
     def _metadata_payload(self, ctx: EpisodeContext) -> Dict[str, object]:
         payload: Dict[str, object] = {
+            'schema_version': '1',
             'source': ctx.source,
             'robot_id': self._robot_id,
             'run_id': self._run_id,
+            # run_key == folder basename (ties manifest / uplink / ingested_runs).
+            'run_key': ctx.folder.name,
             'batch_id': self._batch_id,
             'ingredient_id': self._ingredient_id,
             'target_weight_g': self._target_weight_g,
-            'mode': self._run_mode or self._mode,
+            'mode': self._resolved_mode(),
+            'environment': self._resolved_environment(),
             'bag_path': str(ctx.bag_path),
             'run_folder': str(ctx.folder),
             'episode_index': ctx.episode_index,
@@ -273,7 +297,7 @@ class DataCollectionManager(Node):
             robot_id=self._robot_id,
             run_folder=ctx.folder,
             source=ctx.source,
-            mode=self._run_mode or self._mode,
+            mode=self._resolved_mode(),
             device_id=self._device_id,
         )
         self._health_log.set_run_log(ctx.folder / 'events.jsonl')
@@ -435,7 +459,7 @@ class DataCollectionManager(Node):
         self._recording_source = 'lightsout'
         is_new_run = self._run_folder is None
         if self._run_folder is None:
-            self._run_folder = self._output_root / self._safe_run_folder()
+            self._run_folder = self._mode_output_dir() / self._safe_run_folder()
             self._run_folder.mkdir(parents=True, exist_ok=True)
         folder = self._run_folder
         bag_path = folder / f'episode_{episode_index}'
@@ -466,7 +490,7 @@ class DataCollectionManager(Node):
         self._recording_source = 'webhook'
         is_new_run = self._run_folder is None
         if self._run_folder is None:
-            self._run_folder = self._output_root / self._safe_run_folder()
+            self._run_folder = self._mode_output_dir() / self._safe_run_folder()
             self._run_folder.mkdir(parents=True, exist_ok=True)
         folder = self._run_folder
         bag_path = folder / 'webhook_run'
@@ -570,6 +594,9 @@ class DataCollectionManager(Node):
             self._webhook_metadata.get('ingredient_id') or self._ingredient_id
         )
         self._run_mode = self._webhook_metadata.get('mode') or self._run_mode
+        self._run_environment = (
+            self._webhook_metadata.get('environment') or self._run_environment
+        )
         self._weightment_id = (
             self._webhook_metadata.get('weightment_id') or self._weightment_id
         )

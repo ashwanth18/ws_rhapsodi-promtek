@@ -1,5 +1,6 @@
+import json
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from sqlalchemy.orm import Session
 
@@ -10,6 +11,22 @@ from .models import (
     Run,
     WebhookWeightment,
 )
+
+
+def _metadata_field(payload: Dict[str, Any], key: str) -> Optional[Any]:
+    """Pull a field from top-level payload or nested metadata_json."""
+    if payload.get(key) is not None:
+        return payload.get(key)
+    raw = payload.get('metadata_json')
+    if not raw:
+        return None
+    try:
+        meta = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if isinstance(meta, dict):
+        return meta.get(key)
+    return None
 
 
 def _upsert_artifact(
@@ -60,14 +77,19 @@ def store_processed_run(
     run = None
     if payload.get('run_db_id'):
         run = db.query(Run).filter(Run.id == payload['run_db_id']).first()
+    run_key = _metadata_field(payload, 'run_key')
+    environment = _metadata_field(payload, 'environment')
+    mode = payload.get('mode') or _metadata_field(payload, 'mode')
     if not run:
         run = Run(
             robot_id=payload.get('robot_id'),
             run_id=payload.get('run_id'),
+            run_key=run_key,
             batch_id=payload.get('batch_id'),
             ingredient_id=payload.get('ingredient_id'),
             episode_index=payload.get('episode_index'),
-            mode=payload.get('mode'),
+            mode=mode,
+            environment=environment,
             start_time_ns=payload.get('start_time_ns'),
             end_time_ns=payload.get('end_time_ns'),
             metadata_json=payload.get('metadata_json'),
@@ -77,10 +99,12 @@ def store_processed_run(
     else:
         run.robot_id = payload.get('robot_id') or run.robot_id
         run.run_id = payload.get('run_id') or run.run_id
+        run.run_key = run_key or run.run_key
         run.batch_id = payload.get('batch_id') or run.batch_id
         run.ingredient_id = payload.get('ingredient_id') or run.ingredient_id
         run.episode_index = payload.get('episode_index')
-        run.mode = payload.get('mode') or run.mode
+        run.mode = mode or run.mode
+        run.environment = environment or run.environment
         run.start_time_ns = payload.get('start_time_ns') or run.start_time_ns
         run.end_time_ns = payload.get('end_time_ns') or run.end_time_ns
         run.metadata_json = payload.get('metadata_json') or run.metadata_json

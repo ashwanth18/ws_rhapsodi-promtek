@@ -155,6 +155,8 @@ ensure_stock_location_allocation_columns()
 def ensure_run_columns() -> None:
     statements = [
         'ALTER TABLE runs ADD COLUMN IF NOT EXISTS metadata_json TEXT',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS run_key VARCHAR',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS environment VARCHAR',
     ]
     with engine.begin() as conn:
         for statement in statements:

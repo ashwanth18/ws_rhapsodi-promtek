@@ -198,7 +198,12 @@ int main(int argc, char ** argv)
     [&, blackboard, webhook_active_pub, webhook_meta_pub](const std::shared_ptr<StartWebhookWeightment::Request> req,
                     std::shared_ptr<StartWebhookWeightment::Response> resp){
       const double target_g = static_cast<double>(req->target_weight_g);
-      const double tolerance_g = std::max(0.1, target_g * 0.02);
+      // Honor caller-supplied tolerance when > 0; otherwise 2% of target
+      // (floor 0.1 g) so a zero/unset float32 still gets a usable band.
+      const double tolerance_g =
+        (static_cast<double>(req->tolerance_g) > 0.0)
+          ? static_cast<double>(req->tolerance_g)
+          : std::max(0.1, target_g * 0.02);
       if (!ros_node->has_parameter("robot_id")) {
         ros_node->declare_parameter<std::string>("robot_id", "robot-1");
       }

@@ -22,10 +22,14 @@ class Run(Base):
     id = Column(Integer, primary_key=True, index=True)
     robot_id = Column(String, index=True, nullable=True)
     run_id = Column(String, index=True, nullable=True)
+    # Stable edge/uploader identity (run folder basename). See RunSpec.
+    run_key = Column(String, index=True, nullable=True)
     batch_id = Column(String, index=True, nullable=True)
     ingredient_id = Column(String, index=True, nullable=True)
     episode_index = Column(Integer, nullable=True)
     mode = Column(String, index=True, nullable=True)
+    # real | sim — orthogonal to mode (see docs/MODES.md).
+    environment = Column(String, index=True, nullable=True)
     start_time_ns = Column(BigInteger, nullable=True)
     end_time_ns = Column(BigInteger, nullable=True)
     metadata_json = Column(Text, nullable=True)

@@ -145,7 +145,7 @@ class RetentionWatchdogNode(Node):
     def __init__(self) -> None:
         super().__init__('retention_watchdog')
         device = load_device_config()
-        self.declare_parameter('output_root', 'data/lightsout')
+        self.declare_parameter('output_root', 'data/runs')
         self.declare_parameter('manifest_path', '')
         self.declare_parameter('check_interval_seconds', 300.0)
         self.declare_parameter(

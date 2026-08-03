@@ -175,7 +175,7 @@ class UplinkDaemonNode(Node):
     def __init__(self) -> None:
         super().__init__('uplink_daemon')
         device = load_device_config()
-        self.declare_parameter('output_root', 'data/lightsout')
+        self.declare_parameter('output_root', 'data/runs')
         self.declare_parameter('manifest_path', '')
         self.declare_parameter('ingestion_url', device.ingestion_url)
         self.declare_parameter('check_interval_seconds', 30.0)

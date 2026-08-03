@@ -23,7 +23,8 @@ profiles:
     env:
       PROFILE_ID: prod-niryo
       BT_TREE: /ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml
-      DATA_OUTPUT_ROOT: /data/webhook
+      # Single root; runs land under {DATA_OUTPUT_ROOT}/{mode}/...
+      DATA_OUTPUT_ROOT: /data/runs
       POSES_YAML: /root/.ros/scooping_controller/poses_real.yaml
       TARGETS_YAML: /ws/install/share/robot_moveit/targets.yaml
       CONTAINER_SCENE_YAML: /ws/install/share/scooping_controller/config/container_scene_real.yaml
@@ -35,7 +36,7 @@ profiles:
     env:
       PROFILE_ID: lightsout-training
       BT_TREE: /ws/install/share/robot_orchestrator/bt_trees/lightsout.xml
-      DATA_OUTPUT_ROOT: /data/lightsout
+      DATA_OUTPUT_ROOT: /data/runs
       POSES_YAML: /root/.ros/scooping_controller/poses_real.yaml
       TARGETS_YAML: /ws/install/share/robot_moveit/targets.yaml
       CONTAINER_SCENE_YAML: /ws/install/share/scooping_controller/config/container_scene_real.yaml
@@ -47,7 +48,7 @@ profiles:
     env:
       PROFILE_ID: prod-jaka
       BT_TREE: /ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml
-      DATA_OUTPUT_ROOT: /data/webhook
+      DATA_OUTPUT_ROOT: /data/runs
       POSES_YAML: /root/.ros/scooping_controller/poses_real.yaml
       TARGETS_YAML: /ws/install/share/robot_moveit/targets_jaka.yaml
       CONTAINER_SCENE_YAML: /ws/install/share/scooping_controller/config/container_scene_real.yaml
@@ -59,7 +60,7 @@ profiles:
     env:
       PROFILE_ID: jaka-site2-layout
       BT_TREE: /ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml
-      DATA_OUTPUT_ROOT: /data/webhook
+      DATA_OUTPUT_ROOT: /data/runs
       # Host paths under the slim deploy bundle (mounted as /ws/config)
       POSES_YAML: /ws/config/profiles/jaka-site2/poses_real.yaml
       TARGETS_YAML: /ws/config/profiles/jaka-site2/targets_jaka.yaml
