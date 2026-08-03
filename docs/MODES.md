@@ -76,3 +76,24 @@ Phase 5: `POST /modes/lightsout/runs` (active mode must already be
 Uses `NullMesClient` (no Condor). Blackboard `enable_scoop` (default
 false) gates `ExecuteScoop` in `lightsout.xml`. Dashboard **Training**
 page (`/training`) drives mode switch + starts.
+
+Phase 6: **mes-generic** is config-driven. Inbound events go to
+`POST /modes/mes-generic/events` (active mode must be `mes-generic`,
+else 409). An inbound adapter registry normalizes external payloads into
+the same internal weightment shape as Condor/`webhook_weightments`:
+
+| Adapter | Env | Behavior |
+|---|---|---|
+| `condor` (default) | `MES_GENERIC_INBOUND_ADAPTER=condor` | Promtek `BatchReleasedEvent` shape (same keys/types as `webhook_service`) |
+| `generic_json` | `MES_GENERIC_INBOUND_ADAPTER=generic_json` | Flat/simple JSON; fields mapped by `MES_GENERIC_FIELD_MAP_JSON` |
+
+Outbound sink (`MES_GENERIC_SINK`):
+
+| Value | Client |
+|---|---|
+| `condor` (default) | `CondorMesClient` (same URLs as mes-condor) |
+| `null` | `NullMesClient` (no Condor traffic) |
+
+Stored rows use an `event_id` prefix `generic-` so completion routing binds
+the mes-generic sink even if the runtime mode later changes. **mes-condor**
+still uses `webhook_service` → `BatchReleasedEvent` unchanged.

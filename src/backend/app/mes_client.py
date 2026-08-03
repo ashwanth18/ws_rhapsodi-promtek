@@ -2,7 +2,8 @@
 
 ``CondorMesClient`` posts weighment, batch-end, and timeseries payloads to
 the Condor agent URLs (same env vars the backend historically used).
-``NullMesClient`` logs and no-ops for mock-local / lights-out.
+``NullMesClient`` logs and no-ops for mock-local / lights-out, and for
+mes-generic when ``MES_GENERIC_SINK=null``.
 """
 
 from __future__ import annotations
@@ -188,10 +189,21 @@ def _normalize_mode(mode: str | OperatingMode | None) -> str:
     return str(mode)
 
 
+def _mes_generic_sink_is_null() -> bool:
+    from .modes.mes_generic import mes_generic_sink_name
+
+    return mes_generic_sink_name() == 'null'
+
+
 def get_mes_client(mode: str | OperatingMode | None = None) -> MesClient:
     """Return the MES client bound to ``mode`` (default: active runtime mode)."""
     mode_id = _normalize_mode(mode)
     if mode_id in _NULL_MODES:
         return NullMesClient()
-    # mes-condor and mes-generic (Phase 6 will specialize generic).
+    if mode_id == OperatingMode.MES_GENERIC.value:
+        # MES_GENERIC_SINK=condor (default) | null
+        if _mes_generic_sink_is_null():
+            return NullMesClient()
+        return CondorMesClient()
+    # mes-condor (and any unknown MES-family mode) → Condor.
     return CondorMesClient()

@@ -33,6 +33,17 @@ from .modes.lightsout_session import (
     LIGHTSOUT_ROSBRIDGE_RUN_ID,
     get_lightsout_session,
 )
+from .modes.inbound import (
+    get_inbound_adapter_name,
+    list_inbound_adapters,
+    normalize_inbound_event,
+)
+from .modes.mes_generic import (
+    ensure_generic_event_id,
+    is_mes_generic_event_id,
+    mes_generic_sink_name,
+    strip_generic_event_id_prefix,
+)
 from .modes.mock_local import (
     MOCK_DEFAULT_PICKUP_TARGET,
     MOCK_DEFAULT_RETURN_TARGET,
@@ -644,6 +655,131 @@ def create_lightsout_run(payload: LightsoutRunRequest) -> dict:
         'request': request_meta,
         'session': session,
     }
+
+
+@app.post('/modes/mes-generic/events')
+def ingest_mes_generic_event(payload: dict[str, Any]) -> dict:
+    """Ingest a non-Promtek (or Condor-shaped) event via the inbound adapter.
+
+    Active mode must be ``mes-generic``. Adapter selected by
+    ``MES_GENERIC_INBOUND_ADAPTER`` (default ``condor``). Rows are stored in
+    ``webhook_weightments`` with a ``generic-`` event_id prefix so outbound
+    routing uses ``MES_GENERIC_SINK``.
+    """
+    manager = get_mode_manager()
+    current = manager.current()
+    if current['mode'] != OperatingMode.MES_GENERIC.value:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                'message': (
+                    'Active mode must be mes-generic to ingest events '
+                    f"(current={current['mode']})"
+                ),
+                'mode': current['mode'],
+                'environment': current['environment'],
+            },
+        )
+
+    try:
+        adapter_name = get_inbound_adapter_name()
+        weightments = normalize_inbound_event(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not weightments:
+        return {
+            'accepted': True,
+            'duplicate': False,
+            'mode': current['mode'],
+            'adapter': adapter_name,
+            'insertedRows': 0,
+            'eventId': None,
+        }
+
+    # All rows from one POST share one prefixed event_id for routing / status.
+    upstream_event_id = weightments[0].event_id
+    event_id = ensure_generic_event_id(upstream_event_id)
+    upstream_raw = strip_generic_event_id_prefix(event_id)
+
+    db = SessionLocal()
+    try:
+        # Dedupe against both the prefixed id and any prior webhook_service
+        # row that stored the raw Condor eventId.
+        dedupe_ids = {event_id}
+        if upstream_raw:
+            dedupe_ids.add(upstream_raw)
+        existing_count = (
+            db.query(func.count(WebhookWeightment.id))
+            .filter(WebhookWeightment.event_id.in_(list(dedupe_ids)))
+            .scalar()
+        )
+        if existing_count:
+            logger.info(
+                'Skipping duplicate mes-generic event_id=%s existing_rows=%s',
+                event_id,
+                existing_count,
+            )
+            return {
+                'accepted': True,
+                'duplicate': True,
+                'mode': current['mode'],
+                'adapter': adapter_name,
+                'eventId': event_id,
+                'insertedRows': 0,
+            }
+
+        rows: list[WebhookWeightment] = []
+        for item in weightments:
+            rows.append(
+                WebhookWeightment(
+                    event_id=event_id,
+                    sent_utc=item.sent_utc,
+                    user_id=item.user_id,
+                    site_id=item.site_id,
+                    batch_id=item.batch_id,
+                    batch_number=item.batch_number,
+                    work_order_id=item.work_order_id,
+                    batch_target_quantity=item.batch_target_quantity,
+                    ingredient_id=item.ingredient_id,
+                    target_weight_kg=item.target_weight_kg,
+                    lot_code=item.lot_code or '',
+                    weightment_completed=False,
+                    mes_timeseries_sent=False,
+                    batch_auto_run_enabled=False,
+                )
+            )
+        db.add_all(rows)
+        db.flush()
+        weightment_ids = [int(row.id) for row in rows]
+        db.commit()
+        inserted = len(weightment_ids)
+        logger.info(
+            'Stored mes-generic event_id=%s adapter=%s inserted_rows=%s sink=%s',
+            event_id,
+            adapter_name,
+            inserted,
+            mes_generic_sink_name(),
+        )
+        return {
+            'accepted': True,
+            'duplicate': False,
+            'mode': current['mode'],
+            'adapter': adapter_name,
+            'adapters': list_inbound_adapters(),
+            'sink': mes_generic_sink_name(),
+            'eventId': event_id,
+            'insertedRows': inserted,
+            'weightmentIds': weightment_ids,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        logger.exception('Failed to ingest mes-generic event')
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    finally:
+        db.close()
 
 
 def _load_device_identity() -> dict[str, str | None]:
@@ -1945,6 +2081,28 @@ def send_batch_timeseries_to_mes(db, batch_id: str) -> dict:
             'itemCount': 0,
         }
 
+    # mes-generic null sink: never emit Condor timeseries for those batches.
+    if (
+        batch_rows
+        and all(is_mes_generic_event_id(item.event_id) for item in batch_rows)
+        and mes_generic_sink_name() == 'null'
+    ):
+        mark_batch_timeseries_sent(db, batch_id)
+        db.commit()
+        logger.info(
+            'Skipping batch timeseries send for mes-generic null-sink '
+            'batch_id=%s rows=%s',
+            batch_id,
+            len(batch_rows),
+        )
+        return {
+            'ok': True,
+            'skipped': True,
+            'reason': 'mes_generic_null_sink',
+            'batchId': batch_id,
+            'itemCount': 0,
+        }
+
     runs = (
         db.query(RobotWeightmentRun)
         .join(
@@ -2040,6 +2198,42 @@ def send_weightment_to_mes(db, row: WebhookWeightment) -> dict:
             'timeseriesResult': None,
             'skippedMes': True,
         }
+    # mes-generic + MES_GENERIC_SINK=null: no Condor traffic / no allocation req.
+    if is_mes_generic_event_id(row.event_id) and mes_generic_sink_name() == 'null':
+        row.weightment_completed = True
+        timeseries_result = None
+        if row.batch_id is not None:
+            related = (
+                db.query(WebhookWeightment)
+                .filter(WebhookWeightment.batch_id == row.batch_id)
+                .all()
+            )
+            if related and all(item.weightment_completed for item in related):
+                timeseries_result = send_batch_timeseries_to_mes(
+                    db, str(row.batch_id)
+                )
+        else:
+            row.mes_timeseries_sent = True
+        db.commit()
+        logger.info(
+            'Skipping MES weighment send for mes-generic null sink '
+            'event_id=%s weightment_id=%s',
+            row.event_id,
+            row.id,
+        )
+        return {
+            'weightmentId': row.id,
+            'locationId': None,
+            'weighmentResponse': {
+                'skipped': True,
+                'reason': 'mes_generic_null_sink',
+                'eventId': row.event_id,
+            },
+            'batchEndSent': False,
+            'batchEndResponse': None,
+            'timeseriesResult': timeseries_result,
+            'skippedMes': True,
+        }
     if row.batch_id is None or row.ingredient_id is None or row.target_weight_kg is None:
         raise HTTPException(
             status_code=400,
@@ -2079,9 +2273,12 @@ def send_weightment_to_mes(db, row: WebhookWeightment) -> dict:
         'endUtc': row.end_utc,
         'energyKwh': int(row.energy_kwh or 0),
     }
-    # Webhook weightment rows are MES-family; never use the active runtime
-    # mode here (mock-local/lightsout would NullMesClient-drop the post).
-    mes_client = get_mes_client(OperatingMode.MES_CONDOR)
+    # Bind client by row provenance so a runtime mode switch cannot
+    # null-route Promtek rows (or Condor-route mes-generic null-sink rows).
+    if is_mes_generic_event_id(row.event_id):
+        mes_client = get_mes_client(OperatingMode.MES_GENERIC)
+    else:
+        mes_client = get_mes_client(OperatingMode.MES_CONDOR)
     weighment_response = mes_client.post_weighment(weighment_payload)
 
     row.weightment_completed = True

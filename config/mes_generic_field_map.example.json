@@ -1,0 +1,11 @@
+{
+  "event_id": "id",
+  "batch_id": "batch",
+  "target_weight_kg": "target_kg",
+  "ingredient_id": "ingredient",
+  "site_id": "site",
+  "sent_utc": "sent_utc",
+  "batch_number": "batch_number",
+  "work_order_id": "work_order_id",
+  "lot_code": "lot_code"
+}

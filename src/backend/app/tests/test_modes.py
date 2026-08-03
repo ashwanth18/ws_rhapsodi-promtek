@@ -1,4 +1,4 @@
-"""Phase 3–5: mode registry, arbitration, NullMesClient, mock/lightsout helpers."""
+"""Phase 3–6: mode registry, arbitration, NullMesClient, mock/lightsout/mes-generic."""
 
 from __future__ import annotations
 
@@ -130,6 +130,10 @@ def test_null_mes_client_noop(caplog):
     assert get_mes_client('mock-local').__class__ is NullMesClient
     assert get_mes_client('lightsout').__class__ is NullMesClient
     assert get_mes_client(OperatingMode.MES_CONDOR).__class__.__name__ == (
+        'CondorMesClient'
+    )
+    # mes-generic defaults to CondorMesClient (MES_GENERIC_SINK=condor).
+    assert get_mes_client(OperatingMode.MES_GENERIC).__class__.__name__ == (
         'CondorMesClient'
     )
 
