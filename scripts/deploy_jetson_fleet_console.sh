@@ -30,7 +30,7 @@ RSYNC_SSH='ssh -o ConnectTimeout=20 -o BatchMode=yes'
 echo "Deploying to ${JETSON_USER}@${JETSON_HOST}:${JETSON_REPO} (branch ${JETSON_BRANCH})"
 
 if [[ "${LOCAL_SYNC}" == "1" ]]; then
-  echo "LOCAL_SYNC=1 — rsyncing fleet_console + compose from ${ROOT}"
+  echo "LOCAL_SYNC=1 — rsyncing fleet_console + compose + profiles from ${ROOT}"
   rsync -az --delete \
     --exclude node_modules --exclude .venv --exclude '__pycache__' \
     -e "${RSYNC_SSH}" \
@@ -42,6 +42,10 @@ if [[ "${LOCAL_SYNC}" == "1" ]]; then
   scp -o ConnectTimeout=20 -o BatchMode=yes \
     "${ROOT}/scripts/deploy_jetson_fleet_console.sh" \
     "${JETSON_USER}@${JETSON_HOST}:${JETSON_REPO}/scripts/"
+  # Profile env (DATA_OUTPUT_ROOT, SIM_ALLOWED, …) is read from /repo/config.
+  scp -o ConnectTimeout=20 -o BatchMode=yes \
+    "${ROOT}/config/profiles.yaml" \
+    "${JETSON_USER}@${JETSON_HOST}:${JETSON_REPO}/config/profiles.yaml"
 else
   "${SSH[@]}" bash -s -- "${JETSON_REPO}" "${JETSON_BRANCH}" <<'REMOTE'
 set -euo pipefail
