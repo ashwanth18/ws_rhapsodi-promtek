@@ -43,11 +43,14 @@ def _default_catalog_path() -> Path:
     if env:
         return Path(env)
     # Prefer /ws/config (compose mount), then repo-relative config/.
-    for candidate in (
-        Path('/ws/config/powders.yaml'),
-        Path(__file__).resolve().parents[4] / 'config' / 'powders.yaml',
-        Path('config/powders.yaml'),
-    ):
+    # parents[4] is repo root from src/backend/app/modes/; container layout
+    # (/app/app/modes/) is shallower — skip if IndexError would fire.
+    candidates = [Path('/ws/config/powders.yaml')]
+    here = Path(__file__).resolve()
+    if len(here.parents) > 4:
+        candidates.append(here.parents[4] / 'config' / 'powders.yaml')
+    candidates.append(Path('config/powders.yaml'))
+    for candidate in candidates:
         if candidate.is_file():
             return candidate
     return Path('/ws/config/powders.yaml')

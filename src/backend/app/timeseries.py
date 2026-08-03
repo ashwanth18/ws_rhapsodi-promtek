@@ -137,9 +137,13 @@ def build_timeseries_items_from_runs(
 def build_timeseries_payload(
     batch_id: str, items: list[dict[str, Any]]
 ) -> dict[str, Any]:
+    # Condor CreateTimeSeriesRequest binds the array as `metrics`
+    # (not `items`). Sending `items` deserializes as an empty Metrics
+    # collection on the server — validation still passes, but nothing
+    # is stored/shown.
     return {
         'organisationId': TIMESERIES_ORGANISATION_ID,
         'siteId': TIMESERIES_SITE_ID,
         'userId': TIMESERIES_USER_ID,
-        'items': items,
+        'metrics': items,
     }

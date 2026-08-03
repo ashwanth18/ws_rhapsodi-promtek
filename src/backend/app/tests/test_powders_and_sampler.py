@@ -24,6 +24,16 @@ def test_load_powders_from_repo_catalog():
     assert powder.pour_target
 
 
+def test_default_catalog_path_tolerates_shallow_container_layout(monkeypatch):
+    """Backend image layout is /app/app/modes/ — parents[4] must not IndexError."""
+    from app.modes import powders as mod
+
+    monkeypatch.delenv('POWDERS_CATALOG', raising=False)
+    monkeypatch.setattr(mod, '__file__', '/app/app/modes/powders.py')
+    path = mod._default_catalog_path()
+    assert path == Path('/ws/config/powders.yaml')
+
+
 def test_stratified_schedule_covers_bins_and_is_reproducible():
     a = generate_target_schedule(
         cycles=5, target_mode='stratified', frac_min=0.4, frac_max=0.9, rng_seed=42

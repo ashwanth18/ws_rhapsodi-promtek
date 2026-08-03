@@ -68,7 +68,8 @@ def batch_end(payload: dict[str, Any]) -> dict[str, Any]:
 
 @app.post("/timeseries")
 def timeseries(payload: dict[str, Any]) -> dict[str, Any]:
-    item_count = len(payload.get("items") or [])
+    # Condor contract uses `metrics`; accept legacy `items` in mock too.
+    item_count = len(payload.get("metrics") or payload.get("items") or [])
     logger.info(
         "Received mock /timeseries payload: item_count=%s payload=%s",
         item_count,
