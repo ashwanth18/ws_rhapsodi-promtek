@@ -1,6 +1,10 @@
 # Compatibility shim — production Pi5 stack lives at compose/devices/pi5.yml.
 # Kept so older agents / COMPOSE_FILE=docker-compose.robot-prod.yml keep working.
 # New code should use compose/devices/{device_class}.yml via device_class.
+#
+# Data-collection uplink services (ingestion, retention_watchdog, uplink_daemon)
+# and recording_profiles.yaml wiring live in compose/devices/pi5.yml — see that
+# file after the merge from feature/edge-build-fleet-arch.
 
 include:
   - path: compose/devices/pi5.yml

@@ -82,6 +82,25 @@ services:
     ports:
       - "8002:8002"
 
+  # Receiving side of the Rhapsodi data-collection uplink (central-ingestion-service):
+  # fleet health log, Tier 0 metadata/features/events, and resumable
+  # checksum-verified Tier 1 blobs from data_collection_manager's
+  # uplink_daemon. Fully separate from condor_agent/MES's webhook/backend
+  # flow — see src/backend/ingestion/ingestion/main.py.
+  ingestion:
+    image: ${INGESTION_LOCAL_IMAGE:-rhapsodi-promtek:ingestion-local}
+    build:
+      context: ./src/backend/ingestion
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/robot_data
+      OBJECT_STORE_ROOT: /data/ingested
+    ports:
+      - "8011:8011"
+    volumes:
+      - ./data:/data
+    depends_on:
+      - db
+
   webhook_service:
     image: ${WEBHOOK_LOCAL_IMAGE:-rhapsodi-promtek:webhook-local}
     build:
@@ -188,6 +207,38 @@ services:
       ]
     depends_on:
       - processing
+    restart: unless-stopped
+
+  # Enforces manifest.sqlite's Tier 0/Tier 1 retention policy (local-manifest-retention);
+  # see docker-compose.robot-prod.yml for the full rationale.
+  retention_watchdog:
+    <<: *ros-sim-service
+    command:
+      [
+        "ros2",
+        "run",
+        "data_collection_manager",
+        "retention_watchdog",
+        "--ros-args",
+        "-p",
+        "output_root:=/data/webhook",
+      ]
+    restart: unless-stopped
+
+  # Store-and-forward uplink to central-ingestion-service (the "ingestion" service)
+  # (uplink-daemon); see docker-compose.robot-prod.yml for the rationale.
+  uplink_daemon:
+    <<: *ros-sim-service
+    command:
+      [
+        "ros2",
+        "run",
+        "data_collection_manager",
+        "uplink_daemon",
+        "--ros-args",
+        "-p",
+        "output_root:=/data/webhook",
+      ]
     restart: unless-stopped
 
   pouring_controller:
