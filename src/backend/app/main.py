@@ -17,6 +17,18 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func, text
 
 from .database import SessionLocal, engine
+from .mes_client import (
+    TIMESERIES_TIMEOUT_SECONDS,
+    WEIGHMENT_URL,
+    get_mes_client,
+    post_json,
+)
+from .modes import (
+    ModeSwitchConflict,
+    ModeValidationError,
+    get_mode_manager,
+)
+from .run_spec import OperatingMode
 from .models import (
     Base,
     LightsOutProcessed,
@@ -36,22 +48,12 @@ from .schemas import (
     ProcessedRequest,
     ProcessedResponse,
     RobotRunCompletionRequest,
+    RuntimeModeRequest,
 )
 
 Base.metadata.create_all(bind=engine)
 
 logger = logging.getLogger('uvicorn.error')
-
-WEIGHMENT_URL = os.environ.get(
-    'WEIGHMENT_URL', 'http://localhost:5002/batch/weighment'
-)
-BATCH_END_URL = os.environ.get('BATCH_END_URL', 'http://localhost:5002/batch/end')
-TIMESERIES_URL = os.environ.get(
-    'TIMESERIES_URL', 'http://localhost:5002/timeseries'
-)
-TIMESERIES_TIMEOUT_SECONDS = float(
-    os.environ.get('TIMESERIES_TIMEOUT_SECONDS', '60')
-)
 ROBOT_START_ADAPTER_URL = os.environ.get(
     'ROBOT_START_ADAPTER_URL',
     'http://host.docker.internal:8010/start_webhook_weightment',
@@ -223,6 +225,77 @@ def reconcile_stale_runs_on_startup() -> None:
 @app.get('/health')
 def health() -> dict:
     return {'status': 'ok'}
+
+
+@app.get('/runtime/mode')
+def get_runtime_mode() -> dict:
+    manager = get_mode_manager()
+    current = manager.current()
+    db = SessionLocal()
+    try:
+        reconcile_stale_robot_runs(db)
+        active = has_active_robot_run(db)
+        active_payload = None
+        if active is not None:
+            active_payload = {
+                'id': active.id,
+                'status': active.status,
+                'weightment_id': active.weightment_id,
+                'event_id': active.event_id,
+                'batch_id': active.batch_id,
+            }
+        return {
+            'mode': current['mode'],
+            'environment': current['environment'],
+            'active_run': active_payload,
+        }
+    finally:
+        db.close()
+
+
+@app.put('/runtime/mode')
+def put_runtime_mode(payload: RuntimeModeRequest) -> dict:
+    manager = get_mode_manager()
+    db = SessionLocal()
+    try:
+        reconcile_stale_robot_runs(db)
+        # Broader than has_active_robot_run: also block during awaiting_processing /
+        # mes_send_failed so Condor outbound cannot be null-routed mid-flight.
+        blocker = has_mode_switch_blocker(db)
+        try:
+            current = manager.set_mode(
+                payload.mode, payload.environment, active_run=blocker
+            )
+        except ModeSwitchConflict as exc:
+            run = exc.active_run
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    'message': (
+                        'Cannot change mode while a robot run is active '
+                        'or still sending MES results'
+                    ),
+                    'active_run': {
+                        'id': getattr(run, 'id', None),
+                        'status': getattr(run, 'status', None),
+                        'weightment_id': getattr(run, 'weightment_id', None),
+                    },
+                },
+            ) from exc
+        except ModeValidationError as exc:
+            raise HTTPException(status_code=400, detail=exc.message) from exc
+        return {
+            'mode': current['mode'],
+            'environment': current['environment'],
+            'active_run': None,
+        }
+    finally:
+        db.close()
+
+
+@app.get('/runtime/capabilities')
+def get_runtime_capabilities() -> dict:
+    return get_mode_manager().capabilities()
 
 
 def _load_device_identity() -> dict[str, str | None]:
@@ -1095,9 +1168,28 @@ def set_event_batch_auto_run(db, event_id: str, enabled: bool) -> None:
 
 
 def has_active_robot_run(db) -> RobotWeightmentRun | None:
+    """True while the robot is moving (starting/running)."""
     return (
         db.query(RobotWeightmentRun)
         .filter(RobotWeightmentRun.status.in_(['starting', 'running']))
+        .order_by(RobotWeightmentRun.id.desc())
+        .first()
+    )
+
+
+def has_mode_switch_blocker(db) -> RobotWeightmentRun | None:
+    """Block mode changes while a run still owns MES outbound work.
+
+    Covers robot motion *and* post-run processing / failed MES sends so a
+    switch to mock-local/lightsout cannot route Condor posts through NullMesClient.
+    """
+    return (
+        db.query(RobotWeightmentRun)
+        .filter(
+            RobotWeightmentRun.status.in_(
+                ['starting', 'running', 'awaiting_processing', 'mes_send_failed']
+            )
+        )
         .order_by(RobotWeightmentRun.id.desc())
         .first()
     )
@@ -1218,57 +1310,6 @@ def reconcile_stale_robot_runs(db) -> None:
             ROBOT_RUNNING_TIMEOUT_SECONDS,
         )
     db.commit()
-
-
-def post_json(url: str, payload: dict, timeout_seconds: float = 10) -> dict:
-    body = json.dumps(payload).encode('utf-8')
-    req = request.Request(
-        url,
-        data=body,
-        headers={'Content-Type': 'application/json'},
-        method='POST',
-    )
-    started_at = time.monotonic()
-    logger.info(
-        'Posting downstream JSON: url=%s timeout=%.2fs payload=%s',
-        url,
-        timeout_seconds,
-        json.dumps(payload, sort_keys=True)[:1000],
-    )
-    try:
-        with request.urlopen(req, timeout=timeout_seconds) as response:
-            raw = response.read().decode('utf-8')
-            logger.info(
-                'Downstream JSON succeeded: url=%s status=%s elapsed=%.2fs body=%s',
-                url,
-                getattr(response, 'status', 'unknown'),
-                time.monotonic() - started_at,
-                raw[:1000] if raw else '<empty>',
-            )
-            return json.loads(raw) if raw else {}
-    except error.HTTPError as exc:
-        detail = exc.read().decode('utf-8')
-        logger.error(
-            'Downstream JSON failed: url=%s status=%s elapsed=%.2fs body=%s',
-            url,
-            exc.code,
-            time.monotonic() - started_at,
-            detail[:1000],
-        )
-        raise HTTPException(
-            status_code=502,
-            detail=f'Downstream request failed ({url}): {exc.code} {detail}',
-        ) from exc
-    except error.URLError as exc:
-        logger.error(
-            'Downstream JSON failed: url=%s elapsed=%.2fs error=%r',
-            url,
-            time.monotonic() - started_at,
-            exc,
-        )
-        raise HTTPException(
-            status_code=502, detail=f'Downstream request failed ({url}): {exc}'
-        ) from exc
 
 
 def start_robot_run_via_adapter(contract: dict[str, Any]) -> dict[str, Any]:
@@ -1560,9 +1601,11 @@ def send_batch_timeseries_to_mes(db, batch_id: str) -> dict:
         }
 
     payload = build_timeseries_payload(batch_id, items)
+    # Webhook/MES-family path: bind Condor client explicitly so a later
+    # runtime mode switch cannot null-route in-flight batch timeseries.
+    mes_client = get_mes_client(OperatingMode.MES_CONDOR)
     try:
-        response = post_json(
-            TIMESERIES_URL,
+        response = mes_client.post_timeseries(
             payload,
             timeout_seconds=TIMESERIES_TIMEOUT_SECONDS,
         )
@@ -1638,7 +1681,10 @@ def send_weightment_to_mes(db, row: WebhookWeightment) -> dict:
         'endUtc': row.end_utc,
         'energyKwh': int(row.energy_kwh or 0),
     }
-    weighment_response = post_json(WEIGHMENT_URL, weighment_payload)
+    # Webhook weightment rows are MES-family; never use the active runtime
+    # mode here (mock-local/lightsout would NullMesClient-drop the post).
+    mes_client = get_mes_client(OperatingMode.MES_CONDOR)
+    weighment_response = mes_client.post_weighment(weighment_payload)
 
     row.weightment_completed = True
     db.commit()
@@ -1652,8 +1698,7 @@ def send_weightment_to_mes(db, row: WebhookWeightment) -> dict:
             .all()
         )
         if related_rows and all(item.weightment_completed for item in related_rows):
-            batch_end_response = post_json(
-                BATCH_END_URL,
+            batch_end_response = mes_client.post_batch_end(
                 {
                     'batchId': batch_id_int,
                     'endUtc': row.end_utc,

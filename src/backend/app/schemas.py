@@ -3,6 +3,11 @@ from typing import Any, Optional
 from pydantic import BaseModel
 
 
+class RuntimeModeRequest(BaseModel):
+    mode: str
+    environment: str = 'real'
+
+
 class ProcessedRequest(BaseModel):
     run_db_id: Optional[int] = None
     robot_weightment_run_id: Optional[int] = None

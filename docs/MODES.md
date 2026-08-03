@@ -54,5 +54,11 @@ mode is unset. Details in [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md).
 
 Phase 2: the orchestrator registers all share `bt_trees/*.xml` at startup
 and creates a tree per run from the start-service `tree_id` (no restart).
-Phase 3 may add a **ModeManager**; until then start services remain the
-switch path. `BT_TREE` / `tree_file` is optional preferred-tree hint only.
+
+Phase 3: backend **ModeManager** (`src/backend/app/modes/`) exposes
+`GET/PUT /runtime/mode` and `GET /runtime/capabilities`. Active mode is
+persisted at `RUNTIME_MODE_PATH` (default `/data/runtime_mode.json`).
+Mode changes are refused with HTTP 409 while `has_active_robot_run` is
+true. Outbound MES posts go through `MesClient` (`CondorMesClient` vs
+`NullMesClient` for mock-local / lights-out). `BT_TREE` / `tree_file` is
+an optional preferred-tree hint only.
