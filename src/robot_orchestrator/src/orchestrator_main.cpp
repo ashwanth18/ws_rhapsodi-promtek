@@ -155,9 +155,13 @@ int main(int argc, char ** argv)
   auto lightsout_notes_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/notes", latched_qos);
   auto lightsout_scooped_mass_pub = ros_node->create_publisher<std_msgs::msg::Float32>("/lightsout_training/scooped_mass_g", latched_qos);
   auto lightsout_pour_outcome_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/pour_outcome", latched_qos);
+  auto lightsout_total_poured_pub = ros_node->create_publisher<std_msgs::msg::Float32>("/lightsout_training/total_poured_g", latched_qos);
+  auto lightsout_stop_reason_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/stop_reason", latched_qos);
   blackboard->set("lightsout_target_weight_pub", lightsout_target_pub);
   blackboard->set("lightsout_scooped_mass_pub", lightsout_scooped_mass_pub);
   blackboard->set("lightsout_pour_outcome_pub", lightsout_pour_outcome_pub);
+  blackboard->set("lightsout_total_poured_pub", lightsout_total_poured_pub);
+  blackboard->set("lightsout_stop_reason_pub", lightsout_stop_reason_pub);
   auto webhook_active_pub = ros_node->create_publisher<std_msgs::msg::Bool>("/webhook_run/active", latched_qos);
   auto webhook_meta_pub = ros_node->create_publisher<std_msgs::msg::String>("/webhook_run/metadata", latched_qos);
   auto run_state_pub = ros_node->create_publisher<std_msgs::msg::String>("/orchestrator/run_state", latched_qos);
@@ -335,6 +339,8 @@ int main(int argc, char ** argv)
       }
 
       beginPendingRun("LightsOut", "lightsout", "/lightsout_training/phase");
+      const std::string stop_on =
+        req->stop_on.empty() ? std::string("episodes") : req->stop_on;
       blackboard->set("lightsout_powder_id", req->powder_id);
       blackboard->set("lightsout_powder_name", req->powder_name);
       blackboard->set("lightsout_container_name", container_target);
@@ -342,9 +348,14 @@ int main(int argc, char ** argv)
       blackboard->set("lightsout_lot_code", req->lot_code);
       blackboard->set("lightsout_operator", req->operator_name);
       blackboard->set("lightsout_notes", req->notes);
-      blackboard->set("lightsout_stop_on", req->stop_on);
+      blackboard->set("lightsout_stop_on", stop_on);
       blackboard->set("lightsout_stop_value", static_cast<double>(req->stop_value));
       blackboard->set("lightsout_stop_requested", false);
+      blackboard->set("lightsout_session_start_s", ros_node->now().seconds());
+      blackboard->set("lightsout_total_poured_g", 0.0);
+      blackboard->set("lightsout_stop_reason", std::string(""));
+      blackboard->set("lightsout_post_scoop_weight_g", 0.0);
+      blackboard->set("lightsout_tolerance_frac", 0.02);
       blackboard->set("lightsout_target_mode",
                       req->target_mode.empty() ? std::string("fixed") : req->target_mode);
       blackboard->set("lightsout_fixed_target_g", target_g);

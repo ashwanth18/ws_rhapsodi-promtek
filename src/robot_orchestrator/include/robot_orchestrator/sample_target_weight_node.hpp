@@ -87,6 +87,12 @@ public:
       target = std::min(target, target_max);
     }
 
+    double tol_frac = 0.02;
+    (void)bb->get("lightsout_tolerance_frac", tol_frac);
+    if (tol_frac > 0.0) {
+      bb->set("lightsout_tolerance_g", std::max(0.1, target * tol_frac));
+    }
+
     bb->set("lightsout_target_weight_g", target);
     bb->set("lightsout_target_fraction", fraction);
 

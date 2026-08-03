@@ -23,6 +23,7 @@ type Props = {
   run: RunRow | null
   loading: boolean
   metadataBatchId?: string | null
+  mesSinkDisabled?: boolean
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -34,7 +35,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-export default function RunContextCard({ run, loading, metadataBatchId }: Props) {
+export default function RunContextCard({
+  run,
+  loading,
+  metadataBatchId,
+  mesSinkDisabled = false,
+}: Props) {
   return (
     <GlassCard className="h-full">
       <div className="mb-4 flex items-center justify-between">
@@ -64,8 +70,20 @@ export default function RunContextCard({ run, loading, metadataBatchId }: Props)
               pulse={run.status === 'running' || run.status === 'starting'}
             />
             <StatusBadge
-              label={run.mes_weighment_sent ? 'MES sent' : 'MES pending'}
-              tone={run.mes_weighment_sent ? 'good' : 'idle'}
+              label={
+                mesSinkDisabled
+                  ? 'MES N/A'
+                  : run.mes_weighment_sent
+                    ? 'MES sent'
+                    : 'MES pending'
+              }
+              tone={
+                mesSinkDisabled
+                  ? 'neutral'
+                  : run.mes_weighment_sent
+                    ? 'good'
+                    : 'idle'
+              }
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -19,6 +19,7 @@ export type ExportRunRow = {
   target_weight_g: number | null
   final_weight_g: number | null
   net_weight_g: number | null
+  stop_reason: string | null
   start_time_ns: number | null
   end_time_ns: number | null
   artifacts: Record<string, ExportArtifactInfo>

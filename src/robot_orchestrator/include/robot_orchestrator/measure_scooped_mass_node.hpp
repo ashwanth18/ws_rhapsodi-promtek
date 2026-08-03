@@ -23,6 +23,7 @@ public:
     (void)bb->get("scale_weight", scale);
     const double scooped = std::max(0.0, baseline - scale);
     bb->set("scooped_mass_g", scooped);
+    bb->set("lightsout_post_scoop_weight_g", scale);
 
     double min_scooped = 20.0;
     (void)bb->get("lightsout_min_scooped_g", min_scooped);

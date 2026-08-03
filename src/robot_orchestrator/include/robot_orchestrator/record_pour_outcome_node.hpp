@@ -1,7 +1,9 @@
 #pragma once
 
+#include <algorithm>
 #include <behaviortree_cpp/action_node.h>
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/float32.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <string>
 
@@ -37,9 +39,21 @@ public:
 
     bb->set("lightsout_pour_outcome", outcome);
 
+    double scale = 0.0, post_scoop = 0.0, total = 0.0;
+    (void)bb->get("scale_weight", scale);
+    (void)bb->get("lightsout_post_scoop_weight_g", post_scoop);
+    (void)bb->get("lightsout_total_poured_g", total);
+    const double poured = std::max(0.0, scale - post_scoop);
+    total += poured;
+    bb->set("lightsout_episode_poured_g", poured);
+    bb->set("lightsout_total_poured_g", total);
+
     try {
       auto node = bb->get<rclcpp::Node::SharedPtr>("ros_node");
-      RCLCPP_INFO(node->get_logger(), "RecordPourOutcome: outcome=%s", outcome.c_str());
+      RCLCPP_INFO(
+        node->get_logger(),
+        "RecordPourOutcome: outcome=%s poured=%.3f total=%.3f",
+        outcome.c_str(), poured, total);
       try {
         auto pub = bb->get<rclcpp::Publisher<std_msgs::msg::String>::SharedPtr>(
           "lightsout_pour_outcome_pub");
@@ -47,6 +61,15 @@ public:
           std_msgs::msg::String msg;
           msg.data = outcome;
           pub->publish(msg);
+        }
+      } catch (...) {}
+      try {
+        auto total_pub = bb->get<rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr>(
+          "lightsout_total_poured_pub");
+        if (total_pub) {
+          std_msgs::msg::Float32 msg;
+          msg.data = static_cast<float>(total);
+          total_pub->publish(msg);
         }
       } catch (...) {}
     } catch (...) {}

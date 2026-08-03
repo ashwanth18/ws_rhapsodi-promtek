@@ -100,7 +100,8 @@ function App() {
   const navigate = useNavigate()
   const ros = useRos()
   const { apiBase } = useRuntimeConfig()
-  const { runtime } = useRuntimeMode(apiBase)
+  const { runtime, mesSinkDisabled } = useRuntimeMode(apiBase)
+  const activeMode = runtime?.mode || '—'
 
   const phaseTopic =
     runtime?.mode === 'lightsout' ? LIGHTSOUT_PHASE_TOPIC : DEFAULT_WEBHOOK_PHASE_TOPIC
@@ -265,7 +266,7 @@ function App() {
   return (
     <div className="px-5 py-5 lg:px-6">
       <SectionHeader
-        title="Operations"
+        title={`Operations — ${activeMode}`}
         description="Live robot execution, weight telemetry, and batch progress."
         action={
           <div className="flex gap-2">
@@ -293,17 +294,19 @@ function App() {
         />
         <MetricCard
           label="Batch Progress"
-          value={batchProgress}
-          unit={queueItems.length > 0 ? 'done' : undefined}
+          value={mesSinkDisabled ? 'N/A' : batchProgress}
+          unit={!mesSinkDisabled && queueItems.length > 0 ? 'done' : undefined}
         />
         <MetricCard
           label="MES"
           value={
-            latestRun?.mes_weighment_sent
-              ? 'Sent'
-              : latestRun?.status === 'awaiting_processing'
-                ? 'Processing'
-                : 'Pending'
+            mesSinkDisabled
+              ? 'N/A'
+              : latestRun?.mes_weighment_sent
+                ? 'Sent'
+                : latestRun?.status === 'awaiting_processing'
+                  ? 'Processing'
+                  : 'Pending'
           }
         />
       </div>
@@ -340,9 +343,14 @@ function App() {
             run={latestRun}
             loading={loading}
             metadataBatchId={metadata?.batch_id}
+            mesSinkDisabled={mesSinkDisabled}
           />
         </div>
-        <div className="col-span-1 xl:col-span-12">
+        <div
+          className={`col-span-1 xl:col-span-12 ${
+            mesSinkDisabled ? 'opacity-50' : ''
+          }`}
+        >
           <BatchQueueStrip
             items={queueItems}
             activeWeightmentId={latestRun?.weightment_id}

@@ -210,12 +210,37 @@ function HubSpoke({ node }: { node: SpineNode }) {
   )
 }
 
+function HubSatellite({
+  status,
+  url,
+}: {
+  status: ConnStatus
+  url: string
+}) {
+  const tone = toneFor(status)
+  const live = status === 'connected'
+  return (
+    <div
+      className="mt-3 inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1.5"
+      title={url}
+    >
+      <Radio className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+      <span className="text-[11px] font-medium text-[var(--text-secondary)]">rosbridge</span>
+      <StatusBadge label={labelFor(status)} tone={tone} pulse={live} title={url} />
+    </div>
+  )
+}
+
 function SignalHub({
   hub,
   spokes,
+  rosStatus,
+  rosbridgeUrl,
 }: {
   hub: SpineNode
   spokes: SpineNode[]
+  rosStatus: ConnStatus
+  rosbridgeUrl: string
 }) {
   const hubLive = hub.status === 'connected'
   // Expect 4 spokes: top-left, top-right, bottom-left, bottom-right around Pi.
@@ -272,8 +297,10 @@ function SignalHub({
               title={hub.detail}
             />
           </div>
-          <p className="mt-2 max-w-[16rem] text-center text-[10px] leading-snug text-[var(--text-muted)]">
-            Hub view — peers hang off the Pi independently (not a sequence).
+          <HubSatellite status={rosStatus} url={rosbridgeUrl} />
+          <p className="mt-2 max-w-[18rem] text-center text-[10px] leading-snug text-[var(--text-muted)]">
+            Pi is the hub. Rosbridge is the DDS bridge on the Pi; arm, scale, micro-ROS and Condor
+            are independent peers.
           </p>
         </div>
         {bl ? <HubSpoke node={bl} /> : <div />}
@@ -557,9 +584,9 @@ export default function ControlsPage() {
   }
 
   const hubStatus: LinkStatus =
-    apiStatus === 'disconnected' || rosStatus === 'disconnected'
+    apiStatus === 'disconnected'
       ? 'disconnected'
-      : apiStatus === 'connecting' || rosStatus === 'connecting'
+      : apiStatus === 'connecting'
         ? 'connecting'
         : 'connected'
 
@@ -567,12 +594,12 @@ export default function ControlsPage() {
     () => ({
       id: 'pi',
       title: 'Pi cell',
-      subtitle: hostName || 'API + rosbridge',
+      subtitle: hostName || 'API host',
       status: hubStatus,
-      detail: `${apiBase} · ${rosbridgeUrl}`,
+      detail: apiBase,
       icon: <Server className="h-7 w-7" />,
     }),
-    [hubStatus, hostName, apiBase, rosbridgeUrl],
+    [hubStatus, hostName, apiBase],
   )
 
   const spokes: SpineNode[] = useMemo(
@@ -655,10 +682,13 @@ export default function ControlsPage() {
   )
 
   const peerNodes = SIGNAL_LAYOUT === 'hub' ? [hub, ...spokes] : spine
-  const downCount = peerNodes.filter((n) => n.status === 'disconnected').length
-  const warnCount = peerNodes.filter((n) =>
-    ['stale', 'degraded', 'connecting', 'unknown'].includes(n.status),
-  ).length
+  const downCount =
+    peerNodes.filter((n) => n.status === 'disconnected').length +
+    (rosStatus === 'disconnected' ? 1 : 0)
+  const warnCount =
+    peerNodes.filter((n) =>
+      ['stale', 'degraded', 'connecting', 'unknown'].includes(n.status),
+    ).length + (rosStatus === 'connecting' ? 1 : 0)
   const allLive = downCount === 0 && warnCount === 0 && !clockSkewWarn
 
   return (
@@ -674,7 +704,7 @@ export default function ControlsPage() {
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-[var(--text-muted)]">
             {SIGNAL_LAYOUT === 'hub'
-              ? 'Pi is the hub. Arm, scale, micro-ROS, and Condor are independent peers — not a pipeline.'
+              ? 'Pi is the hub. Rosbridge is the DDS bridge on the Pi; arm, scale, micro-ROS and Condor are independent peers.'
               : 'Live path from this browser through the Pi stack to the arm, sensors, and Condor MES bridge.'}{' '}
             Fix red nodes here before starting a weighment.
           </p>
@@ -707,7 +737,12 @@ export default function ControlsPage() {
         <div className="pointer-events-none absolute inset-0 signal-spine-glow" aria-hidden />
         <div className="relative">
           {SIGNAL_LAYOUT === 'hub' ? (
-            <SignalHub hub={hub} spokes={spokes} />
+            <SignalHub
+              hub={hub}
+              spokes={spokes}
+              rosStatus={rosStatus}
+              rosbridgeUrl={rosbridgeUrl}
+            />
           ) : (
             <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
               {spine.map((node, i) => (

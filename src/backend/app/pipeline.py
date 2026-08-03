@@ -98,6 +98,12 @@ def store_processed_run(
         'pour_outcome': payload.get('pour_outcome')
         or _metadata_field(payload, 'pour_outcome'),
         'rng_seed': payload.get('rng_seed') or _metadata_field(payload, 'rng_seed'),
+        'stop_on': payload.get('stop_on') or _metadata_field(payload, 'stop_on'),
+        'stop_value': payload.get('stop_value')
+        if payload.get('stop_value') is not None
+        else _metadata_field(payload, 'stop_value'),
+        'stop_reason': payload.get('stop_reason')
+        or _metadata_field(payload, 'stop_reason'),
     }
     if not run:
         run = Run(

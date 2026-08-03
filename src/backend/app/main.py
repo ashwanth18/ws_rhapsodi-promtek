@@ -54,6 +54,8 @@ from .modes.mock_local import (
     allocate_mock_batch_id,
     is_mock_event_id,
 )
+from .modes.batch_ids import prefix_for_mode, suggest_next_batch_id
+from .modes.lightsout_validate import resolve_lightsout_targets
 from .modes.powders import get_powder, load_powders
 from .modes.target_sampler import generate_target_schedule
 from .export import router as export_router
@@ -206,6 +208,9 @@ def ensure_run_columns() -> None:
         'ALTER TABLE runs ADD COLUMN IF NOT EXISTS target_fraction DOUBLE PRECISION',
         'ALTER TABLE runs ADD COLUMN IF NOT EXISTS pour_outcome VARCHAR',
         'ALTER TABLE runs ADD COLUMN IF NOT EXISTS rng_seed INTEGER',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS stop_on VARCHAR',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS stop_value DOUBLE PRECISION',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS stop_reason VARCHAR',
     ]
     with engine.begin() as conn:
         for statement in statements:
@@ -228,6 +233,9 @@ def ensure_lightsout_processed_label_columns() -> None:
         'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS target_fraction DOUBLE PRECISION',
         'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS pour_outcome VARCHAR',
         'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS rng_seed INTEGER',
+        'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS stop_on VARCHAR',
+        'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS stop_value DOUBLE PRECISION',
+        'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS stop_reason VARCHAR',
     ]
     with engine.begin() as conn:
         for statement in statements:
@@ -397,6 +405,47 @@ def list_powders() -> dict:
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return {'powders': powders}
+
+
+@app.get('/batch_ids/next')
+def next_batch_id(mode: str) -> dict:
+    """Suggest the next free incremental batch id for a mode (advisory)."""
+    mode_id = (mode or '').strip()
+    prefix = prefix_for_mode(mode_id)
+    if not prefix:
+        raise HTTPException(status_code=400, detail=f'Unknown mode: {mode_id}')
+
+    db = SessionLocal()
+    try:
+        lo_ids = [
+            value
+            for (value,) in db.query(LightsOutProcessed.batch_id)
+            .filter(
+                LightsOutProcessed.mode == mode_id,
+                LightsOutProcessed.batch_id.isnot(None),
+            )
+            .distinct()
+            .all()
+            if value
+        ]
+        run_ids = [
+            value
+            for (value,) in db.query(Run.batch_id)
+            .filter(Run.mode == mode_id, Run.batch_id.isnot(None))
+            .distinct()
+            .all()
+            if value
+        ]
+    finally:
+        db.close()
+
+    batch_id, previous = suggest_next_batch_id(prefix, [*lo_ids, *run_ids])
+    return {
+        'mode': mode_id,
+        'prefix': prefix,
+        'batch_id': batch_id,
+        'previous': previous,
+    }
 
 
 def build_mock_robot_run_contract(
@@ -652,6 +701,8 @@ def start_lightsout_run_via_adapter(
     *,
     powder,
     schedule,
+    target_weight_g: float,
+    stop_value: float,
 ) -> dict[str, Any]:
     """POST training start to robot_start_adapter /start_lightsout (no Condor)."""
     min_scooped = (
@@ -667,12 +718,12 @@ def start_lightsout_run_via_adapter(
         'lot_code': (payload.lot_code or '').strip(),
         'operator': (payload.operator or '').strip(),
         'notes': (payload.notes or '').strip(),
-        'target_weight_g': float(payload.target_weight_g),
+        'target_weight_g': float(target_weight_g),
         'episodes': int(payload.episodes),
         'batch_id': (payload.batch_id or '').strip(),
         'enable_scoop': bool(payload.enable_scoop),
         'stop_on': payload.stop_on,
-        'stop_value': float(payload.stop_value or 0.0),
+        'stop_value': float(stop_value),
         'target_mode': schedule.target_mode,
         'target_fractions': list(schedule.fractions),
         'min_scooped_g': min_scooped,
@@ -705,12 +756,21 @@ def create_lightsout_run(payload: LightsoutRunRequest) -> dict:
             },
         )
     powder = _resolve_lightsout_powder(payload)
-    if payload.target_weight_g <= 0 and payload.target_mode == 'fixed':
-        raise HTTPException(
-            status_code=400, detail='target_weight_g must be > 0'
+    try:
+        resolved = resolve_lightsout_targets(
+            target_mode=payload.target_mode,
+            target_weight_g=payload.target_weight_g,
+            stop_on=payload.stop_on,
+            stop_value=payload.stop_value,
+            episodes=int(payload.episodes),
+            target_min_g=float(payload.target_min_g or 0.0),
+            target_max_g=float(payload.target_max_g or 0.0),
+            powder_default_target_g=float(powder.default_target_weight_g),
         )
-    if payload.episodes <= 0:
-        raise HTTPException(status_code=400, detail='episodes must be > 0')
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    resolved_target = float(resolved['target_weight_g'])
+    stop_value = float(resolved['stop_value'])
 
     try:
         schedule = generate_target_schedule(
@@ -719,9 +779,7 @@ def create_lightsout_run(payload: LightsoutRunRequest) -> dict:
             frac_min=float(payload.frac_min),
             frac_max=float(payload.frac_max),
             fixed_target_g=(
-                float(payload.target_weight_g)
-                if payload.target_mode == 'fixed'
-                else None
+                resolved_target if payload.target_mode == 'fixed' else None
             ),
             rng_seed=payload.rng_seed,
         )
@@ -738,7 +796,7 @@ def create_lightsout_run(payload: LightsoutRunRequest) -> dict:
         notes=(payload.notes or '').strip() or None,
         cycles=int(payload.episodes),
         stop_on=payload.stop_on,
-        stop_value=float(payload.stop_value or 0.0) or None,
+        stop_value=stop_value or None,
         target_mode=schedule.target_mode,
         target_fractions=list(schedule.fractions),
         rng_seed=schedule.rng_seed,
@@ -748,7 +806,7 @@ def create_lightsout_run(payload: LightsoutRunRequest) -> dict:
         'powder_name': powder.name,
         'container_target': powder.container_target,
         'pour_target': powder.pour_target,
-        'target_weight_g': float(payload.target_weight_g),
+        'target_weight_g': resolved_target,
         'episodes': int(payload.episodes),
         'batch_id': (payload.batch_id or '').strip(),
         'enable_scoop': bool(payload.enable_scoop),
@@ -756,7 +814,7 @@ def create_lightsout_run(payload: LightsoutRunRequest) -> dict:
         'operator': label.operator or '',
         'notes': label.notes or '',
         'stop_on': payload.stop_on,
-        'stop_value': float(payload.stop_value or 0.0),
+        'stop_value': stop_value,
         'target_mode': schedule.target_mode,
         'target_fractions': list(schedule.fractions),
         'rng_seed': schedule.rng_seed,
@@ -794,7 +852,11 @@ def create_lightsout_run(payload: LightsoutRunRequest) -> dict:
 
     try:
         service_response = start_lightsout_run_via_adapter(
-            payload, powder=powder, schedule=schedule
+            payload,
+            powder=powder,
+            schedule=schedule,
+            target_weight_g=resolved_target,
+            stop_value=stop_value,
         )
     except HTTPException:
         raise
@@ -3016,6 +3078,11 @@ def list_lightsout_processed(
                     'scoop_duration_s': processed_row.scoop_duration_s,
                     'pour_duration_s': processed_row.pour_duration_s,
                     'parquet_path': processed_row.parquet_path,
+                    'stop_on': processed_row.stop_on,
+                    'stop_value': processed_row.stop_value,
+                    'stop_reason': processed_row.stop_reason,
+                    'powder_id': processed_row.powder_id,
+                    'powder_name': processed_row.powder_name,
                 }
             )
     finally:

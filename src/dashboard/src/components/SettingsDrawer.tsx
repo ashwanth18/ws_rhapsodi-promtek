@@ -1,14 +1,25 @@
 import { useEffect, useMemo, useState } from 'react'
 import Button from './ui/button'
-import { useRos } from '../ros/RosContext'
+import StatusBadge, { StatusTone } from './ui/StatusBadge'
 import { useRuntimeConfig } from '../config/RuntimeConfig'
 import { ConnStatus } from '../hooks/useConnectionStatus'
 import { X } from 'lucide-react'
 
+function statusTone(status: ConnStatus): StatusTone {
+  if (status === 'connected') return 'good'
+  if (status === 'connecting') return 'warn'
+  return 'bad'
+}
+
 function statusLabel(status: ConnStatus) {
-  if (status === 'connected') return 'Connected'
-  if (status === 'connecting') return 'Connecting'
-  return 'Disconnected'
+  if (status === 'connected') return 'Live'
+  if (status === 'connecting') return 'Linking'
+  return 'Down'
+}
+
+function truncateUrl(url: string, max = 36) {
+  if (url.length <= max) return url
+  return `${url.slice(0, max - 1)}…`
 }
 
 type Props = {
@@ -62,11 +73,24 @@ export default function SettingsDrawer({
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] p-3">
               <div className="text-xs text-[var(--text-faint)]">API</div>
-              <div className="mt-1 font-medium">{statusLabel(apiStatus)}</div>
+              <div className="mt-2">
+                <StatusBadge label={statusLabel(apiStatus)} tone={statusTone(apiStatus)} />
+              </div>
+              <p className="mt-2 truncate font-mono text-[10px] text-[var(--text-faint)]" title={apiBase}>
+                {truncateUrl(apiBase)}
+              </p>
             </div>
             <div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] p-3">
               <div className="text-xs text-[var(--text-faint)]">rosbridge</div>
-              <div className="mt-1 font-medium">{statusLabel(rosStatus)}</div>
+              <div className="mt-2">
+                <StatusBadge label={statusLabel(rosStatus)} tone={statusTone(rosStatus)} />
+              </div>
+              <p
+                className="mt-2 truncate font-mono text-[10px] text-[var(--text-faint)]"
+                title={rosbridgeUrl}
+              >
+                {truncateUrl(rosbridgeUrl)}
+              </p>
             </div>
           </div>
           <div className="space-y-2">
@@ -94,8 +118,8 @@ export default function SettingsDrawer({
             disabled={!canSave}
             onClick={() => {
               if (!canSave) return
-              setApiBase(apiInput)
-              setRosbridgeUrl(rosInput)
+              setApiBase(apiInput.trim())
+              setRosbridgeUrl(rosInput.trim())
               onClose()
             }}
           >

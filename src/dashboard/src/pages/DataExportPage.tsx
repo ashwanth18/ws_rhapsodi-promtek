@@ -16,6 +16,16 @@ import {
   fetchExportRuns,
 } from '../api/export'
 import { useRuntimeConfig } from '../config/RuntimeConfig'
+import { useRuntimeMode } from '../hooks/useRuntimeMode'
+
+const ARTIFACT_KINDS = ['metadata', 'events', 'parquet', 'mcap'] as const
+
+const ARTIFACT_LABELS: Record<(typeof ARTIFACT_KINDS)[number], string> = {
+  metadata: 'meta',
+  events: 'events',
+  parquet: 'parquet',
+  mcap: 'mcap',
+}
 
 function nsToIso(ns: number | null): string {
   if (ns == null) return '—'
@@ -28,6 +38,7 @@ function nsToIso(ns: number | null): string {
 
 export default function DataExportPage() {
   const { apiBase } = useRuntimeConfig()
+  const { capabilities } = useRuntimeMode(apiBase)
   const [rows, setRows] = useState<ExportRunRow[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -105,8 +116,14 @@ export default function DataExportPage() {
     },
     {
       key: 'batch',
-      header: 'Batch / ep',
-      render: (r) => `${r.batch_id ?? '—'} / ${r.episode_index ?? '—'}`,
+      header: 'Batch',
+      render: (r) => r.batch_id ?? '—',
+    },
+    {
+      key: 'episode',
+      header: 'Episode',
+      render: (r) =>
+        r.episode_index != null ? String(r.episode_index) : '—',
     },
     {
       key: 'powder',
@@ -120,6 +137,11 @@ export default function DataExportPage() {
         r.net_weight_g != null ? r.net_weight_g.toFixed(1) : '—',
     },
     {
+      key: 'stop_reason',
+      header: 'Stop reason',
+      render: (r) => r.stop_reason || '—',
+    },
+    {
       key: 'start',
       header: 'Start',
       render: (r) => (
@@ -131,10 +153,10 @@ export default function DataExportPage() {
       header: 'Artifacts',
       render: (r) => (
         <div className="flex flex-wrap gap-1">
-          {(['metadata', 'events', 'parquet', 'mcap'] as const).map((k) => (
+          {ARTIFACT_KINDS.map((k) => (
             <StatusBadge
               key={k}
-              label={k.slice(0, 3)}
+              label={ARTIFACT_LABELS[k]}
               tone={r.artifacts?.[k]?.present ? 'good' : 'idle'}
             />
           ))}
@@ -143,13 +165,26 @@ export default function DataExportPage() {
     },
     {
       key: 'sync',
-      header: 'Sync',
-      render: (r) =>
-        r.manifest_sync?.tier0_synced_at ? (
-          <StatusBadge label="tier0" tone="good" />
-        ) : (
-          <span className="text-xs text-[var(--text-faint)]">—</span>
-        ),
+      header: 'Synced',
+      render: (r) => {
+        const syncedAt = r.manifest_sync?.tier0_synced_at
+        if (syncedAt) {
+          return (
+            <StatusBadge
+              label="Synced"
+              tone="good"
+              title={`tier0 synced at ${syncedAt}`}
+            />
+          )
+        }
+        return (
+          <StatusBadge
+            label="Not synced"
+            tone="idle"
+            title="tier0 not synced"
+          />
+        )
+      },
     },
   ]
 
@@ -188,9 +223,11 @@ export default function DataExportPage() {
               className="w-full"
             >
               <option value="">All modes</option>
-              <option value="lightsout">lightsout</option>
-              <option value="mock-local">mock-local</option>
-              <option value="mes-condor">mes-condor</option>
+              {(capabilities?.modes || []).map((m) => (
+                <option key={m.mode} value={m.mode}>
+                  {m.label || m.mode}
+                </option>
+              ))}
             </Select>
           </div>
           <div>
@@ -225,34 +262,46 @@ export default function DataExportPage() {
             />
           </div>
         </div>
-        <div className="flex flex-wrap items-end gap-2 lg:col-span-2">
-          <Button onClick={() => void load()} disabled={loading}>
-            Apply filters
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => void runDownload('runs')}
-            disabled={!!downloading}
-          >
-            <Download className="h-4 w-4" />
-            {downloading === 'runs' ? '…' : 'Runs CSV'}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => void runDownload('timeseries')}
-            disabled={!!downloading}
-          >
-            <Download className="h-4 w-4" />
-            {downloading === 'timeseries' ? '…' : 'Timeseries CSV'}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => void runDownload('bundle')}
-            disabled={!!downloading}
-          >
-            <Download className="h-4 w-4" />
-            {downloading === 'bundle' ? '…' : 'Bundle ZIP'}
-          </Button>
+        <div className="flex flex-wrap items-start gap-4 lg:col-span-2">
+          <div className="flex flex-col gap-1">
+            <Button
+              variant="outline"
+              onClick={() => void runDownload('runs')}
+              disabled={!!downloading}
+            >
+              <Download className="h-4 w-4" />
+              {downloading === 'runs' ? '…' : 'Runs CSV'}
+            </Button>
+            <span className="text-xs text-[var(--text-faint)]">
+              Runs CSV - one row per episode
+            </span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Button
+              variant="outline"
+              onClick={() => void runDownload('timeseries')}
+              disabled={!!downloading}
+            >
+              <Download className="h-4 w-4" />
+              {downloading === 'timeseries' ? '…' : 'Timeseries CSV'}
+            </Button>
+            <span className="text-xs text-[var(--text-faint)]">
+              Timeseries CSV - weight samples
+            </span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Button
+              variant="outline"
+              onClick={() => void runDownload('bundle')}
+              disabled={!!downloading}
+            >
+              <Download className="h-4 w-4" />
+              {downloading === 'bundle' ? '…' : 'Bundle ZIP'}
+            </Button>
+            <span className="text-xs text-[var(--text-faint)]">
+              Bundle .zip - artifacts for the filtered runs
+            </span>
+          </div>
         </div>
       </div>
 

@@ -3,38 +3,40 @@
     <Sequence name="LightsOutFlow">
       <WaitSeconds seconds="0.5"/>
       <Repeat num_cycles="{lightsout_episodes}">
-        <Sequence name="LightsOutEpisode">
-          <Precondition if="!lightsout_stop_requested" else="FAILURE">
-            <Sequence>
-              <EpisodeMarker/>
-              <PhaseMarker phase="scoop_start"/>
-              <WeightFresh max_age_s="2.0"/>
-              <CaptureBaseline/>
-              <MoveTo name="MoveToContainer" target_name="{lightsout_container_name}" use_cartesian="false"/>
-              <Precondition if="enable_scoop" else="SUCCESS">
-                <ExecuteScoop continuous="true" timeout_s="120.0"/>
-              </Precondition>
-              <PhaseMarker phase="scoop_end"/>
-              <WaitSeconds seconds="3.0"/>
-              <ForceSuccess>
-                <MeasureScoopedMass/>
-              </ForceSuccess>
-              <SampleTargetWeight/>
-              <PhaseMarker phase="pour_start"/>
-              <MoveTo name="MoveToPour" target_name="{lightsout_pour_target}" use_cartesian="false"/>
-              <ForceSuccess>
-                <PourToTarget target_weight="{lightsout_target_weight_g}"
-                              tolerance="{lightsout_tolerance_g}"
-                              max_time_s="30"/>
-              </ForceSuccess>
-              <PhaseMarker phase="pour_end"/>
-              <RecordPourOutcome/>
-              <WaitSeconds seconds="1.0"/>
-              <MoveTo name="MoveBackToContainer" target_name="{lightsout_container_name}" use_cartesian="false"/>
-              <EpisodeEndMarker/>
-            </Sequence>
+        <Fallback name="EpisodeOrStop">
+          <Precondition if="lightsout_stop_requested" else="FAILURE">
+            <AlwaysSuccess/>
           </Precondition>
-        </Sequence>
+          <Sequence name="LightsOutEpisode">
+            <EpisodeMarker/>
+            <PhaseMarker phase="scoop_start"/>
+            <WeightFresh max_age_s="2.0"/>
+            <CaptureBaseline/>
+            <MoveTo name="MoveToContainer" target_name="{lightsout_container_name}" use_cartesian="false"/>
+            <Precondition if="enable_scoop" else="SUCCESS">
+              <ExecuteScoop continuous="true" timeout_s="120.0"/>
+            </Precondition>
+            <PhaseMarker phase="scoop_end"/>
+            <WaitSeconds seconds="3.0"/>
+            <ForceSuccess>
+              <MeasureScoopedMass/>
+            </ForceSuccess>
+            <SampleTargetWeight/>
+            <PhaseMarker phase="pour_start"/>
+            <MoveTo name="MoveToPour" target_name="{lightsout_pour_target}" use_cartesian="false"/>
+            <ForceSuccess>
+              <PourToTarget target_weight="{lightsout_target_weight_g}"
+                            tolerance="{lightsout_tolerance_g}"
+                            max_time_s="30"/>
+            </ForceSuccess>
+            <PhaseMarker phase="pour_end"/>
+            <RecordPourOutcome/>
+            <WaitSeconds seconds="1.0"/>
+            <MoveTo name="MoveBackToContainer" target_name="{lightsout_container_name}" use_cartesian="false"/>
+            <EpisodeEndMarker/>
+            <EvaluateStopCondition/>
+          </Sequence>
+        </Fallback>
       </Repeat>
     </Sequence>
   </BehaviorTree>

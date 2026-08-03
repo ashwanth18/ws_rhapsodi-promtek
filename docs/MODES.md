@@ -35,10 +35,19 @@ sample pour target → pour back into the same vessel). No rescoop.
 - Powder identity from `config/powders.yaml` via `GET /powders` /
   `powder_id` (label decoupled from `container_target` / `pour_target`)
 - Per-episode target modes: `fixed` | `random_fraction` | `stratified`
-  (session schedule from `target_sampler`, fractions × measured scoop)
-- Stop conditions: `episodes` | `total_weight_g` | `duration_min`
+  (session schedule from `target_sampler`; non-fixed pour targets are
+  `fraction × scooped_mass_g`). Tolerance is recomputed per episode as
+  `max(0.1 g, target × 0.02)`.
+- Stop conditions (all live): `episodes` | `total_weight_g` |
+  `duration_min`. Duration and total-weight stops are evaluated
+  **between episodes** (never mid-pour). For non-episode stops,
+  `episodes` is a hard safety cap — the session ends at whichever
+  limit is reached first.
+- Session labels: `GET /batch_ids/next?mode=…` suggests the next
+  incremental id per mode (`LO-0007`, `MOCK-…`, …); advisory only.
 - `enable_scoop` defaults **true**
 - Dashboard **Training** (`/training`) + shared Run Setup sheet
+  (dashboard ≥ 0.4.0)
 
 ## RunSpec
 

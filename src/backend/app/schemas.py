@@ -28,7 +28,9 @@ class LightsoutRunRequest(BaseModel):
     """Operator-triggered lights-out training run (lightsout mode)."""
 
     powder_id: str
-    target_weight_g: float = 250.0
+    # Required only for target_mode=fixed. Non-fixed modes use the powder
+    # default as a tolerance seed when this is omitted/zero.
+    target_weight_g: Optional[float] = None
     episodes: int = 10
     batch_id: str = ''
     enable_scoop: bool = True
@@ -92,6 +94,9 @@ class ProcessedRequest(BaseModel):
     target_fraction: Optional[float] = None
     pour_outcome: Optional[str] = None
     rng_seed: Optional[int] = None
+    stop_on: Optional[str] = None
+    stop_value: Optional[float] = None
+    stop_reason: Optional[str] = None
 
 
 class ProcessedResponse(BaseModel):

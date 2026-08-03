@@ -44,6 +44,9 @@ class Run(Base):
     target_fraction = Column(Float, nullable=True)
     pour_outcome = Column(String, nullable=True)
     rng_seed = Column(Integer, nullable=True)
+    stop_on = Column(String, nullable=True)
+    stop_value = Column(Float, nullable=True)
+    stop_reason = Column(String, nullable=True)
 
     artifacts = relationship(
         'Artifact', back_populates='run', cascade='all, delete-orphan'
@@ -100,6 +103,9 @@ class LightsOutProcessed(Base):
     target_fraction = Column(Float, nullable=True)
     pour_outcome = Column(String, nullable=True)
     rng_seed = Column(Integer, nullable=True)
+    stop_on = Column(String, nullable=True)
+    stop_value = Column(Float, nullable=True)
+    stop_reason = Column(String, nullable=True)
 
     run = relationship('Run')
 

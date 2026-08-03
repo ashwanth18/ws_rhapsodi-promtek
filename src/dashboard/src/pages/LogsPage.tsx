@@ -21,6 +21,7 @@ import {
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import Select from '../components/ui/select'
+import StatusBadge, { type StatusTone } from '../components/ui/StatusBadge'
 import { useRuntimeConfig } from '../config/RuntimeConfig'
 
 type Row = {
@@ -28,6 +29,7 @@ type Row = {
   event_id: string | null
   weightment_id: number | null
   mode: string | null
+  stop_reason: string | null
   run_id: string | null
   batch_id: string | null
   ingredient_id: string | null
@@ -113,6 +115,12 @@ function toFilterIsoStart(dateValue: string): string | undefined {
 
 function toFilterIsoEnd(dateValue: string): string | undefined {
   return dateValue ? `${dateValue}T23:59:59.999Z` : undefined
+}
+
+function modeBadgeTone(mode: string): StatusTone {
+  if (mode === 'mes-condor') return 'info'
+  if (mode === 'mock-local' || mode === 'lightsout') return 'warn'
+  return 'neutral'
 }
 
 export default function LogsPage() {
@@ -284,7 +292,7 @@ export default function LogsPage() {
     .map((row) => ({
       x: row.target_weight_g as number,
       y: row.final_weight_g as number,
-      label: `Run ${row.episode_index ?? '—'}`,
+      label: `Episode ${row.episode_index ?? '—'}`,
     }))
 
   const plotPointsDurationVsFinal = plotRows
@@ -292,7 +300,7 @@ export default function LogsPage() {
     .map((row) => ({
       x: row.total_episode_time_s as number,
       y: row.final_weight_g as number,
-      label: `Run ${row.episode_index ?? '—'}`,
+      label: `Episode ${row.episode_index ?? '—'}`,
     }))
 
   const overshootValues = plotRows
@@ -414,7 +422,7 @@ export default function LogsPage() {
         />
 
         <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard label="Runs" value={totalEpisodes} />
+          <MetricCard label="Episodes" value={totalEpisodes} />
           <MetricCard
             label="Mean |error|"
             value={meanAbsOvershoot != null ? meanAbsOvershoot.toFixed(1) : '—'}
@@ -456,7 +464,7 @@ export default function LogsPage() {
                   ))}
                 </Select>
               </FilterField>
-              <FilterField label="Run" className="min-w-[110px]">
+              <FilterField label="Episode" className="min-w-[110px]">
                 <input
                   className="w-24 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-sm text-[var(--text-primary)]"
                   placeholder="e.g. 3"
@@ -487,6 +495,8 @@ export default function LogsPage() {
                 <tr>
                   <th>Batch</th>
                   <th>Run ID</th>
+                  <th>Mode</th>
+                  <th>Stop reason</th>
                   <th>Ingredient</th>
                   <th>
                     <button
@@ -516,13 +526,15 @@ export default function LogsPage() {
                   <th className="text-right">Duration (s)</th>
                   <th className="text-right">Scoop Duration (s)</th>
                   <th className="text-right">Pour Duration (s)</th>
-                  <th className="text-right">Final Error (g)</th>
+                  <th className="text-right" title="final minus target">
+                    Overshoot (g)
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td className="py-6 text-center" colSpan={12}>
+                    <td className="py-6 text-center" colSpan={14}>
                       <span className="inline-flex items-center gap-2 text-[var(--text-secondary)]">
                         <svg
                           className="h-4 w-4 animate-spin"
@@ -550,7 +562,7 @@ export default function LogsPage() {
                     </td>
                   </tr>
                 ) : tableRows.length === 0 ? (
-                  <tr><td className="py-4" colSpan={12}>No data</td></tr>
+                  <tr><td className="py-4" colSpan={14}>No data</td></tr>
                 ) : (
                   tableRows.map((r) => {
                     const startMs = r.start_time_ns ? r.start_time_ns / 1_000_000 : null
@@ -560,12 +572,22 @@ export default function LogsPage() {
                       <tr
                         key={r.id}
                         className={`border-t border-[var(--border)] ${
-                          isBatchRow ? 'cursor-pointer hover:bg-[var(--table-row-hover)]' : ''
+                          isBatchRow
+                            ? 'cursor-pointer hover:bg-[var(--table-row-hover)]'
+                            : 'cursor-default'
                         }`}
                         onClick={isBatchRow ? () => openBatchDetails(r) : undefined}
                       >
                         <td>{r.batch_id ?? '—'}</td>
                         <td>{r.run_id ?? '—'}</td>
+                        <td>
+                          {r.mode ? (
+                            <StatusBadge label={r.mode} tone={modeBadgeTone(r.mode)} />
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td>{r.stop_reason ?? '—'}</td>
                         <td>{r.ingredient_id ?? '—'}</td>
                         <td><DateTimeText value={startMs} /></td>
                         <td><DateTimeText value={endMs} /></td>
@@ -608,9 +630,9 @@ export default function LogsPage() {
 
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
           <GlassCard>
-            <div className="mb-2 text-xs text-[var(--text-muted)]">Run Summary</div>
+            <div className="mb-2 text-xs text-[var(--text-muted)]">Episode Summary</div>
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>Total Runs</div>
+              <div>Total Episodes</div>
               <div className="text-right">{totalEpisodes}</div>
               <div>Avg Final (g)</div>
               <div className="text-right">{avgFinal != null ? avgFinal.toFixed(2) : '—'}</div>
@@ -620,7 +642,7 @@ export default function LogsPage() {
               <div className="text-right">{avgFlow != null ? avgFlow.toFixed(2) : '—'}</div>
               <div>Avg Duration (s)</div>
               <div className="text-right">{avgDuration != null ? avgDuration.toFixed(2) : '—'}</div>
-              <div>Avg Final Error (g)</div>
+              <div>Avg Overshoot (g)</div>
               <div className="text-right">{avgOvershoot != null ? avgOvershoot.toFixed(2) : '—'}</div>
             </div>
           </GlassCard>
@@ -655,7 +677,7 @@ export default function LogsPage() {
 
         <div className="mt-8">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold">Plots (shadcn/ui)</h2>
+            <h2 className="text-lg font-semibold">Plots</h2>
             <div className="flex items-center gap-2 text-sm">
               <span className="text-[var(--text-muted)]">Batch</span>
               <Select
@@ -754,7 +776,7 @@ export default function LogsPage() {
           <div className="mt-4">
             <Card>
               <CardHeader>
-                <CardTitle>Final Error Distribution (% of Runs)</CardTitle>
+                <CardTitle>Overshoot Distribution (% of Episodes)</CardTitle>
               </CardHeader>
               <CardContent>
                 <div style={{ width: '100%', height: 240 }}>
