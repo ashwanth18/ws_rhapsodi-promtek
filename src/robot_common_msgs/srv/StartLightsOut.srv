@@ -3,13 +3,9 @@ string cycle_end_limit
 float32 target_weight_g
 int32 episodes
 string batch_id
+# When true, LightsOut tree runs ExecuteScoop after MoveTo container.
+# Default false for safety (move/pour-only training).
+bool enable_scoop
 ---
 bool accepted
 string message
-
-
-
-
-
-
-

@@ -69,3 +69,10 @@ Phase 4: `POST /modes/mock/runs` (active mode must already be
 `robot_start_adapter` / `/bt_start_webhook_weightment` path. Completion
 short-circuits Condor when `event_id` starts with `mock-`. Dashboard
 **Test** page (`/test`) drives mode switch + mock starts.
+
+Phase 5: `POST /modes/lightsout/runs` (active mode must already be
+`lightsout`, else 409) starts training via
+`robot_start_adapter` `/start_lightsout` → `/bt_start_lightsout`.
+Uses `NullMesClient` (no Condor). Blackboard `enable_scoop` (default
+false) gates `ExecuteScoop` in `lightsout.xml`. Dashboard **Training**
+page (`/training`) drives mode switch + starts.

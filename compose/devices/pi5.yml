@@ -51,6 +51,7 @@ services:
       PATH_MAP_FROM: ${WORKSPACE_ROOT:-/home/ashwanth/ws_rhapsodi-promtek-dev}/data
       PATH_MAP_TO: /data
       ROBOT_START_ADAPTER_URL: ${ROBOT_START_ADAPTER_URL:-http://host.docker.internal:8010/start_webhook_weightment}
+      ROBOT_LIGHTSOUT_ADAPTER_URL: ${ROBOT_LIGHTSOUT_ADAPTER_URL:-http://host.docker.internal:8010/start_lightsout}
 
       ROBOT_RUNNING_TIMEOUT_SECONDS: ${ROBOT_RUNNING_TIMEOUT_SECONDS:-300}
       ROSBRIDGE_HOST: host.docker.internal
@@ -165,6 +166,7 @@ services:
       ROBOT_IP: ${ROBOT_IP:-169.254.200.200}
       FASTDDS_BUILTIN_TRANSPORTS: UDPv4
       ROBOT_START_SERVICE_NAME: /bt_start_webhook_weightment
+      ROBOT_LIGHTSOUT_SERVICE_NAME: /bt_start_lightsout
       ROBOT_START_SERVICE_WAIT_TIMEOUT_SECONDS: 5
       ROBOT_START_SERVICE_CALL_TIMEOUT_SECONDS: 15
     command:

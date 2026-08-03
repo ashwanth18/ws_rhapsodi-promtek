@@ -36,6 +36,7 @@ inline const std::vector<std::string> kLightsoutBlackboardKeys = {
   "lightsout_batch_id",
   "lightsout_container_name",
   "lightsout_episode_index",
+  "enable_scoop",
 };
 
 inline const std::vector<std::string> kBatchBlackboardKeys = {

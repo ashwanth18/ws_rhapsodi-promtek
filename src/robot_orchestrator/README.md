@@ -202,7 +202,7 @@ cd /home/ashwanth/ws_rhapsodi-promtek-dev
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ros2 service call /bt_start_lightsout robot_common_msgs/srv/StartLightsOut \
-"{powder_name: 'scooping_demo', cycle_end_limit: '1 episode', target_weight_g: 30.0, episodes: 1, batch_id: 'demo-run'}"
+"{powder_name: 'scooping_demo', cycle_end_limit: '1 episode', target_weight_g: 30.0, episodes: 1, batch_id: 'demo-run', enable_scoop: true}"
 ```
 
 Notes:
@@ -292,7 +292,7 @@ ros2 run robot_orchestrator orchestrator_node --ros-args -p tree_file:=/home/ash
 
 2) Start a lights-out run:
 ```
-ros2 service call /bt_start_lightsout robot_common_msgs/srv/StartLightsOut "{powder_name: 'alumina', cycle_end_limit: '10 episodes', target_weight_g: 125.0, episodes: 10, batch_id: 'batch-2026-01-19'}"
+ros2 service call /bt_start_lightsout robot_common_msgs/srv/StartLightsOut "{powder_name: 'alumina', cycle_end_limit: '10 episodes', target_weight_g: 125.0, episodes: 10, batch_id: 'batch-2026-01-19', enable_scoop: false}"
 ```
 
 Lights-out topics:

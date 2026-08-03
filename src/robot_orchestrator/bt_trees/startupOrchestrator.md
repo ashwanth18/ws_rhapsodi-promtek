@@ -70,7 +70,7 @@ cd /home/ashwanth/ws_rhapsodi-promtek-dev
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ros2 service call /bt_start_lightsout robot_common_msgs/srv/StartLightsOut \
-"{powder_name: 'scooping_demo', cycle_end_limit: '1 episode', target_weight_g: 30.0, episodes: 1, batch_id: 'demo-run'}"
+"{powder_name: 'scooping_demo', cycle_end_limit: '1 episode', target_weight_g: 30.0, episodes: 1, batch_id: 'demo-run', enable_scoop: true}"
 ```
 
 ## Real-Robot Startup
@@ -128,7 +128,7 @@ cd /home/ashwanth/ws_rhapsodi-promtek-dev
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ros2 service call /bt_start_lightsout robot_common_msgs/srv/StartLightsOut \
-"{powder_name: 'scooping_demo', cycle_end_limit: '1 episode', target_weight_g: 30.0, episodes: 1, batch_id: 'real-demo-run'}"
+"{powder_name: 'scooping_demo', cycle_end_limit: '1 episode', target_weight_g: 30.0, episodes: 1, batch_id: 'real-demo-run', enable_scoop: true}"
 ```
 
 ## Required Named Targets

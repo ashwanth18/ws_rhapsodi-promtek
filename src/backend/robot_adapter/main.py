@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 import rclpy
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from robot_common_msgs.srv import StartWebhookWeightment
+from robot_common_msgs.srv import StartLightsOut, StartWebhookWeightment
 
 from rhapsodi_common.health import HealthEventPublisher
 
@@ -30,10 +30,27 @@ class StartWebhookWeightmentResponse(BaseModel):
     message: str
 
 
+class StartLightsOutRequest(BaseModel):
+    powder_name: str
+    cycle_end_limit: str = ''
+    target_weight_g: float
+    episodes: int
+    batch_id: str = ''
+    enable_scoop: bool = False
+
+
+class StartLightsOutResponse(BaseModel):
+    accepted: bool
+    message: str
+
+
 class WebhookRobotStarter:
     def __init__(self) -> None:
         self.service_name = os.environ.get(
             'ROBOT_START_SERVICE_NAME', '/bt_start_webhook_weightment'
+        )
+        self.lightsout_service_name = os.environ.get(
+            'ROBOT_LIGHTSOUT_SERVICE_NAME', '/bt_start_lightsout'
         )
         self.wait_timeout_seconds = float(
             os.environ.get('ROBOT_START_SERVICE_WAIT_TIMEOUT_SECONDS', '5')
@@ -45,6 +62,7 @@ class WebhookRobotStarter:
         self._started = False
         self._node = None
         self._client = None
+        self._lightsout_client = None
         self._health = None
 
     def start(self) -> None:
@@ -54,6 +72,9 @@ class WebhookRobotStarter:
         self._node = rclpy.create_node('webhook_robot_start_adapter')
         self._client = self._node.create_client(
             StartWebhookWeightment, self.service_name
+        )
+        self._lightsout_client = self._node.create_client(
+            StartLightsOut, self.lightsout_service_name
         )
         self._health = HealthEventPublisher(
             self._node, 'robot_start_adapter'
@@ -69,12 +90,22 @@ class WebhookRobotStarter:
         self._started = False
         self._node = None
         self._client = None
+        self._lightsout_client = None
 
     def service_ready(self) -> bool:
         if not self._started or self._client is None:
             return False
         return bool(
             self._client.wait_for_service(
+                timeout_sec=max(self.wait_timeout_seconds, 0.1)
+            )
+        )
+
+    def lightsout_service_ready(self) -> bool:
+        if not self._started or self._lightsout_client is None:
+            return False
+        return bool(
+            self._lightsout_client.wait_for_service(
                 timeout_sec=max(self.wait_timeout_seconds, 0.1)
             )
         )
@@ -158,6 +189,84 @@ class WebhookRobotStarter:
                 message=str(response.message or ''),
             )
 
+    def start_lightsout(
+        self, payload: StartLightsOutRequest
+    ) -> StartLightsOutResponse:
+        if (
+            not self._started
+            or self._node is None
+            or self._lightsout_client is None
+        ):
+            raise RuntimeError('ROS adapter is not initialized')
+        with self._lock:
+            if not self._lightsout_client.wait_for_service(
+                timeout_sec=self.wait_timeout_seconds
+            ):
+                self._health.error(
+                    'robot_start_service_unavailable',
+                    f'Service {self.lightsout_service_name} not available after '
+                    f'{self.wait_timeout_seconds}s',
+                    {
+                        'service_name': self.lightsout_service_name,
+                        'batch_id': payload.batch_id,
+                    },
+                )
+                raise TimeoutError(
+                    f'Service {self.lightsout_service_name} not available after '
+                    f'{self.wait_timeout_seconds}s'
+                )
+
+            req = StartLightsOut.Request()
+            req.powder_name = payload.powder_name
+            req.cycle_end_limit = payload.cycle_end_limit
+            req.target_weight_g = float(payload.target_weight_g)
+            req.episodes = int(payload.episodes)
+            req.batch_id = payload.batch_id
+            req.enable_scoop = bool(payload.enable_scoop)
+
+            future = self._lightsout_client.call_async(req)
+            rclpy.spin_until_future_complete(
+                self._node, future, timeout_sec=self.call_timeout_seconds
+            )
+            if not future.done():
+                self._health.error(
+                    'robot_start_service_call_timeout',
+                    f'Service {self.lightsout_service_name} call timed out after '
+                    f'{self.call_timeout_seconds}s',
+                    {
+                        'service_name': self.lightsout_service_name,
+                        'batch_id': payload.batch_id,
+                    },
+                )
+                raise TimeoutError(
+                    f'Service {self.lightsout_service_name} call timed out after '
+                    f'{self.call_timeout_seconds}s'
+                )
+            response = future.result()
+            if response is None:
+                self._health.error(
+                    'robot_start_service_empty_response',
+                    f'Service {self.lightsout_service_name} returned no response',
+                    {'service_name': self.lightsout_service_name},
+                )
+                raise RuntimeError(
+                    f'Service {self.lightsout_service_name} returned no response'
+                )
+            if not response.accepted:
+                self._health.warn(
+                    'robot_start_rejected',
+                    f'Service {self.lightsout_service_name} rejected the run: '
+                    f'{response.message}',
+                    {
+                        'service_name': self.lightsout_service_name,
+                        'batch_id': payload.batch_id,
+                    },
+                )
+            return StartLightsOutResponse(
+                accepted=bool(response.accepted),
+                message=str(response.message or ''),
+            )
+
 
 starter = WebhookRobotStarter()
 
@@ -176,7 +285,11 @@ app = FastAPI(title='Webhook Robot Start Adapter', lifespan=lifespan)
 
 @app.get('/health')
 def health() -> dict:
-    return {'status': 'ok', 'service_ready': starter.service_ready()}
+    return {
+        'status': 'ok',
+        'service_ready': starter.service_ready(),
+        'lightsout_service_ready': starter.lightsout_service_ready(),
+    }
 
 
 @app.post(
@@ -187,6 +300,16 @@ def start_webhook_weightment(
 ) -> StartWebhookWeightmentResponse:
     try:
         return starter.start_webhook_weightment(payload)
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post('/start_lightsout', response_model=StartLightsOutResponse)
+def start_lightsout(payload: StartLightsOutRequest) -> StartLightsOutResponse:
+    try:
+        return starter.start_lightsout(payload)
     except TimeoutError as exc:
         raise HTTPException(status_code=504, detail=str(exc)) from exc
     except Exception as exc:

@@ -13,7 +13,7 @@ logger = logging.getLogger('uvicorn.error')
 
 
 class _LightsOutJobSource:
-    """Phase 5 will accept ``POST /modes/lightsout/runs``; idle until then."""
+    """Jobs arrive via ``POST /modes/lightsout/runs`` (not polled)."""
 
     def poll(self) -> Optional[RunSpec]:
         return None
@@ -49,6 +49,8 @@ class LightsOutMode(ModeAdapter):
             blackboard={
                 'target_weight_g': run_spec.target_weight_g,
                 'tolerance_g': run_spec.tolerance_g,
+                # ExecuteScoop gated off unless the start request opts in.
+                'enable_scoop': False,
             },
         )
 

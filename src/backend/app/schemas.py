@@ -19,6 +19,18 @@ class MockLocalRunRequest(BaseModel):
     return_target_name: Optional[str] = None
 
 
+class LightsoutRunRequest(BaseModel):
+    """Operator-triggered lights-out training run (lightsout mode)."""
+
+    powder_name: str
+    target_weight_g: float
+    episodes: int
+    batch_id: str = ''
+    cycle_end_limit: str = ''
+    # Opt-in: LightsOut tree skips ExecuteScoop unless true (safe default).
+    enable_scoop: bool = False
+
+
 class ProcessedRequest(BaseModel):
     run_db_id: Optional[int] = None
     robot_weightment_run_id: Optional[int] = None

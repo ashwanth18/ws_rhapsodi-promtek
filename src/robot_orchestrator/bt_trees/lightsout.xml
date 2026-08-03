@@ -8,6 +8,10 @@
           <PhaseMarker phase="scoop_start"/>
 
           <MoveTo name="MoveToContainer" target_name="{lightsout_container_name}" use_cartesian="false" />
+          <!-- enable_scoop defaults false; Training/backend may set true to run the real scoop. -->
+          <Precondition if="enable_scoop" else="SUCCESS">
+            <ExecuteScoop continuous="true" timeout_s="120.0"/>
+          </Precondition>
           <PhaseMarker phase="scoop_end"/>
           <WaitSeconds seconds="1.0"/>
           <PhaseMarker phase="transport_start"/>
@@ -28,4 +32,3 @@
     </Sequence>
   </BehaviorTree>
 </root>
-

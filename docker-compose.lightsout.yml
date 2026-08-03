@@ -42,6 +42,7 @@ services:
       BATCH_END_URL: http://localhost:5002/batch/end
       TIMESERIES_URL: http://localhost:5002/timeseries
       ROBOT_START_ADAPTER_URL: http://localhost:8010/start_webhook_weightment
+      ROBOT_LIGHTSOUT_ADAPTER_URL: http://localhost:8010/start_lightsout
       ROBOT_RUNNING_TIMEOUT_SECONDS: ${ROBOT_RUNNING_TIMEOUT_SECONDS:-300}
       ROSBRIDGE_HOST: localhost
       ROSBRIDGE_PORT: 9090
@@ -61,7 +62,9 @@ services:
       RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
       FASTRTPS_DEFAULT_PROFILES_FILE: /fastdds.xml
       FASTDDS_BUILTIN_TRANSPORTS: UDPv4
+      # Dual start path (same pattern as compose/devices/pi5.yml): webhook + lightsout.
       ROBOT_START_SERVICE_NAME: /bt_start_webhook_weightment
+      ROBOT_LIGHTSOUT_SERVICE_NAME: /bt_start_lightsout
       ROBOT_START_SERVICE_WAIT_TIMEOUT_SECONDS: 5
       ROBOT_START_SERVICE_CALL_TIMEOUT_SECONDS: 15
     command:

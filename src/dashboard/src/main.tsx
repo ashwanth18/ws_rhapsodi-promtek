@@ -9,6 +9,7 @@ import BatchListPage from './pages/BatchListPage'
 import BatchDetailPage from './pages/BatchDetailPage'
 import StockLocationPage from './pages/StockLocationPage'
 import TestPage from './pages/TestPage'
+import TrainingPage from './pages/TrainingPage'
 import SidebarLayout from './pages/SidebarLayout'
 import { RosProvider } from './ros/RosContext'
 import { RuntimeConfigProvider } from './config/RuntimeConfig'
@@ -28,6 +29,7 @@ const router = createBrowserRouter([
       { path: '/stock-location', element: <StockLocationPage /> },
       { path: '/controls', element: <ControlsPage /> },
       { path: '/test', element: <TestPage /> },
+      { path: '/training', element: <TrainingPage /> },
     ],
   },
 ])

@@ -318,6 +318,8 @@ int main(int argc, char ** argv)
       blackboard->set("lightsout_batch_id", req->batch_id);
       blackboard->set("lightsout_container_name", req->powder_name);
       blackboard->set("lightsout_episode_index", 0);
+      // Default off: ExecuteScoop is gated in lightsout.xml via Precondition.
+      blackboard->set("enable_scoop", static_cast<bool>(req->enable_scoop));
 
       lightsout_active = true;
 

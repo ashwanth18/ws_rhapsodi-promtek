@@ -29,6 +29,10 @@ from .modes import (
     ModeValidationError,
     get_mode_manager,
 )
+from .modes.lightsout_session import (
+    LIGHTSOUT_ROSBRIDGE_RUN_ID,
+    get_lightsout_session,
+)
 from .modes.mock_local import (
     MOCK_DEFAULT_PICKUP_TARGET,
     MOCK_DEFAULT_RETURN_TARGET,
@@ -56,6 +60,7 @@ from .timeseries import (
     build_timeseries_payload,
 )
 from .schemas import (
+    LightsoutRunRequest,
     MockLocalRunRequest,
     ProcessedRequest,
     ProcessedResponse,
@@ -69,6 +74,10 @@ logger = logging.getLogger('uvicorn.error')
 ROBOT_START_ADAPTER_URL = os.environ.get(
     'ROBOT_START_ADAPTER_URL',
     'http://host.docker.internal:8010/start_webhook_weightment',
+)
+ROBOT_LIGHTSOUT_ADAPTER_URL = os.environ.get(
+    'ROBOT_LIGHTSOUT_ADAPTER_URL',
+    'http://host.docker.internal:8010/start_lightsout',
 )
 ROBOT_START_ADAPTER_TIMEOUT_SECONDS = float(
     os.environ.get('ROBOT_START_ADAPTER_TIMEOUT_SECONDS', '15')
@@ -256,6 +265,17 @@ def get_runtime_mode() -> dict:
                 'event_id': active.event_id,
                 'batch_id': active.batch_id,
             }
+        else:
+            lo = get_lightsout_session().as_blocker()
+            if lo is not None:
+                active_payload = {
+                    'id': lo.id,
+                    'status': lo.status,
+                    'weightment_id': lo.weightment_id,
+                    'event_id': lo.event_id,
+                    'batch_id': lo.batch_id,
+                    'kind': 'lightsout',
+                }
         return {
             'mode': current['mode'],
             'environment': current['environment'],
@@ -273,7 +293,10 @@ def put_runtime_mode(payload: RuntimeModeRequest) -> dict:
         reconcile_stale_robot_runs(db)
         # Broader than has_active_robot_run: also block during awaiting_processing /
         # mes_send_failed so Condor outbound cannot be null-routed mid-flight.
+        # Lights-out training is tracked separately (no RobotWeightmentRun row).
         blocker = has_mode_switch_blocker(db)
+        if blocker is None:
+            blocker = get_lightsout_session().as_blocker()
         try:
             current = manager.set_mode(
                 payload.mode, payload.environment, active_run=blocker
@@ -412,6 +435,12 @@ def create_mock_local_run(payload: MockLocalRunRequest) -> dict:
             status_code=400, detail='tolerance_g must be >= 0'
         )
 
+    if get_lightsout_session().get_active() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail='Cannot start mock run while lights-out training is active',
+        )
+
     db = SessionLocal()
     row: WebhookWeightment | None = None
     try:
@@ -494,6 +523,127 @@ def create_mock_local_run(payload: MockLocalRunRequest) -> dict:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     finally:
         db.close()
+
+
+def start_lightsout_run_via_adapter(payload: LightsoutRunRequest) -> dict[str, Any]:
+    """POST training start to robot_start_adapter /start_lightsout (no Condor)."""
+    adapter_payload = {
+        'powder_name': payload.powder_name.strip(),
+        'cycle_end_limit': (payload.cycle_end_limit or '').strip(),
+        'target_weight_g': float(payload.target_weight_g),
+        'episodes': int(payload.episodes),
+        'batch_id': (payload.batch_id or '').strip(),
+        'enable_scoop': bool(payload.enable_scoop),
+    }
+    return post_json(
+        ROBOT_LIGHTSOUT_ADAPTER_URL,
+        adapter_payload,
+        timeout_seconds=ROBOT_START_ADAPTER_TIMEOUT_SECONDS,
+    )
+
+
+@app.post('/modes/lightsout/runs')
+def create_lightsout_run(payload: LightsoutRunRequest) -> dict:
+    """Start a lights-out training run (null MES; LightsOut tree)."""
+    manager = get_mode_manager()
+    current = manager.current()
+    if current['mode'] != OperatingMode.LIGHTSOUT.value:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                'message': (
+                    'Active mode must be lightsout to start a training run '
+                    f"(current={current['mode']})"
+                ),
+                'mode': current['mode'],
+                'environment': current['environment'],
+            },
+        )
+    powder = (payload.powder_name or '').strip()
+    if not powder:
+        raise HTTPException(status_code=400, detail='powder_name is required')
+    if payload.target_weight_g <= 0:
+        raise HTTPException(
+            status_code=400, detail='target_weight_g must be > 0'
+        )
+    if payload.episodes <= 0:
+        raise HTTPException(status_code=400, detail='episodes must be > 0')
+
+    request_meta = {
+        'powder_name': powder,
+        'target_weight_g': float(payload.target_weight_g),
+        'episodes': int(payload.episodes),
+        'batch_id': (payload.batch_id or '').strip(),
+        'cycle_end_limit': (payload.cycle_end_limit or '').strip(),
+        'enable_scoop': bool(payload.enable_scoop),
+    }
+
+    db = SessionLocal()
+    try:
+        reconcile_stale_robot_runs(db)
+        # Refuse while a webhook/mock robot run is mid-flight so mode sinks
+        # stay coherent (lightsout itself is tracked via session + rosbridge).
+        active = has_active_robot_run(db)
+        if active is not None:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    'message': (
+                        'Cannot start lights-out training while a robot '
+                        f'weightment run is active (run_id={active.id})'
+                    ),
+                    'active_run': serialize_robot_run(active),
+                },
+            )
+        existing_lo = get_lightsout_session().get_active()
+        if existing_lo is not None:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    'message': 'Lights-out training session already active',
+                    'session': existing_lo,
+                },
+            )
+    finally:
+        db.close()
+
+    try:
+        service_response = start_lightsout_run_via_adapter(payload)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception('Failed to start lights-out run')
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    accepted = bool(service_response.get('accepted'))
+    message = str(service_response.get('message') or '')
+    if not accepted:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                'message': message or 'Lights-out start rejected by orchestrator',
+                'mode': current['mode'],
+                'environment': current['environment'],
+            },
+        )
+
+    session = get_lightsout_session().mark_started(request_meta)
+    # Reuse rosbridge run_state completion to clear the session when the
+    # orchestrator finishes (succeeded/failed/stopped).
+    rosbridge_robot_client.register_active_run(
+        LIGHTSOUT_ROSBRIDGE_RUN_ID,
+        {'kind': 'lightsout', **request_meta},
+        service_response,
+    )
+    return {
+        'ok': True,
+        'mode': current['mode'],
+        'environment': current['environment'],
+        'accepted': True,
+        'message': message,
+        'request': request_meta,
+        'session': session,
+    }
 
 
 def _load_device_identity() -> dict[str, str | None]:
@@ -2240,9 +2390,18 @@ def finalize_robot_weightment_run(
 
 
 def handle_rosbridge_completion(payload: dict[str, Any]) -> None:
+    run_id = int(payload['run_id'])
+    contract = ((payload.get('result_payload') or {}).get('contract')) or {}
+    if run_id == LIGHTSOUT_ROSBRIDGE_RUN_ID or contract.get('kind') == 'lightsout':
+        get_lightsout_session().clear()
+        logger.info(
+            'Cleared lightsout session after orchestrator state=%s',
+            ((payload.get('result_payload') or {}).get('run_state')),
+        )
+        return
+
     db = SessionLocal()
     try:
-        run_id = int(payload['run_id'])
         run_row = (
             db.query(RobotWeightmentRun)
             .filter(RobotWeightmentRun.id == run_id)

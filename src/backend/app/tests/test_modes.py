@@ -1,4 +1,4 @@
-"""Phase 3–4: mode registry, arbitration, NullMesClient, mock-local helpers."""
+"""Phase 3–5: mode registry, arbitration, NullMesClient, mock/lightsout helpers."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from app.modes.manager import (
     ModeSwitchConflict,
     ModeValidationError,
 )
+from app.modes.lightsout_session import reset_lightsout_session_for_tests
 from app.modes.mock_local import (
     MOCK_DEFAULT_PICKUP_TARGET,
     MOCK_DEFAULT_RETURN_TARGET,
@@ -24,7 +25,7 @@ from app.modes.mock_local import (
 from app.modes.registry import build_default_registry
 from app.modes.state import RuntimeModeState, sim_allowed
 from app.run_spec import OperatingMode, RunSpec
-from app.schemas import MockLocalRunRequest
+from app.schemas import LightsoutRunRequest, MockLocalRunRequest
 
 
 def test_registry_contains_all_modes():
@@ -181,3 +182,56 @@ def test_mock_local_mode_defaults_match_webhook_tree():
     )
     assert plan.tree_id == 'WebhookWeightment'
     assert plan.blackboard['target_weight_g'] == 100.0
+
+
+def test_lightsout_run_request_schema():
+    req = LightsoutRunRequest(
+        powder_name='boxA',
+        target_weight_g=250.0,
+        episodes=10,
+    )
+    assert req.enable_scoop is False
+    assert req.batch_id == ''
+    full = LightsoutRunRequest(
+        powder_name='alumina',
+        target_weight_g=125.0,
+        episodes=5,
+        batch_id='batch-1',
+        cycle_end_limit='10 episodes',
+        enable_scoop=True,
+    )
+    assert full.enable_scoop is True
+    assert full.powder_name == 'alumina'
+
+
+def test_lightsout_mode_defaults_match_lightsout_tree():
+    adapter = build_default_registry().get(OperatingMode.LIGHTSOUT)
+    plan = adapter.build_plan(
+        RunSpec(
+            mode=OperatingMode.LIGHTSOUT,
+            run_key='lightsout-test',
+            target_weight_g=250.0,
+            tolerance_g=5.0,
+        )
+    )
+    assert plan.tree_id == 'LightsOut'
+    assert plan.blackboard['enable_scoop'] is False
+    assert plan.blackboard['target_weight_g'] == 250.0
+
+
+def test_lightsout_session_blocks_mode_switch(tmp_path, monkeypatch):
+    monkeypatch.setenv('SIM_ALLOWED', '0')
+    session = reset_lightsout_session_for_tests(path=tmp_path / 'lo.json')
+    session.mark_started({'powder_name': 'boxA', 'episodes': 3})
+    state = RuntimeModeState(path=tmp_path / 'runtime_mode.json')
+    manager = ModeManager(registry=build_default_registry(), state=state)
+    manager.set_mode('lightsout', 'real', active_run=None)
+    with pytest.raises(ModeSwitchConflict):
+        manager.set_mode(
+            'mock-local', 'real', active_run=session.as_blocker()
+        )
+    assert manager.current()['mode'] == 'lightsout'
+    session.clear()
+    assert session.get_active() is None
+    updated = manager.set_mode('mock-local', 'real', active_run=None)
+    assert updated['mode'] == 'mock-local'
