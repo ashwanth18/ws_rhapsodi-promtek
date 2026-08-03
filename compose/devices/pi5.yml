@@ -346,6 +346,8 @@ services:
       --ros-args
       -p output_root:=${DATA_OUTPUT_ROOT:-/data/runs}
 
+  # tree_file is optional (preferred-tree hint). Orchestrator registers all
+  # share/bt_trees/*.xml at startup and creates a tree per start-service run.
   orchestrator:
     <<: *ros-robot-service
     command: >

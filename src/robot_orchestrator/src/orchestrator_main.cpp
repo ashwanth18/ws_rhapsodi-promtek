@@ -11,12 +11,38 @@
 #include <robot_common_msgs/srv/start_webhook_weightment.hpp>
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <ctime>
+#include <filesystem>
+#include <memory>
+#include <mutex>
+#include <thread>
 #include "robot_orchestrator/register.hpp"
+#include "robot_orchestrator/mode_start.hpp"
 #include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/int32.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <rhapsodi_common_cpp/health_event_publisher.hpp>
+
+namespace {
+
+struct PendingRun {
+  std::string tree_id;
+  std::string active_mode;
+  std::string phase_topic;
+};
+
+void publishString(
+  const rclcpp::Publisher<std_msgs::msg::String>::SharedPtr & pub,
+  const std::string & value)
+{
+  std_msgs::msg::String msg;
+  msg.data = value;
+  pub->publish(msg);
+}
+
+}  // namespace
 
 int main(int argc, char ** argv)
 {
@@ -24,21 +50,87 @@ int main(int argc, char ** argv)
   BT::BehaviorTreeFactory factory;
   robot_orchestrator::RegisterNodes(factory);
 
-  // Load external XML tree (param "tree_file" or default from package share)
+  // Optional tree_file: preferred default for idle display / legacy compose.
+  // All XMLs under share/bt_trees/ are registered so modes can hot-switch.
   std::string tree_file;
   auto node_tmp = rclcpp::Node::make_shared("bt_tree_loader");
   node_tmp->declare_parameter<std::string>("tree_file", "");
   node_tmp->get_parameter("tree_file", tree_file);
-  if (tree_file.empty()) {
-    const std::string share = ament_index_cpp::get_package_share_directory("robot_orchestrator");
-    tree_file = share + "/bt_trees/main.xml";
+
+  const std::string share =
+    ament_index_cpp::get_package_share_directory("robot_orchestrator");
+  const std::filesystem::path bt_trees_dir = std::filesystem::path(share) / "bt_trees";
+
+  try {
+    robot_orchestrator::registerBehaviorTreesFromDirectory(factory, bt_trees_dir);
+  } catch (const std::exception & e) {
+    RCLCPP_FATAL(
+      node_tmp->get_logger(),
+      "Failed to register BehaviorTrees from %s: %s",
+      bt_trees_dir.c_str(), e.what());
+    throw;
   }
 
-  // Create shared ROS node and blackboard
+  // If tree_file points outside the share directory, register it too.
+  if (!tree_file.empty()) {
+    const std::filesystem::path tree_path(tree_file);
+    std::error_code ec;
+    const auto canonical_trees = std::filesystem::weakly_canonical(bt_trees_dir, ec);
+    const auto canonical_file = std::filesystem::weakly_canonical(tree_path, ec);
+    const bool under_share =
+      !ec &&
+      canonical_file.string().rfind(canonical_trees.string(), 0) == 0;
+    if (!under_share && std::filesystem::exists(tree_path)) {
+      try {
+        factory.registerBehaviorTreeFromFile(tree_path);
+        RCLCPP_INFO(
+          node_tmp->get_logger(),
+          "Also registered external tree_file: %s", tree_file.c_str());
+      } catch (const std::exception & e) {
+        RCLCPP_FATAL(
+          node_tmp->get_logger(),
+          "Failed to register tree_file=%s: %s", tree_file.c_str(), e.what());
+        throw;
+      }
+    }
+  }
+
+  const auto registered = factory.registeredBehaviorTrees();
+  {
+    std::ostringstream oss;
+    for (size_t i = 0; i < registered.size(); ++i) {
+      if (i) {
+        oss << ", ";
+      }
+      oss << registered[i];
+    }
+    RCLCPP_INFO(
+      node_tmp->get_logger(),
+      "Registered BehaviorTrees (%zu): %s",
+      registered.size(), oss.str().c_str());
+  }
+  if (registered.empty()) {
+    RCLCPP_FATAL(node_tmp->get_logger(), "No BehaviorTrees registered; refusing to start");
+    throw std::runtime_error("No BehaviorTrees registered");
+  }
+
+  std::string preferred_tree_id = "WebhookWeightment";
+  if (!tree_file.empty()) {
+    preferred_tree_id = robot_orchestrator::treeIdHintFromPath(tree_file);
+  }
+  {
+    const bool preferred_registered =
+      std::find(registered.begin(), registered.end(), preferred_tree_id) !=
+      registered.end();
+    if (!preferred_registered) {
+      preferred_tree_id = registered.front();
+    }
+  }
+
+  // Create shared ROS node and blackboard (tree instantiated per run).
   auto ros_node = rclcpp::Node::make_shared("robot_orchestrator");
   auto blackboard = BT::Blackboard::create();
   blackboard->set("ros_node", ros_node);
-  blackboard->set("phase_topic", std::string("/lightsout_training/phase"));
 
   // Status publisher
   auto status_pub = ros_node->create_publisher<robot_common_msgs::msg::SystemStatus>("/system_status", 10);
@@ -59,11 +151,14 @@ int main(int argc, char ** argv)
   auto webhook_active_pub = ros_node->create_publisher<std_msgs::msg::Bool>("/webhook_run/active", latched_qos);
   auto webhook_meta_pub = ros_node->create_publisher<std_msgs::msg::String>("/webhook_run/metadata", latched_qos);
   auto run_state_pub = ros_node->create_publisher<std_msgs::msg::String>("/orchestrator/run_state", latched_qos);
-  {
-    std_msgs::msg::String idle_msg;
-    idle_msg.data = "idle";
-    run_state_pub->publish(idle_msg);
-  }
+  auto active_mode_pub = ros_node->create_publisher<std_msgs::msg::String>("/orchestrator/active_mode", latched_qos);
+  publishString(run_state_pub, "idle");
+  publishString(active_mode_pub, "idle");
+  RCLCPP_INFO(
+    ros_node->get_logger(),
+    "Orchestrator idle; preferred_tree_id=%s (tree_file=%s). Trees created per run.",
+    preferred_tree_id.c_str(),
+    tree_file.empty() ? "<unset>" : tree_file.c_str());
 
   // Subscribe to weight topic and keep blackboard updated continuously
   ros_node->declare_parameter<std::string>("weight_topic", "/weight");
@@ -75,24 +170,10 @@ int main(int argc, char ** argv)
       blackboard->set("scale_weight_time", ros_node->now().seconds());
     });
 
-  // Build tree
-  auto tree = factory.createTreeFromFile(tree_file, blackboard);
-  // Print tree structure (ASCII) on startup
-  BT::printTreeRecursively(tree.rootNode(), std::cout);
-  BT::StdCoutLogger logger(tree);
-  BT::Groot2Publisher groot2(tree, 1666);
-
-  // Service to dump ASCII tree to logs on demand
-  auto dump_srv = ros_node->create_service<std_srvs::srv::Trigger>(
-    "bt_dump",
-    [&](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
-        std::shared_ptr<std_srvs::srv::Trigger::Response> resp){
-      std::stringstream ss;
-      BT::printTreeRecursively(tree.rootNode(), ss);
-      RCLCPP_INFO(ros_node->get_logger(), "BT ASCII Tree:\n%s", ss.str().c_str());
-      resp->success = true;
-      resp->message = "Tree printed to log";
-    });
+  // Per-run tree + loggers (recreated when a start is accepted).
+  std::unique_ptr<BT::Tree> tree;
+  std::unique_ptr<BT::StdCoutLogger> cout_logger;
+  std::unique_ptr<BT::Groot2Publisher> groot2;
 
   // DIY start/pause/stop services
   std::atomic<bool> start_requested{false};
@@ -100,33 +181,123 @@ int main(int argc, char ** argv)
   std::atomic<bool> stop_requested{false};
   std::atomic<bool> lightsout_active{false};
   std::atomic<bool> webhook_active{false};
+  // True while the main loop is ticking a tree (run_state == running).
+  std::atomic<bool> run_active{false};
+
+  std::mutex pending_mu;
+  PendingRun pending_run;
+
+  // ---------------------------------------------------------------------------
+  // CONCURRENCY GUARD (Phase 2 bugfix — revertible)
+  // Previously every start callback set accepted=true with no check, allowing a
+  // second start to overwrite blackboard mid-tick. Reject when a start is
+  // already pending or a tree is actively ticking. Remove this helper (and the
+  // call sites) to restore the old always-accept behavior.
+  // ---------------------------------------------------------------------------
+  auto tryClaimStart = [&](std::string & reject_message) -> bool {
+    if (run_active.load() || start_requested.load()) {
+      reject_message =
+        "Rejected: orchestrator already has an active or pending run "
+        "(stop it first, or wait for completion)";
+      return false;
+    }
+    bool expected = false;
+    if (!start_requested.compare_exchange_strong(expected, true)) {
+      reject_message =
+        "Rejected: orchestrator already has an active or pending run "
+        "(stop it first, or wait for completion)";
+      return false;
+    }
+    if (run_active.load()) {
+      start_requested.store(false);
+      reject_message =
+        "Rejected: orchestrator already has an active or pending run "
+        "(stop it first, or wait for completion)";
+      return false;
+    }
+    return true;
+  };
+
+  auto beginPendingRun = [&](const std::string & tree_id,
+                             const std::string & active_mode,
+                             const std::string & phase_topic) {
+    robot_orchestrator::clearModeBlackboardKeys(blackboard);
+    blackboard->set("phase_topic", phase_topic);
+    {
+      std::lock_guard<std::mutex> lock(pending_mu);
+      pending_run.tree_id = tree_id;
+      pending_run.active_mode = active_mode;
+      pending_run.phase_topic = phase_topic;
+    }
+    pause_requested = false;
+    stop_requested = false;
+    publishString(active_mode_pub, active_mode);
+  };
+
+  // Service to dump ASCII tree to logs on demand
+  auto dump_srv = ros_node->create_service<std_srvs::srv::Trigger>(
+    "bt_dump",
+    [&](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+        std::shared_ptr<std_srvs::srv::Trigger::Response> resp){
+      if (!tree) {
+        std::ostringstream oss;
+        oss << "No active tree. Registered: ";
+        const auto ids = factory.registeredBehaviorTrees();
+        for (size_t i = 0; i < ids.size(); ++i) {
+          if (i) {
+            oss << ", ";
+          }
+          oss << ids[i];
+        }
+        resp->success = true;
+        resp->message = oss.str();
+        RCLCPP_INFO(ros_node->get_logger(), "%s", resp->message.c_str());
+        return;
+      }
+      std::stringstream ss;
+      BT::printTreeRecursively(tree->rootNode(), ss);
+      RCLCPP_INFO(ros_node->get_logger(), "BT ASCII Tree:\n%s", ss.str().c_str());
+      resp->success = true;
+      resp->message = "Tree printed to log";
+    });
 
   using StartBatch = robot_common_msgs::srv::StartBatch;
   auto start_batch_srv = ros_node->create_service<StartBatch>(
     "bt_start_batch",
-    [&, blackboard](const std::shared_ptr<StartBatch::Request> req,
-                    std::shared_ptr<StartBatch::Response> resp){
-      // Store the full container list and reset index
+    [&](const std::shared_ptr<StartBatch::Request> req,
+        std::shared_ptr<StartBatch::Response> resp){
+      std::string reject_message;
+      if (!tryClaimStart(reject_message)) {
+        resp->accepted = false;
+        resp->message = reject_message;
+        RCLCPP_WARN(ros_node->get_logger(), "bt_start_batch: %s", reject_message.c_str());
+        return;
+      }
+      beginPendingRun("Main", "batch", "/lightsout_training/phase");
       blackboard->set("containers", req->containers);
       blackboard->set("container_index", static_cast<std::size_t>(0));
-      // Clear any currently active container
       blackboard->set("container_name", std::string(""));
       blackboard->set("expected_lot", std::string(""));
-      start_requested = true;
-      pause_requested = false;
-      stop_requested = false;
       resp->accepted = true;
-      resp->message = "Batch accepted";
+      resp->message = "Batch accepted (tree_id=Main)";
     });
 
   using StartLightsOut = robot_common_msgs::srv::StartLightsOut;
   auto start_lightsout_srv = ros_node->create_service<StartLightsOut>(
     "bt_start_lightsout",
-    [&, blackboard, lightsout_meta_pub, lightsout_active_pub,
+    [&, lightsout_active_pub,
       lightsout_run_id_pub, lightsout_batch_id_pub, lightsout_ingredient_pub,
       lightsout_target_pub, lightsout_mode_pub, lightsout_robot_id_pub,
       lightsout_episodes_total_pub](const std::shared_ptr<StartLightsOut::Request> req,
                     std::shared_ptr<StartLightsOut::Response> resp){
+      std::string reject_message;
+      if (!tryClaimStart(reject_message)) {
+        resp->accepted = false;
+        resp->message = reject_message;
+        RCLCPP_WARN(ros_node->get_logger(), "bt_start_lightsout: %s", reject_message.c_str());
+        return;
+      }
+
       const int episodes = std::max(1, req->episodes);
       const double target_g = static_cast<double>(req->target_weight_g);
       const double tolerance_g = std::max(0.1, target_g * 0.02);
@@ -138,6 +309,7 @@ int main(int argc, char ** argv)
       std::strftime(ts_buf, sizeof(ts_buf), "%Y%m%dT%H%M%SZ", &tm);
       const std::string run_id = std::string(ts_buf);
 
+      beginPendingRun("LightsOut", "lightsout", "/lightsout_training/phase");
       blackboard->set("lightsout_powder_name", req->powder_name);
       blackboard->set("lightsout_cycle_end_limit", req->cycle_end_limit);
       blackboard->set("lightsout_target_weight_g", target_g);
@@ -146,11 +318,7 @@ int main(int argc, char ** argv)
       blackboard->set("lightsout_batch_id", req->batch_id);
       blackboard->set("lightsout_container_name", req->powder_name);
       blackboard->set("lightsout_episode_index", 0);
-      blackboard->set("phase_topic", std::string("/lightsout_training/phase"));
 
-      start_requested = true;
-      pause_requested = false;
-      stop_requested = false;
       lightsout_active = true;
 
       std_msgs::msg::Bool active_msg;
@@ -189,14 +357,24 @@ int main(int argc, char ** argv)
       lightsout_episodes_total_pub->publish(episodes_msg);
 
       resp->accepted = true;
-      resp->message = "Lights-out training accepted";
+      resp->message = "Lights-out training accepted (tree_id=LightsOut)";
     });
 
   using StartWebhookWeightment = robot_common_msgs::srv::StartWebhookWeightment;
   auto start_webhook_weightment_srv = ros_node->create_service<StartWebhookWeightment>(
     "bt_start_webhook_weightment",
-    [&, blackboard, webhook_active_pub, webhook_meta_pub](const std::shared_ptr<StartWebhookWeightment::Request> req,
-                    std::shared_ptr<StartWebhookWeightment::Response> resp){
+    [&, webhook_active_pub, webhook_meta_pub](
+      const std::shared_ptr<StartWebhookWeightment::Request> req,
+      std::shared_ptr<StartWebhookWeightment::Response> resp){
+      std::string reject_message;
+      if (!tryClaimStart(reject_message)) {
+        resp->accepted = false;
+        resp->message = reject_message;
+        RCLCPP_WARN(
+          ros_node->get_logger(), "bt_start_webhook_weightment: %s", reject_message.c_str());
+        return;
+      }
+
       const double target_g = static_cast<double>(req->target_weight_g);
       // Honor caller-supplied tolerance when > 0; otherwise 2% of target
       // (floor 0.1 g) so a zero/unset float32 still gets a usable band.
@@ -225,7 +403,8 @@ int main(int argc, char ** argv)
         return out;
       };
 
-      blackboard->set("phase_topic", std::string("/webhook_run/phase"));
+      // MES-family / mock share WebhookWeightment; active_mode aligns with RunSpec.
+      beginPendingRun("WebhookWeightment", "mes-condor", "/webhook_run/phase");
       blackboard->set("webhook_run_id", req->run_id);
       blackboard->set("webhook_weightment_id", req->weightment_id);
       blackboard->set("webhook_batch_id", req->batch_id);
@@ -239,9 +418,6 @@ int main(int argc, char ** argv)
       blackboard->set("webhook_tolerance_g", tolerance_g);
       blackboard->set("webhook_expected_lot", req->expected_lot);
 
-      start_requested = true;
-      pause_requested = false;
-      stop_requested = false;
       webhook_active = true;
 
       std_msgs::msg::Bool active_msg;
@@ -270,7 +446,7 @@ int main(int argc, char ** argv)
 
       RCLCPP_INFO(
         ros_node->get_logger(),
-        "Webhook weightment accepted: run_id=%s weightment_id=%s batch_id=%s ingredient_id=%s pickup=%s weigh=%s return=%s target_g=%.3f tolerance_g=%.3f",
+        "Webhook weightment accepted: run_id=%s weightment_id=%s batch_id=%s ingredient_id=%s pickup=%s weigh=%s return=%s target_g=%.3f tolerance_g=%.3f tree_id=WebhookWeightment",
         req->run_id.c_str(),
         req->weightment_id.c_str(),
         req->batch_id.c_str(),
@@ -282,7 +458,7 @@ int main(int argc, char ** argv)
         tolerance_g);
 
       resp->accepted = true;
-      resp->message = "Webhook weightment accepted";
+      resp->message = "Webhook weightment accepted (tree_id=WebhookWeightment)";
     });
 
   auto pause_srv = ros_node->create_service<std_srvs::srv::Trigger>(
@@ -324,31 +500,83 @@ int main(int argc, char ** argv)
         rclcpp::spin_some(ros_node);
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
       }
+      if (!rclcpp::ok()) {
+        break;
+      }
+    } else if (!start_requested.load()) {
+      // auto_restart with no prior pending run: seed preferred tree once
+      beginPendingRun(preferred_tree_id, "batch", "/lightsout_training/phase");
+      start_requested = true;
     }
 
-    // Reset flags for this run
+    PendingRun this_run;
+    {
+      std::lock_guard<std::mutex> lock(pending_mu);
+      this_run = pending_run;
+    }
+    if (this_run.tree_id.empty()) {
+      this_run.tree_id = preferred_tree_id;
+      this_run.active_mode = "batch";
+      this_run.phase_topic = "/lightsout_training/phase";
+    }
+
+    // Mark running before clearing the start latch so the concurrency guard
+    // never sees a window where both flags are false mid-handoff.
+    run_active = true;
+    start_requested = false;
     pause_requested = false;
     stop_requested = false;
 
-    // Reset tree before running
-    tree.haltTree();
-
-    {
-      std_msgs::msg::String running_msg;
-      running_msg.data = "running";
-      run_state_pub->publish(running_msg);
+    // Create tree for this run from the resolved tree_id.
+    cout_logger.reset();
+    groot2.reset();
+    tree.reset();
+    try {
+      tree = std::make_unique<BT::Tree>(
+        factory.createTree(this_run.tree_id, blackboard));
+    } catch (const std::exception & e) {
+      run_active = false;
+      RCLCPP_ERROR(
+        ros_node->get_logger(),
+        "Failed to create tree_id=%s: %s",
+        this_run.tree_id.c_str(), e.what());
+      health.error(
+        "bt_tree_create_failure",
+        "Failed to create behavior tree tree_id=" + this_run.tree_id,
+        "{\"tree_id\":\"" + this_run.tree_id + "\",\"run_mode\":\"" +
+          this_run.active_mode + "\"}");
+      publishString(run_state_pub, "failed");
+      publishString(active_mode_pub, "idle");
+      lightsout_active = false;
+      webhook_active = false;
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      continue;
     }
+
+    BT::printTreeRecursively(tree->rootNode(), std::cout);
+    cout_logger = std::make_unique<BT::StdCoutLogger>(*tree);
+    groot2 = std::make_unique<BT::Groot2Publisher>(*tree, 1666);
+
+    RCLCPP_INFO(
+      ros_node->get_logger(),
+      "Starting run: tree_id=%s active_mode=%s phase_topic=%s",
+      this_run.tree_id.c_str(),
+      this_run.active_mode.c_str(),
+      this_run.phase_topic.c_str());
+
+    publishString(run_state_pub, "running");
+    publishString(active_mode_pub, this_run.active_mode);
 
     BT::NodeStatus status = BT::NodeStatus::RUNNING;
     bool stopped = false;
     while (rclcpp::ok() && status == BT::NodeStatus::RUNNING) {
       if (stop_requested.load()) {
-        tree.haltTree();
+        tree->haltTree();
         stopped = true;
         break;
       }
       if (!pause_requested.load()) {
-        status = tree.tickOnce();
+        status = tree->tickOnce();
       }
       // Publish status each tick
       robot_common_msgs::msg::SystemStatus st;
@@ -375,14 +603,17 @@ int main(int argc, char ** argv)
       std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
-    // After a cycle, clear start request unless auto-restart
-    if (!auto_restart) {
-      start_requested = false;
+    run_active = false;
+
+    // After a cycle, re-arm start_requested only for auto_restart
+    if (auto_restart) {
+      start_requested = true;
     }
 
-    const std::string completed_run_mode =
-      lightsout_active.load() ? "lightsout" :
-      (webhook_active.load() ? "webhook" : "unknown");
+    const std::string completed_run_mode = this_run.active_mode.empty()
+      ? (lightsout_active.load() ? "lightsout" :
+         (webhook_active.load() ? "mes-condor" : "unknown"))
+      : this_run.active_mode;
 
     if (lightsout_active.load()) {
       lightsout_active = false;
@@ -398,22 +629,24 @@ int main(int argc, char ** argv)
     }
 
     {
-      std_msgs::msg::String run_state_msg;
+      std::string run_state;
       if (stopped) {
-        run_state_msg.data = "stopped";
+        run_state = "stopped";
       } else if (status == BT::NodeStatus::SUCCESS) {
-        run_state_msg.data = "succeeded";
+        run_state = "succeeded";
       } else if (status == BT::NodeStatus::FAILURE) {
-        run_state_msg.data = "failed";
+        run_state = "failed";
         health.error(
           "bt_tree_failure",
-          "Behavior tree returned FAILURE for tree_file=" + tree_file,
-          "{\"tree_file\":\"" + tree_file + "\",\"run_mode\":\"" + completed_run_mode + "\"}");
+          "Behavior tree returned FAILURE for tree_id=" + this_run.tree_id,
+          "{\"tree_id\":\"" + this_run.tree_id + "\",\"run_mode\":\"" +
+            completed_run_mode + "\"}");
       } else {
-        run_state_msg.data = "idle";
+        run_state = "idle";
       }
-      run_state_pub->publish(run_state_msg);
+      publishString(run_state_pub, run_state);
     }
+    publishString(active_mode_pub, "idle");
 
     // Brief idle between cycles
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -422,5 +655,3 @@ int main(int argc, char ** argv)
   rclcpp::shutdown();
   return 0;
 }
-
-

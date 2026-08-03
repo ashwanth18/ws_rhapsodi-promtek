@@ -50,8 +50,9 @@ Single root `DATA_OUTPUT_ROOT` (default `/data/runs`). Runs go under
 `{output_root}/{mode}/…`, falling back to `{output_root}/unknown/` when
 mode is unset. Details in [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md).
 
-## Hot-switch (Phase 3)
+## Hot-switch
 
-Runtime mode changes go through a future **ModeManager** (not in this
-phase). Until then, profile / `BT_TREE` / compose selection still pick
-the active tree at deploy time.
+Phase 2: the orchestrator registers all share `bt_trees/*.xml` at startup
+and creates a tree per run from the start-service `tree_id` (no restart).
+Phase 3 may add a **ModeManager**; until then start services remain the
+switch path. `BT_TREE` / `tree_file` is optional preferred-tree hint only.
