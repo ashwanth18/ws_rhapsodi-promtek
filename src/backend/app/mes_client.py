@@ -2,8 +2,9 @@
 
 ``CondorMesClient`` posts weighment, batch-end, and timeseries payloads to
 the Condor agent URLs (same env vars the backend historically used).
-``NullMesClient`` logs and no-ops for mock-local / lights-out, and for
-mes-generic when ``MES_GENERIC_SINK=null``.
+``NullMesClient`` logs and no-ops for mock-local / lights-out, for
+mes-generic when ``MES_GENERIC_SINK=null``, and whenever the active
+runtime ``environment`` is ``sim``.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from urllib import error, request
 
 from fastapi import HTTPException
 
-from .run_spec import OperatingMode
+from .run_spec import Environment, OperatingMode
 
 logger = logging.getLogger('uvicorn.error')
 
@@ -195,8 +196,20 @@ def _mes_generic_sink_is_null() -> bool:
     return mes_generic_sink_name() == 'null'
 
 
+def _runtime_environment_is_sim() -> bool:
+    from .modes.state import get_runtime_mode_state
+
+    return get_runtime_mode_state().environment == Environment.SIM.value
+
+
 def get_mes_client(mode: str | OperatingMode | None = None) -> MesClient:
-    """Return the MES client bound to ``mode`` (default: active runtime mode)."""
+    """Return the MES client bound to ``mode`` (default: active runtime mode).
+
+    When the active runtime environment is ``sim``, always returns
+    ``NullMesClient`` (no Condor traffic from a laptop sim stack).
+    """
+    if _runtime_environment_is_sim():
+        return NullMesClient()
     mode_id = _normalize_mode(mode)
     if mode_id in _NULL_MODES:
         return NullMesClient()

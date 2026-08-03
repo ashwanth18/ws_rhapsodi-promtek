@@ -23,9 +23,24 @@ from app.modes.mock_local import (
     is_mock_event_id,
 )
 from app.modes.registry import build_default_registry
-from app.modes.state import RuntimeModeState, sim_allowed
+from app.modes.state import (
+    RuntimeModeState,
+    is_pi5_device,
+    reset_runtime_mode_state_for_tests,
+    resolve_data_output_root,
+    sim_allowed,
+)
 from app.run_spec import OperatingMode, RunSpec
 from app.schemas import LightsoutRunRequest, MockLocalRunRequest
+
+
+def _laptop_sim_env(monkeypatch) -> None:
+    """SIM_ALLOWED=1 on a non-pi5 host (clears DEVICE_CLASS / ROBOT_TYPE)."""
+    monkeypatch.setenv('SIM_ALLOWED', '1')
+    monkeypatch.delenv('DEVICE_CLASS', raising=False)
+    monkeypatch.delenv('ROBOT_TYPE', raising=False)
+    # Avoid any stray device.yaml with device_class: pi5.
+    monkeypatch.setenv('RHAPSODI_DEVICE_CONFIG', '/nonexistent/device.yaml')
 
 
 def test_registry_contains_all_modes():
@@ -101,24 +116,123 @@ def test_mode_switch_succeeds_when_idle(tmp_path, monkeypatch):
 
 def test_sim_rejected_when_not_allowed(tmp_path, monkeypatch):
     monkeypatch.setenv('SIM_ALLOWED', '0')
+    monkeypatch.delenv('DEVICE_CLASS', raising=False)
+    monkeypatch.delenv('ROBOT_TYPE', raising=False)
+    monkeypatch.setenv('RHAPSODI_DEVICE_CONFIG', '/nonexistent/device.yaml')
+    state = RuntimeModeState(path=tmp_path / 'runtime_mode.json')
+    manager = ModeManager(registry=build_default_registry(), state=state)
+    with pytest.raises(ModeValidationError) as exc_info:
+        manager.set_mode('mock-local', 'sim', active_run=None)
+    assert 'SIM_ALLOWED=0' in exc_info.value.message
+    assert not sim_allowed()
+
+
+def test_sim_rejected_on_pi5_even_if_sim_allowed(tmp_path, monkeypatch):
+    monkeypatch.setenv('SIM_ALLOWED', '1')
+    monkeypatch.setenv('DEVICE_CLASS', 'pi5')
+    monkeypatch.delenv('ROBOT_TYPE', raising=False)
+    monkeypatch.setenv('RHAPSODI_DEVICE_CONFIG', '/nonexistent/device.yaml')
+    assert is_pi5_device()
+    assert not sim_allowed()
+    state = RuntimeModeState(path=tmp_path / 'runtime_mode.json')
+    manager = ModeManager(registry=build_default_registry(), state=state)
+    with pytest.raises(ModeValidationError) as exc_info:
+        manager.set_mode('mock-local', 'sim', active_run=None)
+    assert 'pi5' in exc_info.value.message.lower()
+    assert manager.current()['environment'] == 'real'
+
+
+def test_sim_accepted_on_laptop(tmp_path, monkeypatch):
+    _laptop_sim_env(monkeypatch)
+    assert sim_allowed()
+    assert not is_pi5_device()
+    state = RuntimeModeState(path=tmp_path / 'runtime_mode.json')
+    manager = ModeManager(registry=build_default_registry(), state=state)
+    updated = manager.set_mode('mock-local', 'sim', active_run=None)
+    assert updated == {'mode': 'mock-local', 'environment': 'sim'}
+    lightsout = manager.set_mode('lightsout', 'sim', active_run=None)
+    assert lightsout == {'mode': 'lightsout', 'environment': 'sim'}
+    # MES family modes do not list SIM in allowed_environments.
+    with pytest.raises(ModeValidationError):
+        manager.set_mode('mes-condor', 'sim', active_run=None)
+
+
+def test_get_mes_client_null_when_environment_sim(tmp_path, monkeypatch):
+    _laptop_sim_env(monkeypatch)
+    monkeypatch.delenv('MES_GENERIC_SINK', raising=False)
+    state = reset_runtime_mode_state_for_tests(path=tmp_path / 'runtime_mode.json')
+    state.set('mock-local', 'sim')
+    assert get_mes_client('mock-local').__class__ is NullMesClient
+    assert get_mes_client(OperatingMode.MES_CONDOR).__class__ is NullMesClient
+    assert get_mes_client(OperatingMode.MES_GENERIC).__class__ is NullMesClient
+    # Back to real: Condor modes bind Condor again.
+    state.set('mes-condor', 'real')
+    assert get_mes_client(OperatingMode.MES_CONDOR).__class__.__name__ == (
+        'CondorMesClient'
+    )
+
+
+def test_resolve_data_output_root_sim(monkeypatch):
+    monkeypatch.delenv('DATA_OUTPUT_ROOT', raising=False)
+    monkeypatch.delenv('SIM_DATA_OUTPUT_ROOT', raising=False)
+    assert resolve_data_output_root('sim') == '/tmp/rhapsodi-sim/runs'
+    monkeypatch.setenv('SIM_DATA_OUTPUT_ROOT', '/custom/sim/runs')
+    assert resolve_data_output_root('sim') == '/custom/sim/runs'
+    monkeypatch.delenv('SIM_DATA_OUTPUT_ROOT', raising=False)
+    monkeypatch.setenv('DATA_OUTPUT_ROOT', '/data/runs')
+    assert resolve_data_output_root('sim') == '/data/runs'
+    assert resolve_data_output_root('real') == '/data/runs'
+
+
+def test_sim_default_mode_is_mock_local(tmp_path, monkeypatch):
+    """ENVIRONMENT=sim must not seed mes-condor+sim (invalid pair)."""
+    _laptop_sim_env(monkeypatch)
+    monkeypatch.setenv('ENVIRONMENT', 'sim')
+    state = RuntimeModeState(path=tmp_path / 'runtime_mode.json')
+    assert state.load() == {'mode': 'mock-local', 'environment': 'sim'}
+
+
+def test_sim_rejected_when_robot_type_pi5(tmp_path, monkeypatch):
+    monkeypatch.setenv('SIM_ALLOWED', '1')
+    monkeypatch.delenv('DEVICE_CLASS', raising=False)
+    monkeypatch.setenv('ROBOT_TYPE', 'pi5')
+    monkeypatch.setenv('RHAPSODI_DEVICE_CONFIG', '/nonexistent/device.yaml')
+    assert is_pi5_device()
     state = RuntimeModeState(path=tmp_path / 'runtime_mode.json')
     manager = ModeManager(registry=build_default_registry(), state=state)
     with pytest.raises(ModeValidationError):
         manager.set_mode('mock-local', 'sim', active_run=None)
-    assert not sim_allowed()
+
+
+def test_persisted_sim_cleared_on_pi5(tmp_path, monkeypatch):
+    """Loading runtime_mode.json with sim must not activate sim on pi5."""
+    monkeypatch.setenv('SIM_ALLOWED', '1')
+    monkeypatch.setenv('DEVICE_CLASS', 'pi5')
+    monkeypatch.setenv('RHAPSODI_DEVICE_CONFIG', '/nonexistent/device.yaml')
+    path = tmp_path / 'runtime_mode.json'
+    path.write_text(
+        '{"mode":"mock-local","environment":"sim"}\n', encoding='utf-8'
+    )
+    state = RuntimeModeState(path=path)
+    assert state.load() == {'mode': 'mock-local', 'environment': 'real'}
 
 
 def test_capabilities_shape(tmp_path, monkeypatch):
     monkeypatch.setenv('SIM_ALLOWED', '0')
+    monkeypatch.delenv('DEVICE_CLASS', raising=False)
     state = RuntimeModeState(path=tmp_path / 'runtime_mode.json')
     manager = ModeManager(registry=build_default_registry(), state=state)
     caps = manager.capabilities()
     assert caps['default_mode'] == 'mes-condor'
     assert caps['sim_allowed'] is False
+    assert caps['data_output_root']
     assert len(caps['modes']) == 4
 
 
-def test_null_mes_client_noop(caplog):
+def test_null_mes_client_noop(tmp_path, monkeypatch, caplog):
+    # Ensure environment=real so Condor bindings are exercised.
+    monkeypatch.setenv('SIM_ALLOWED', '0')
+    reset_runtime_mode_state_for_tests(path=tmp_path / 'runtime_mode.json')
     client = NullMesClient()
     with caplog.at_level(logging.INFO):
         weighment = client.post_weighment({'batchId': 1})

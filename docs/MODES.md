@@ -46,9 +46,19 @@ Separate tree: **LightsOut** (`lightsout.xml`).
 
 ## On-disk layout
 
-Single root `DATA_OUTPUT_ROOT` (default `/data/runs`). Runs go under
-`{output_root}/{mode}/…`, falling back to `{output_root}/unknown/` when
-mode is unset. Details in [DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md).
+Single root `DATA_OUTPUT_ROOT` (default `/data/runs` for `environment=real`).
+Runs go under `{output_root}/{mode}/…`, falling back to
+`{output_root}/unknown/` when mode is unset. Details in
+[DATA_ARCHITECTURE.md](DATA_ARCHITECTURE.md).
+
+When `environment=sim`, the resolved recorder root prefers (in order):
+
+1. `SIM_DATA_OUTPUT_ROOT` (explicit override)
+2. `DATA_OUTPUT_ROOT` (if set)
+3. `/tmp/rhapsodi-sim/runs` (laptop default)
+
+`GET /runtime/capabilities` includes `data_output_root` for the active
+environment.
 
 ## Hot-switch
 
@@ -97,3 +107,35 @@ Outbound sink (`MES_GENERIC_SINK`):
 Stored rows use an `event_id` prefix `generic-` so completion routing binds
 the mes-generic sink even if the runtime mode later changes. **mes-condor**
 still uses `webhook_service` → `BatchReleasedEvent` unchanged.
+
+## Phase 7: laptop sim environment
+
+`environment=sim` uses the same `GET/PUT /runtime/mode` APIs as `real`, but
+is **laptop-only**:
+
+| Guard | Behavior |
+|---|---|
+| `SIM_ALLOWED` | Default `0`. Must be `1` for sim. Set only in `docker-compose.sim.yml` (or local docs). Pi5 / robot-prod profiles force `0`. |
+| Device class | Even if `SIM_ALLOWED=1`, ModeManager refuses sim when `DEVICE_CLASS`, `ROBOT_TYPE`, or `device.yaml` (`device_class` / `robot_type`) is `pi5`. |
+
+**Modes that allow sim** (via `allowed_environments`): `mock-local`,
+`lightsout`. MES modes (`mes-condor`, `mes-generic`) stay `real`-only.
+
+**Null MES sink:** when the active runtime environment is `sim`,
+`get_mes_client()` always returns `NullMesClient` (no Condor traffic),
+regardless of mode.
+
+### Laptop compose
+
+```bash
+docker compose -f docker-compose.sim.yml up -d --build
+curl -s localhost:8000/runtime/capabilities
+curl -s -X PUT localhost:8000/runtime/mode \
+  -H 'content-type: application/json' \
+  -d '{"mode":"mock-local","environment":"sim"}'
+```
+
+`docker-compose.sim.yml` sets `SIM_ALLOWED=1`, `ENVIRONMENT=sim`,
+`DEVICE_CLASS=x86`, and sim data roots under `/tmp/rhapsodi-sim/…`.
+`compose/devices/pi5.yml` / `robot-prod.env.example` keep `SIM_ALLOWED=0`
+and `DEVICE_CLASS=pi5`.

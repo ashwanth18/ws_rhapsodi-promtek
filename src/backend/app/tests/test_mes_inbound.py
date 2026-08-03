@@ -26,6 +26,7 @@ from app.modes.mes_generic import (
     mes_generic_sink_name,
 )
 from app.modes.registry import build_default_registry
+from app.modes.state import reset_runtime_mode_state_for_tests
 from app.run_spec import OperatingMode, RunSpec
 
 # Frozen Condor/Promtek sample — keys/types must match webhook_service output.
@@ -255,8 +256,11 @@ def test_mes_generic_event_id_helpers():
     assert strip_generic_event_id_prefix(f'{GENERIC_EVENT_ID_PREFIX}xyz') == 'xyz'
 
 
-def test_mes_generic_sink_and_client(monkeypatch):
+def test_mes_generic_sink_and_client(tmp_path, monkeypatch):
     monkeypatch.delenv('MES_GENERIC_SINK', raising=False)
+    # environment=sim forces NullMesClient; keep real for Condor contract.
+    monkeypatch.setenv('ENVIRONMENT', 'real')
+    reset_runtime_mode_state_for_tests(path=tmp_path / 'runtime_mode.json')
     assert mes_generic_sink_name() == 'condor'
     assert get_mes_client(OperatingMode.MES_GENERIC).__class__ is CondorMesClient
     # Condor path unchanged.

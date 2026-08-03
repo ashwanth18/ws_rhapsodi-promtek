@@ -60,6 +60,10 @@ services:
       # Fleet Console /host_info identity + version (IMAGE_TAG from robot-prod.env)
       IMAGE_TAG: ${IMAGE_TAG:-}
       PROFILE_ID: ${PROFILE_ID:-}
+      DEVICE_CLASS: ${DEVICE_CLASS:-pi5}
+      # Sim is laptop-only; never enable on a Pi5 cell (see docs/MODES.md).
+      SIM_ALLOWED: ${SIM_ALLOWED:-0}
+      ENVIRONMENT: ${ENVIRONMENT:-real}
       RHAPSODI_DEVICE_CONFIG: /ws/config/device.yaml
       # Host metrics for Controls /host_info (node_exporter on Pi, else /host/proc)
       NODE_EXPORTER_URL: ${NODE_EXPORTER_URL:-http://host.docker.internal:9100/metrics}

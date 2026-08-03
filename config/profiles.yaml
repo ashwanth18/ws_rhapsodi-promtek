@@ -25,6 +25,9 @@ profiles:
       BT_TREE: /ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml
       # Single root; runs land under {DATA_OUTPUT_ROOT}/{mode}/...
       DATA_OUTPUT_ROOT: /data/runs
+      # Sim is laptop-only; never enable on Pi5 profiles.
+      SIM_ALLOWED: "0"
+      ENVIRONMENT: real
       POSES_YAML: /root/.ros/scooping_controller/poses_real.yaml
       TARGETS_YAML: /ws/install/share/robot_moveit/targets.yaml
       CONTAINER_SCENE_YAML: /ws/install/share/scooping_controller/config/container_scene_real.yaml
@@ -37,6 +40,8 @@ profiles:
       PROFILE_ID: lightsout-training
       BT_TREE: /ws/install/share/robot_orchestrator/bt_trees/lightsout.xml
       DATA_OUTPUT_ROOT: /data/runs
+      SIM_ALLOWED: "0"
+      ENVIRONMENT: real
       POSES_YAML: /root/.ros/scooping_controller/poses_real.yaml
       TARGETS_YAML: /ws/install/share/robot_moveit/targets.yaml
       CONTAINER_SCENE_YAML: /ws/install/share/scooping_controller/config/container_scene_real.yaml

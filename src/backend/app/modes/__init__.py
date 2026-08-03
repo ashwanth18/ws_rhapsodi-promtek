@@ -8,7 +8,14 @@ from .manager import (
     get_mode_manager,
 )
 from .registry import ModeRegistry, build_default_registry, get_mode_registry
-from .state import DEFAULT_MODE, get_runtime_mode_state, sim_allowed
+from .state import (
+    DEFAULT_MODE,
+    get_runtime_mode_state,
+    is_pi5_device,
+    resolve_data_output_root,
+    sim_allowed,
+    sim_block_reason,
+)
 
 __all__ = [
     'DEFAULT_MODE',
@@ -24,5 +31,8 @@ __all__ = [
     'get_mode_manager',
     'get_mode_registry',
     'get_runtime_mode_state',
+    'is_pi5_device',
+    'resolve_data_output_root',
     'sim_allowed',
+    'sim_block_reason',
 ]

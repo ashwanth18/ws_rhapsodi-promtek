@@ -10,7 +10,9 @@ from .state import (
     DEFAULT_MODE,
     RuntimeModeState,
     get_runtime_mode_state,
+    resolve_data_output_root,
     sim_allowed,
+    sim_block_reason,
 )
 
 
@@ -43,10 +45,14 @@ class ModeManager:
         return self.state.get()
 
     def capabilities(self) -> dict[str, Any]:
+        current = self.current()
         return {
             'modes': self.registry.capability_modes(),
             'sim_allowed': sim_allowed(),
             'default_mode': DEFAULT_MODE.value,
+            'data_output_root': resolve_data_output_root(
+                current.get('environment')
+            ),
         }
 
     def set_mode(
@@ -80,10 +86,10 @@ class ModeManager:
                 f'Environment {env_enum.value} is not allowed for mode '
                 f'{mode_enum.value}'
             )
-        if env_enum == Environment.SIM and not sim_allowed():
-            raise ModeValidationError(
-                'Sim environment is not allowed on this device (SIM_ALLOWED=0)'
-            )
+        if env_enum == Environment.SIM:
+            reason = sim_block_reason()
+            if reason is not None:
+                raise ModeValidationError(reason)
 
         return self.state.set(mode_enum.value, env_enum.value)
 

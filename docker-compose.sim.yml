@@ -1,0 +1,70 @@
+# Laptop-only sim stack — same mode APIs with environment=sim + null MES sink.
+# Do NOT use on a Pi5 cell (compose/devices/pi5.yml forces SIM_ALLOWED=0 and
+# DEVICE_CLASS=pi5; ModeManager also refuses sim when device class is pi5).
+#
+# Usage (workspace root):
+#   docker compose -f docker-compose.sim.yml up -d --build
+# Then:
+#   curl -s localhost:8000/runtime/capabilities
+#   curl -s -X PUT localhost:8000/runtime/mode \
+#     -H 'content-type: application/json' \
+#     -d '{"mode":"mock-local","environment":"sim"}'
+#
+# Sim pairs with mock-local / lightsout (modes that list SIM in
+# allowed_environments). Outbound MES is always NullMesClient when
+# environment=sim. Recorder root defaults to /tmp/rhapsodi-sim/runs.
+#
+# See docs/MODES.md (Phase 7).
+
+name: rhapsodi-promtek-sim
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: robot_data
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - sim_db_data:/var/lib/postgresql/data
+
+  backend:
+    image: ${BACKEND_LOCAL_IMAGE:-rhapsodi-promtek:backend-local}
+    build:
+      context: ./src/backend
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/robot_data
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000,http://localhost:8080
+      WEIGHMENT_URL: http://host.docker.internal:5002/batch/weighment
+      BATCH_END_URL: http://host.docker.internal:5002/batch/end
+      TIMESERIES_URL: http://host.docker.internal:5002/timeseries
+      PATH_MAP_FROM: ${WORKSPACE_ROOT:-.}/data
+      PATH_MAP_TO: /data
+      ROBOT_START_ADAPTER_URL: ${ROBOT_START_ADAPTER_URL:-http://host.docker.internal:8010/start_webhook_weightment}
+      ROBOT_LIGHTSOUT_ADAPTER_URL: ${ROBOT_LIGHTSOUT_ADAPTER_URL:-http://host.docker.internal:8010/start_lightsout}
+      ROBOT_RUNNING_TIMEOUT_SECONDS: ${ROBOT_RUNNING_TIMEOUT_SECONDS:-300}
+      ROSBRIDGE_HOST: host.docker.internal
+      ROSBRIDGE_PORT: 9090
+      # Laptop sim gate + defaults
+      SIM_ALLOWED: "1"
+      ENVIRONMENT: sim
+      DEVICE_CLASS: ${DEVICE_CLASS:-x86}
+      DATA_OUTPUT_ROOT: ${DATA_OUTPUT_ROOT:-/tmp/rhapsodi-sim/runs}
+      SIM_DATA_OUTPUT_ROOT: ${SIM_DATA_OUTPUT_ROOT:-/tmp/rhapsodi-sim/runs}
+      RUNTIME_MODE_PATH: ${RUNTIME_MODE_PATH:-/tmp/rhapsodi-sim/runtime_mode.json}
+      RHAPSODI_DEVICE_CONFIG: ${RHAPSODI_DEVICE_CONFIG:-/ws/config/device.yaml}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+      - ./config:/ws/config:ro
+      - ${SIM_HOST_DATA:-./data/sim}:/tmp/rhapsodi-sim
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - db
+
+volumes:
+  sim_db_data:

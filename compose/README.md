@@ -18,10 +18,11 @@
 
 ## Files
 
-- `devices/pi5.yml` — production Pi5 stack
+- `devices/pi5.yml` — production Pi5 stack (`SIM_ALLOWED=0`, `DEVICE_CLASS=pi5`)
 - `devices/jetson.yml` — stub (not production)
 - `devices/x86.yml` — stub (not production)
 - Root `docker-compose.robot-prod.yml` — compatibility include of `pi5.yml`
+- Root `docker-compose.sim.yml` — laptop-only sim (`SIM_ALLOWED=1`, `ENVIRONMENT=sim`; see `docs/MODES.md`)
 
 ## Project directory
 
