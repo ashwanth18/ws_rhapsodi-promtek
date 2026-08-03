@@ -42,6 +42,18 @@ release/profile, deployments, monitoring). Each robot’s operator SPA
 (weighment UI / Cell Signal Deck) is linked from Devices as
 `http://<hostname>:8080` (override with `ROBOT_DASHBOARD_PORT`).
 
+### Runtime mode visibility
+
+Devices list + detail show each robot’s active **mode** and **environment**
+(from live `GET /runtime/mode` on the robot backend, with fleet-agent
+heartbeat as fallback). See [docs/MODES.md](../../docs/MODES.md) Phase 8.
+
+### Console SemVer
+
+Operator-facing console version lives in `web/package.json` and appears in
+the sidebar footer (`Fleet Console vX.Y.Z`). Bump on operator-visible changes
+per `.cursor/rules/fleet-console-versioning.mdc`.
+
 ## Desired state
 
 Each device has a SQLite `device_targets` row:

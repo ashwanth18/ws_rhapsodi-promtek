@@ -221,6 +221,9 @@ class AgentReportRequest(BaseModel):
     platform: str | None = None  # linux/arm64 | linux/amd64 | aarch64 | …
     device_class: str | None = None  # pi5 | jetson | x86
     arch: str | None = None  # raw uname -m fallback
+    # Runtime mode from robot backend GET /runtime/mode (heartbeat cache)
+    active_mode: str | None = None
+    environment: str | None = None
 
 
 def _repo_root() -> Path:
@@ -351,6 +354,8 @@ def _serialize_target(row: DeviceTarget | None, device_id: str) -> dict[str, Any
             'agent_message': None,
             'agent_applied_release_id': None,
             'agent_reported_at': None,
+            'active_mode': None,
+            'environment': None,
             'has_agent_token': False,
             'updated_at': None,
         }
@@ -376,6 +381,8 @@ def _serialize_target(row: DeviceTarget | None, device_id: str) -> dict[str, Any
         'agent_reported_at': (
             row.agent_reported_at.isoformat() if row.agent_reported_at else None
         ),
+        'active_mode': row.active_mode,
+        'environment': row.environment,
         'has_agent_token': bool(row.agent_token),
         'updated_at': row.updated_at.isoformat() if row.updated_at else None,
     }
@@ -986,6 +993,12 @@ def _attach_desired_and_drift(
     applied_id = target.get('agent_applied_release_id')
     applied_release = releases.get(applied_id) if applied_id else None
     device['agent_applied_release'] = applied_release
+
+    # Prefer live /runtime/mode poll; fall back to last agent heartbeat.
+    if not device.get('active_mode') and target.get('active_mode'):
+        device['active_mode'] = target.get('active_mode')
+    if not device.get('environment') and target.get('environment'):
+        device['environment'] = target.get('environment')
 
     # Older backend images only return hostname from /host_info. Fall back to
     # what the agent last successfully applied so Running is not a blank dash.
@@ -1880,6 +1893,10 @@ def api_agent_report(
         row.agent_reported_at = utc_now()
         if body.applied_release_id is not None:
             row.agent_applied_release_id = body.applied_release_id
+        if body.active_mode:
+            row.active_mode = body.active_mode.strip()
+        if body.environment:
+            row.environment = body.environment.strip()
         plat = normalize_platform(body.platform) or normalize_platform(body.arch)
         if plat:
             row.platform = plat

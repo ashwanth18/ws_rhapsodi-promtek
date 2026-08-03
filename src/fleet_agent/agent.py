@@ -34,6 +34,9 @@ FLEET_CONSOLE_URL = os.environ.get(
 AGENT_TOKEN = os.environ.get('AGENT_TOKEN', '').strip()
 POLL_INTERVAL = int(os.environ.get('POLL_INTERVAL_SECONDS', '30'))
 HEALTH_URL = os.environ.get('HEALTH_URL', 'http://127.0.0.1:8000/health')
+RUNTIME_MODE_URL = os.environ.get(
+    'RUNTIME_MODE_URL', 'http://127.0.0.1:8000/runtime/mode'
+)
 HEALTH_RETRIES = int(os.environ.get('HEALTH_RETRIES', '30'))
 HEALTH_DELAY = int(os.environ.get('HEALTH_DELAY_SECONDS', '5'))
 GIT_REMOTE = os.environ.get('GIT_REMOTE', 'origin')
@@ -74,6 +77,27 @@ def fetch_desired() -> dict[str, Any]:
     return payload.get('target') or {}
 
 
+def fetch_runtime_mode() -> dict[str, str]:
+    """Probe local backend /runtime/mode for heartbeat fields."""
+    try:
+        with urllib.request.urlopen(RUNTIME_MODE_URL, timeout=5) as resp:
+            raw = resp.read().decode()
+            data = json.loads(raw) if raw.strip() else {}
+    except Exception as exc:  # noqa: BLE001
+        LOG.debug('runtime mode probe failed: %s', exc)
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    mode = str(data.get('mode') or '').strip()
+    environment = str(data.get('environment') or '').strip()
+    out: dict[str, str] = {}
+    if mode:
+        out['active_mode'] = mode
+    if environment:
+        out['environment'] = environment
+    return out
+
+
 def report(
     *,
     status: str,
@@ -82,18 +106,16 @@ def report(
     profile_id: str | None = None,
     image_tag: str | None = None,
 ) -> None:
+    body: dict[str, Any] = {
+        'status': status,
+        'message': message,
+        'applied_release_id': applied_release_id,
+        'profile_id': profile_id,
+        'image_tag': image_tag,
+    }
+    body.update(fetch_runtime_mode())
     try:
-        _request(
-            'POST',
-            '/api/agent/report',
-            {
-                'status': status,
-                'message': message,
-                'applied_release_id': applied_release_id,
-                'profile_id': profile_id,
-                'image_tag': image_tag,
-            },
-        )
+        _request('POST', '/api/agent/report', body)
     except Exception as exc:  # noqa: BLE001
         LOG.warning('Failed to report status=%s: %s', status, exc)
 

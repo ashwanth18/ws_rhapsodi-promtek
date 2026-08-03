@@ -208,6 +208,20 @@ export default function DevicesPage() {
             },
           },
           {
+            key: 'mode',
+            header: 'Mode / env',
+            render: (d) => (
+              <div className="text-xs">
+                <div className="font-medium text-[var(--text-secondary)]">
+                  {d.active_mode || '—'}
+                </div>
+                <div className="text-[var(--text-muted)]">
+                  {d.environment || '—'}
+                </div>
+              </div>
+            ),
+          },
+          {
             key: 'desired',
             header: 'Desired',
             render: (d) => (

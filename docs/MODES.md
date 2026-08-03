@@ -139,3 +139,16 @@ curl -s -X PUT localhost:8000/runtime/mode \
 `DEVICE_CLASS=x86`, and sim data roots under `/tmp/rhapsodi-sim/…`.
 `compose/devices/pi5.yml` / `robot-prod.env.example` keep `SIM_ALLOWED=0`
 and `DEVICE_CLASS=pi5`.
+
+## Phase 8: Fleet Console mode visibility
+
+Fleet Console surfaces each robot's runtime **mode** and **environment** on
+the Devices list and device detail:
+
+1. Live poll of robot backend `GET /runtime/mode` (same path as the operator
+   dashboard), via `fleet_console` `robot_poll`.
+2. Fallback: `fleet-agent` includes `active_mode` + `environment` on
+   `POST /api/agent/report` when the backend is reachable.
+
+Console product SemVer starts at **0.1.0** (`src/fleet_console/web/package.json`,
+footer in the sidebar). See `.cursor/rules/fleet-console-versioning.mdc`.

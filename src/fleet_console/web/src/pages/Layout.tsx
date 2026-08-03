@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { getToken, setToken } from '../lib/api'
+import { APP_VERSION } from '../lib/version'
 import { Button } from '../components/ui'
 import { cn } from '../lib/cn'
 
@@ -91,6 +92,9 @@ export default function Layout() {
               </Button>
             </div>
           ) : null}
+          <div className="mt-3 px-1 text-[11px] text-[var(--text-faint)]">
+            Fleet Console v{APP_VERSION}
+          </div>
         </div>
       </aside>
       <main className="flex-1 overflow-auto p-6 lg:p-8">

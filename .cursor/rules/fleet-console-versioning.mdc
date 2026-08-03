@@ -1,0 +1,39 @@
+---
+description: Bump Fleet Console SemVer in package.json on operator-visible UI/API changes.
+globs: src/fleet_console/**/*
+alwaysApply: false
+---
+
+# Fleet Console versioning
+
+Fleet Console shows a SemVer footer (`Fleet Console vX.Y.Z`) from
+`src/fleet_console/web/package.json` → Vite `__APP_VERSION__`.
+
+This is **product UI version**, separate from fleet **Release `#N (sha)`**
+(deployable robot images).
+
+## When to bump
+
+Bump `src/fleet_console/web/package.json` `version` (and keep
+`package-lock.json` in sync) whenever you ship an **operator-visible** change:
+
+| Change | Bump |
+|--------|------|
+| New screen/feature, new columns, new API fields shown in UI | **minor** (`0.1.0` → `0.2.0`) |
+| Bug fix / polish that operators can notice | **patch** (`0.1.0` → `0.1.1`) |
+| Breaking console UX / auth / data model reset | **major** |
+
+Do **not** bump for pure refactors, comments, or internal-only changes with no
+UI/API surface change.
+
+## How
+
+1. Edit `"version"` in `src/fleet_console/web/package.json`.
+2. Update the top-level `"version"` fields in `package-lock.json` (or run
+   `npm install` in `web/`).
+3. Footer picks it up automatically via `vite.config.ts` `define`.
+
+## After bump
+
+Jetson hosts the console — commit + redeploy per `jetson-auto-deploy`
+(`bash scripts/deploy_jetson_fleet_console.sh`, or `LOCAL_SYNC=1` when needed).

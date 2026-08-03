@@ -391,7 +391,7 @@ export default function DeviceDetailPage() {
         </div>
       ) : null}
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <MetricCard
           label="Alive"
           value={
@@ -411,6 +411,20 @@ export default function DeviceDetailPage() {
               pulse={device?.agent_status === 'applying'}
             />
           }
+        />
+        <MetricCard
+          label="Mode / environment"
+          value={
+            <div className="text-base">
+              <span className="font-medium text-[var(--accent)]">
+                {device?.active_mode || '—'}
+              </span>
+              <div className="mt-0.5 font-mono text-xs text-[var(--text-muted)]">
+                {device?.environment || '—'}
+              </div>
+            </div>
+          }
+          help="Live from robot GET /runtime/mode; falls back to last fleet-agent heartbeat."
         />
         <MetricCard
           label="Running version"

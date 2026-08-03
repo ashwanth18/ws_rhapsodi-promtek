@@ -124,6 +124,8 @@ export type DeviceTarget = {
   agent_message?: string | null
   agent_applied_release_id?: number | null
   agent_reported_at?: string | null
+  active_mode?: string | null
+  environment?: string | null
   has_agent_token?: boolean
 }
 
@@ -171,6 +173,11 @@ export type Device = {
   agent_message?: string | null
   agent_reported_at?: string | null
   agent_applied_release?: Release | null
+  /** Runtime operating mode from robot GET /runtime/mode (or agent heartbeat). */
+  active_mode?: string | null
+  /** Runtime environment axis: real | sim. */
+  environment?: string | null
+  runtime_mode?: Record<string, unknown> | null
   version_check?: Record<string, unknown>
   metrics?: { cpu_pct?: number | null; mem_pct?: number | null; disk_pct?: number | null }
   last_deployment?: Deployment | null

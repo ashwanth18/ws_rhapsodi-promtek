@@ -8,6 +8,7 @@ import httpx
 
 HOST_INFO_TIMEOUT = 2.5
 ACTIVE_TIMEOUT = 2.5
+RUNTIME_MODE_TIMEOUT = 2.5
 
 
 async def poll_host_info(ip: str, port: int = 8000) -> dict[str, Any] | None:
@@ -34,19 +35,40 @@ async def poll_active_run(ip: str, port: int = 8000) -> dict[str, Any] | None:
         return None
 
 
+async def poll_runtime_mode(ip: str, port: int = 8000) -> dict[str, Any] | None:
+    """GET /runtime/mode → {mode, environment, active_run?}."""
+    url = f'http://{ip}:{port}/runtime/mode'
+    try:
+        async with httpx.AsyncClient(timeout=RUNTIME_MODE_TIMEOUT) as client:
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                return None
+            payload = resp.json()
+            if not isinstance(payload, dict):
+                return None
+            return payload
+    except Exception:
+        return None
+
+
 async def enrich_device(device: dict[str, Any]) -> dict[str, Any]:
     ip = device.get('ip')
     if not ip:
         device['host_info'] = None
         device['active_run'] = None
+        device['runtime_mode'] = None
+        device['active_mode'] = None
+        device['environment'] = None
         device['provisioned'] = False
         return device
-    host_info, active = await asyncio.gather(
+    host_info, active, runtime = await asyncio.gather(
         poll_host_info(ip),
         poll_active_run(ip),
+        poll_runtime_mode(ip),
     )
     device['host_info'] = host_info
     device['active_run'] = active
+    device['runtime_mode'] = runtime
     # Consider provisioned if backend answers /host_info.
     device['provisioned'] = host_info is not None
     if host_info:
@@ -68,6 +90,15 @@ async def enrich_device(device: dict[str, Any]) -> dict[str, Any]:
         device['active'] = active.get('active') is not None
     else:
         device['active'] = False
+    # Live mode/environment from robot backend (preferred over agent cache).
+    if isinstance(runtime, dict):
+        mode = runtime.get('mode')
+        env = runtime.get('environment')
+        device['active_mode'] = str(mode).strip() if mode else None
+        device['environment'] = str(env).strip() if env else None
+    else:
+        device['active_mode'] = None
+        device['environment'] = None
     return device
 
 

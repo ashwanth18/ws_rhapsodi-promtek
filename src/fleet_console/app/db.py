@@ -114,6 +114,9 @@ class DeviceTarget(Base):
     agent_message = Column(Text, nullable=True)
     agent_applied_release_id = Column(Integer, ForeignKey('releases.id'), nullable=True)
     agent_reported_at = Column(DateTime, nullable=True)
+    # Last agent-reported runtime mode (fallback when live /runtime/mode poll fails)
+    active_mode = Column(String(64), nullable=True)
+    environment = Column(String(32), nullable=True)
     updated_at = Column(DateTime, nullable=False, default=utc_now)
 
 
@@ -157,6 +160,14 @@ def init_db() -> None:
         if 'device_class' not in cols:
             migrations.append(
                 'ALTER TABLE device_targets ADD COLUMN device_class VARCHAR(64)'
+            )
+        if 'active_mode' not in cols:
+            migrations.append(
+                'ALTER TABLE device_targets ADD COLUMN active_mode VARCHAR(64)'
+            )
+        if 'environment' not in cols:
+            migrations.append(
+                'ALTER TABLE device_targets ADD COLUMN environment VARCHAR(32)'
             )
         # Drop legacy pinned_image_tag usage by leaving the column if present
         # (SQLite cannot DROP COLUMN reliably on older versions).
