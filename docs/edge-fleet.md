@@ -56,6 +56,7 @@ CI does the same via [`.github/workflows/build-and-release.yml`](../.github/work
 - `robot-prod.env.example`
 - `config/device.yaml.example`
 - `config/profiles.yaml` + `config/profiles/**`
+- `config/recording_profiles.yaml` (phase → topic map for RecorderV2)
 - `monitoring/exporters/docker-compose.exporters.yml`
 
 Edge devices shallow-checkout that branch/tag. Per-device state (`robot-prod.env`, `config/device.yaml`) is created once and never overwritten by bundle updates except by the agent when converging.

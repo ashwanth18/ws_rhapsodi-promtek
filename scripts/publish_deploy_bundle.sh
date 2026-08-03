@@ -70,6 +70,7 @@ BUNDLE_FILES=(
   config/device.yaml.example
   config/device_classes.yaml
   config/profiles.yaml
+  config/recording_profiles.yaml
   monitoring/exporters/docker-compose.exporters.yml
   monitoring/exporters/promtail-config.yml
 )

@@ -200,6 +200,11 @@ pin_images() {
   else
     echo "CONDOR_AGENT_IMAGE=${registry}:condor-agent-${tag}" >> "${env_file}"
   fi
+  if grep -q '^INGESTION_IMAGE=' "${env_file}"; then
+    sed -i "s|^INGESTION_IMAGE=.*|INGESTION_IMAGE=${registry}:ingestion-${tag}|" "${env_file}"
+  else
+    echo "INGESTION_IMAGE=${registry}:ingestion-${tag}" >> "${env_file}"
+  fi
 }
 
 if [[ -n "${IMAGE_TAG}" ]]; then

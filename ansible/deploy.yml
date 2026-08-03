@@ -149,6 +149,7 @@
         ensure_key WEBHOOK_IMAGE
         ensure_key DASHBOARD_IMAGE
         ensure_key CONDOR_AGENT_IMAGE
+        ensure_key INGESTION_IMAGE
         ensure_key POSTGRES_PASSWORD
         sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=${TAG}|" "$ENV"
         sed -i "s|^ROS_PROD_IMAGE=.*|ROS_PROD_IMAGE=${REG}:ros-prod-${TAG}|" "$ENV"
@@ -157,6 +158,7 @@
         sed -i "s|^WEBHOOK_IMAGE=.*|WEBHOOK_IMAGE=${REG}:webhook-${TAG}|" "$ENV"
         sed -i "s|^DASHBOARD_IMAGE=.*|DASHBOARD_IMAGE=${REG}:dashboard-${TAG}|" "$ENV"
         sed -i "s|^CONDOR_AGENT_IMAGE=.*|CONDOR_AGENT_IMAGE=${REG}:condor-agent-${TAG}|" "$ENV"
+        sed -i "s|^INGESTION_IMAGE=.*|INGESTION_IMAGE=${REG}:ingestion-${TAG}|" "$ENV"
         sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${PG}|" "$ENV"
       args:
         executable: /bin/bash
@@ -256,6 +258,7 @@
             sed -i "s|^WEBHOOK_IMAGE=.*|WEBHOOK_IMAGE=${REG}:webhook-${TAG}|" "$ENV"
             sed -i "s|^DASHBOARD_IMAGE=.*|DASHBOARD_IMAGE=${REG}:dashboard-${TAG}|" "$ENV"
             sed -i "s|^CONDOR_AGENT_IMAGE=.*|CONDOR_AGENT_IMAGE=${REG}:condor-agent-${TAG}|" "$ENV"
+            sed -i "s|^INGESTION_IMAGE=.*|INGESTION_IMAGE=${REG}:ingestion-${TAG}|" "$ENV"
             git -C "{{ workspace_dir }}" fetch --depth 1 origin "refs/tags/deploy-${TAG}:refs/tags/deploy-${TAG}" \
               || git -C "{{ workspace_dir }}" fetch --depth 1 origin "deploy-${TAG}"
             git -C "{{ workspace_dir }}" checkout --force "deploy-${TAG}" || true

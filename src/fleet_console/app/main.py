@@ -116,6 +116,7 @@ IMAGE_ROLES = (
     'backend',
     'processing',
     'webhook',
+    'ingestion',
     'dashboard',
     'condor-agent',
 )

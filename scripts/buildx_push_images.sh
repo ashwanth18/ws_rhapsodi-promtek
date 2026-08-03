@@ -134,6 +134,10 @@ build_with_cache \
   ./src/backend/webhook_service
 
 build_with_cache \
+  ingestion \
+  ./src/backend/ingestion
+
+build_with_cache \
   dashboard \
   --build-arg VITE_API_BASE="${VITE_API_BASE}" \
   --build-arg VITE_ROSBRIDGE_URL="${VITE_ROSBRIDGE_URL}" \

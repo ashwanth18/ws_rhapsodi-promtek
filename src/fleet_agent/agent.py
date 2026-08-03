@@ -258,6 +258,8 @@ def render_env(desired: dict[str, Any]) -> None:
         or f'{registry}:dashboard-{git_sha}',
         'CONDOR_AGENT_IMAGE': images.get('condor-agent')
         or f'{registry}:condor-agent-{git_sha}',
+        'INGESTION_IMAGE': images.get('ingestion')
+        or f'{registry}:ingestion-{git_sha}',
     }
     for key, value in profile_env.items():
         updates[str(key)] = str(value)
@@ -382,6 +384,8 @@ def rollback_last_good() -> dict[str, Any] | None:
                 or f'{registry}:dashboard-{git_sha}',
                 'condor-agent': env.get('CONDOR_AGENT_IMAGE')
                 or f'{registry}:condor-agent-{git_sha}',
+                'ingestion': env.get('INGESTION_IMAGE')
+                or f'{registry}:ingestion-{git_sha}',
             },
             'robot_type': last.get('robot_type'),
             'site_id': last.get('site_id'),
