@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import rclpy
 from rclpy.node import Node
@@ -46,6 +46,57 @@ class UplinkSummary:
 
 def _tier0_field_name(path: Path) -> str:
     return _TIER0_FIELD_NAMES.get(path.name, path.suffix.lstrip('.') or path.name)
+
+
+def resolve_tier0_files(
+    artifacts: Sequence[Any],
+    run_folder: Optional[Path] = None,
+) -> Tuple[Dict[str, Path], List[Path]]:
+    """Map Tier-0 artifacts to uplink field names.
+
+    Processing writes ``episode_N_0.parquet`` (not ``features.parquet``).
+    Prefer an explicit ``features.parquet``; otherwise pick the newest
+    ``*.parquet`` under the run folder (or among Tier-0 artifacts) as
+    ``features_parquet``. Any remaining parquet files are returned as
+    extra Tier-1 blob candidates so they still leave the edge.
+    """
+    files: Dict[str, Path] = {}
+    parquet_candidates: List[Path] = []
+
+    for artifact in artifacts:
+        path = Path(artifact.path)
+        field = _tier0_field_name(path)
+        if path.suffix.lower() == '.parquet' or field == 'features_parquet':
+            parquet_candidates.append(path)
+            continue
+        files[field] = path
+
+    # Also discover parquet files written next to bags under the run folder.
+    search_roots: List[Path] = []
+    if run_folder is not None and run_folder.is_dir():
+        search_roots.append(run_folder)
+    for path in parquet_candidates:
+        parent = path.parent
+        if parent not in search_roots and parent.is_dir():
+            search_roots.append(parent)
+
+    discovered: List[Path] = list(parquet_candidates)
+    for root in search_roots:
+        for found in root.rglob('*.parquet'):
+            if found.is_file() and found not in discovered:
+                discovered.append(found)
+
+    if not discovered:
+        return files, []
+
+    preferred = [p for p in discovered if p.name == 'features.parquet']
+    if preferred:
+        features = max(preferred, key=lambda p: p.stat().st_mtime)
+    else:
+        features = max(discovered, key=lambda p: p.stat().st_mtime)
+    files['features_parquet'] = features
+    extras = [p for p in discovered if p != features]
+    return files, extras
 
 
 def _iter_blob_files(
@@ -122,13 +173,16 @@ def run_uplink_pass(
                     {'fleet_log_path': str(fleet_log_path)},
                 )
 
+    # Extra parquet files (beyond the chosen features_parquet) discovered
+    # during Tier-0 resolution; uploaded as Tier-1 blobs in the next loop.
+    extra_parquet_by_run: Dict[str, List[Path]] = {}
+
     for run in manifest.list_runs_needing_tier0_sync():
         tier0_artifacts = manifest.list_artifacts(run.run_key, tier=TIER_0)
-        files: Dict[str, Path] = {}
-        for artifact in tier0_artifacts:
-            files[_tier0_field_name(Path(artifact.path))] = Path(
-                artifact.path
-            )
+        run_folder = Path(run.run_folder) if run.run_folder else None
+        files, extra_parquet = resolve_tier0_files(tier0_artifacts, run_folder)
+        if extra_parquet:
+            extra_parquet_by_run[run.run_key] = extra_parquet
         try:
             client.sync_tier0(
                 run.run_key,
@@ -155,6 +209,15 @@ def run_uplink_pass(
                     artifact_index, Path(artifact.path)
                 ):
                     client.upload_blob(run.run_key, blob_key, file_path)
+            # Upload leftover parquet siblings (e.g. older episode_N_0.parquet
+            # when a newer one was chosen as features_parquet).
+            for idx, parquet_path in enumerate(
+                extra_parquet_by_run.get(run.run_key, [])
+            ):
+                if not parquet_path.is_file():
+                    continue
+                blob_key = f'extra_parquet/{idx}/{parquet_path.name}'
+                client.upload_blob(run.run_key, blob_key, parquet_path)
             client.complete_tier1(run.run_key)
             manifest.mark_tier1_acked(run.run_key)
             summary.tier1_acked_run_keys.append(run.run_key)

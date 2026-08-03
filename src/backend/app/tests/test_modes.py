@@ -304,22 +304,26 @@ def test_mock_local_mode_defaults_match_webhook_tree():
 
 def test_lightsout_run_request_schema():
     req = LightsoutRunRequest(
-        powder_name='boxA',
+        powder_id='alumina-5um',
         target_weight_g=250.0,
         episodes=10,
     )
-    assert req.enable_scoop is False
+    assert req.enable_scoop is True
     assert req.batch_id == ''
+    assert req.target_mode == 'stratified'
     full = LightsoutRunRequest(
-        powder_name='alumina',
+        powder_id='alumina-5um',
         target_weight_g=125.0,
         episodes=5,
         batch_id='batch-1',
-        cycle_end_limit='10 episodes',
         enable_scoop=True,
+        stop_on='duration_min',
+        stop_value=30.0,
+        target_mode='fixed',
     )
     assert full.enable_scoop is True
-    assert full.powder_name == 'alumina'
+    assert full.powder_id == 'alumina-5um'
+    assert full.stop_on == 'duration_min'
 
 
 def test_lightsout_mode_defaults_match_lightsout_tree():
@@ -333,7 +337,7 @@ def test_lightsout_mode_defaults_match_lightsout_tree():
         )
     )
     assert plan.tree_id == 'LightsOut'
-    assert plan.blackboard['enable_scoop'] is False
+    assert plan.blackboard['enable_scoop'] is True
     assert plan.blackboard['target_weight_g'] == 250.0
 
 

@@ -14,6 +14,8 @@ type Props<T> = {
   rows: T[]
   rowKey: (row: T) => string | number
   emptyMessage?: string
+  loading?: boolean
+  error?: string | null
   onRowClick?: (row: T) => void
   rowClassName?: (row: T) => string
   sortKey?: string
@@ -26,12 +28,30 @@ export default function DataTable<T>({
   rows,
   rowKey,
   emptyMessage = 'No data available',
+  loading = false,
+  error = null,
   onRowClick,
   rowClassName,
   sortKey,
   sortDir,
   onSort,
 }: Props<T>) {
+  if (loading) {
+    return (
+      <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--card-surface)] px-6 py-12 text-center text-sm text-[var(--text-muted)]">
+        Loading…
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-[var(--radius-md)] border border-[var(--status-bad-fg)]/30 bg-[var(--status-bad-bg)] px-6 py-12 text-center text-sm text-[var(--status-bad-fg)]">
+        {error}
+      </div>
+    )
+  }
+
   if (rows.length === 0) {
     return (
       <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--card-surface)] px-6 py-12 text-center text-sm text-[var(--text-muted)]">

@@ -31,12 +31,25 @@ class StartWebhookWeightmentResponse(BaseModel):
 
 
 class StartLightsOutRequest(BaseModel):
+    powder_id: str = ''
     powder_name: str
-    cycle_end_limit: str = ''
+    container_target: str = ''
+    pour_target: str = ''
+    lot_code: str = ''
+    operator: str = ''
+    notes: str = ''
     target_weight_g: float
     episodes: int
     batch_id: str = ''
-    enable_scoop: bool = False
+    enable_scoop: bool = True
+    stop_on: str = ''
+    stop_value: float = 0.0
+    target_mode: str = 'fixed'
+    target_fractions: list[float] = []
+    min_scooped_g: float = 20.0
+    target_min_g: float = 0.0
+    target_max_g: float = 0.0
+    rng_seed: int = 0
 
 
 class StartLightsOutResponse(BaseModel):
@@ -217,12 +230,25 @@ class WebhookRobotStarter:
                 )
 
             req = StartLightsOut.Request()
+            req.powder_id = payload.powder_id
             req.powder_name = payload.powder_name
-            req.cycle_end_limit = payload.cycle_end_limit
+            req.container_target = payload.container_target
+            req.pour_target = payload.pour_target
+            req.lot_code = payload.lot_code
+            req.operator_name = payload.operator
+            req.notes = payload.notes
             req.target_weight_g = float(payload.target_weight_g)
             req.episodes = int(payload.episodes)
             req.batch_id = payload.batch_id
             req.enable_scoop = bool(payload.enable_scoop)
+            req.stop_on = payload.stop_on
+            req.stop_value = float(payload.stop_value)
+            req.target_mode = payload.target_mode
+            req.target_fractions = [float(v) for v in payload.target_fractions]
+            req.min_scooped_g = float(payload.min_scooped_g)
+            req.target_min_g = float(payload.target_min_g)
+            req.target_max_g = float(payload.target_max_g)
+            req.rng_seed = int(payload.rng_seed)
 
             future = self._lightsout_client.call_async(req)
             rclpy.spin_until_future_complete(

@@ -33,6 +33,17 @@ class Run(Base):
     start_time_ns = Column(BigInteger, nullable=True)
     end_time_ns = Column(BigInteger, nullable=True)
     metadata_json = Column(Text, nullable=True)
+    powder_id = Column(String, index=True, nullable=True)
+    powder_name = Column(String, nullable=True)
+    lot_code = Column(String, nullable=True)
+    operator = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+    episodes_total = Column(Integer, nullable=True)
+    scooped_mass_g = Column(Float, nullable=True)
+    target_mode = Column(String, nullable=True)
+    target_fraction = Column(Float, nullable=True)
+    pour_outcome = Column(String, nullable=True)
+    rng_seed = Column(Integer, nullable=True)
 
     artifacts = relationship(
         'Artifact', back_populates='run', cascade='all, delete-orphan'
@@ -78,6 +89,17 @@ class LightsOutProcessed(Base):
     phase_events_json = Column(Text, nullable=True)
     features_json = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    powder_id = Column(String, index=True, nullable=True)
+    powder_name = Column(String, nullable=True)
+    lot_code = Column(String, nullable=True)
+    operator = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+    episodes_total = Column(Integer, nullable=True)
+    scooped_mass_g = Column(Float, nullable=True)
+    target_mode = Column(String, nullable=True)
+    target_fraction = Column(Float, nullable=True)
+    pour_outcome = Column(String, nullable=True)
+    rng_seed = Column(Integer, nullable=True)
 
     run = relationship('Run')
 

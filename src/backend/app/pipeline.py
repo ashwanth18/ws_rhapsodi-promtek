@@ -80,6 +80,25 @@ def store_processed_run(
     run_key = _metadata_field(payload, 'run_key')
     environment = _metadata_field(payload, 'environment')
     mode = payload.get('mode') or _metadata_field(payload, 'mode')
+    label_fields = {
+        'powder_id': payload.get('powder_id') or _metadata_field(payload, 'powder_id'),
+        'powder_name': payload.get('powder_name')
+        or _metadata_field(payload, 'powder_name'),
+        'lot_code': payload.get('lot_code') or _metadata_field(payload, 'lot_code'),
+        'operator': payload.get('operator') or _metadata_field(payload, 'operator'),
+        'notes': payload.get('notes') or _metadata_field(payload, 'notes'),
+        'episodes_total': payload.get('episodes_total')
+        or _metadata_field(payload, 'episodes_total'),
+        'scooped_mass_g': payload.get('scooped_mass_g')
+        or _metadata_field(payload, 'scooped_mass_g'),
+        'target_mode': payload.get('target_mode')
+        or _metadata_field(payload, 'target_mode'),
+        'target_fraction': payload.get('target_fraction')
+        or _metadata_field(payload, 'target_fraction'),
+        'pour_outcome': payload.get('pour_outcome')
+        or _metadata_field(payload, 'pour_outcome'),
+        'rng_seed': payload.get('rng_seed') or _metadata_field(payload, 'rng_seed'),
+    }
     if not run:
         run = Run(
             robot_id=payload.get('robot_id'),
@@ -93,6 +112,7 @@ def store_processed_run(
             start_time_ns=payload.get('start_time_ns'),
             end_time_ns=payload.get('end_time_ns'),
             metadata_json=payload.get('metadata_json'),
+            **label_fields,
         )
         db.add(run)
         db.flush()
@@ -108,6 +128,9 @@ def store_processed_run(
         run.start_time_ns = payload.get('start_time_ns') or run.start_time_ns
         run.end_time_ns = payload.get('end_time_ns') or run.end_time_ns
         run.metadata_json = payload.get('metadata_json') or run.metadata_json
+        for key, value in label_fields.items():
+            if value is not None:
+                setattr(run, key, value)
     processed = LightsOutProcessed(
         run_db_id=run.id,
         robot_id=payload.get('robot_id'),
@@ -130,6 +153,7 @@ def store_processed_run(
         parquet_path=payload.get('parquet_path'),
         phase_events_json=payload.get('phase_events_json'),
         features_json=payload.get('features_json'),
+        **label_fields,
     )
     db.add(processed)
     db.flush()

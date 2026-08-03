@@ -27,10 +27,18 @@ Share one behavior-tree / start-service identity: **WebhookWeightment**
 
 ### Lights-out (`lightsout`)
 
-Separate tree: **LightsOut** (`lightsout.xml`).
+Separate tree: **LightsOut** (`lightsout.xml`) — **closed-loop** on a
+single scale-mounted container (scoop out → measure scooped mass →
+sample pour target → pour back into the same vessel). No rescoop.
 
 - Phase topic: `/lightsout_training/phase`
-- Training episodes, not MES weighments.
+- Powder identity from `config/powders.yaml` via `GET /powders` /
+  `powder_id` (label decoupled from `container_target` / `pour_target`)
+- Per-episode target modes: `fixed` | `random_fraction` | `stratified`
+  (session schedule from `target_sampler`, fractions × measured scoop)
+- Stop conditions: `episodes` | `total_weight_g` | `duration_min`
+- `enable_scoop` defaults **true**
+- Dashboard **Training** (`/training`) + shared Run Setup sheet
 
 ## RunSpec
 
@@ -80,12 +88,13 @@ Phase 4: `POST /modes/mock/runs` (active mode must already be
 short-circuits Condor when `event_id` starts with `mock-`. Dashboard
 **Test** page (`/test`) drives mode switch + mock starts.
 
-Phase 5: `POST /modes/lightsout/runs` (active mode must already be
+Phase 5+: `POST /modes/lightsout/runs` (active mode must already be
 `lightsout`, else 409) starts training via
 `robot_start_adapter` `/start_lightsout` → `/bt_start_lightsout`.
-Uses `NullMesClient` (no Condor). Blackboard `enable_scoop` (default
-false) gates `ExecuteScoop` in `lightsout.xml`. Dashboard **Training**
-page (`/training`) drives mode switch + starts.
+Uses `NullMesClient` (no Condor). Requires `powder_id` from the catalog;
+optional `target_mode`, `stop_on`, lot/operator/notes. Dashboard
+**Training** page hosts the Run Setup sheet. Data export lives at
+`/data` (`GET /export/*`).
 
 Phase 6: **mes-generic** is config-driven. Inbound events go to
 `POST /modes/mes-generic/events` (active mode must be `mes-generic`,

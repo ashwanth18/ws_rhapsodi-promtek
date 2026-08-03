@@ -10,7 +10,7 @@ from typing import Dict, Optional
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Bool, Float64, Int32, String
+from std_msgs.msg import Bool, Float32, Float64, Int32, String
 
 from rhapsodi_common.device_config import load_device_config
 from rhapsodi_common.health import HealthEventPublisher
@@ -93,7 +93,28 @@ class DataCollectionManager(Node):
             'ingredient_id_topic', '/lightsout_training/ingredient_id'
         )
         self.declare_parameter(
+            'powder_id_topic', '/lightsout_training/powder_id'
+        )
+        self.declare_parameter(
+            'lot_code_topic', '/lightsout_training/lot_code'
+        )
+        self.declare_parameter(
+            'operator_topic', '/lightsout_training/operator'
+        )
+        self.declare_parameter(
+            'notes_topic', '/lightsout_training/notes'
+        )
+        self.declare_parameter(
             'target_weight_topic', '/lightsout_training/target_weight_g'
+        )
+        self.declare_parameter(
+            'scooped_mass_topic', '/lightsout_training/scooped_mass_g'
+        )
+        self.declare_parameter(
+            'pour_outcome_topic', '/lightsout_training/pour_outcome'
+        )
+        self.declare_parameter(
+            'episodes_total_topic', '/lightsout_training/episodes_total'
         )
         self.declare_parameter('mode_topic', '/lightsout_training/mode')
         self.declare_parameter('webhook_active_topic', '/webhook_run/active')
@@ -124,8 +145,21 @@ class DataCollectionManager(Node):
         self._ingredient_id_topic = self.get_parameter(
             'ingredient_id_topic'
         ).value
+        self._powder_id_topic = self.get_parameter('powder_id_topic').value
+        self._lot_code_topic = self.get_parameter('lot_code_topic').value
+        self._operator_topic = self.get_parameter('operator_topic').value
+        self._notes_topic = self.get_parameter('notes_topic').value
         self._target_weight_topic = self.get_parameter(
             'target_weight_topic'
+        ).value
+        self._scooped_mass_topic = self.get_parameter(
+            'scooped_mass_topic'
+        ).value
+        self._pour_outcome_topic = self.get_parameter(
+            'pour_outcome_topic'
+        ).value
+        self._episodes_total_topic = self.get_parameter(
+            'episodes_total_topic'
         ).value
         self._mode_topic = self.get_parameter('mode_topic').value
         self._webhook_active_topic = self.get_parameter(
@@ -171,7 +205,14 @@ class DataCollectionManager(Node):
         self._run_id: Optional[str] = None
         self._batch_id: Optional[str] = None
         self._ingredient_id: Optional[str] = None
+        self._powder_id: Optional[str] = None
+        self._lot_code: Optional[str] = None
+        self._operator: Optional[str] = None
+        self._notes: Optional[str] = None
         self._target_weight_g: Optional[float] = None
+        self._scooped_mass_g: Optional[float] = None
+        self._pour_outcome: Optional[str] = None
+        self._episodes_total: Optional[int] = None
         self._run_mode: Optional[str] = None
         self._run_environment: Optional[str] = None
         self._weightment_id: Optional[str] = None
@@ -202,7 +243,28 @@ class DataCollectionManager(Node):
             String, self._ingredient_id_topic, self._on_ingredient_id, 10
         )
         self.create_subscription(
+            String, self._powder_id_topic, self._on_powder_id, 10
+        )
+        self.create_subscription(
+            String, self._lot_code_topic, self._on_lot_code, 10
+        )
+        self.create_subscription(
+            String, self._operator_topic, self._on_operator, 10
+        )
+        self.create_subscription(
+            String, self._notes_topic, self._on_notes, 10
+        )
+        self.create_subscription(
             Float64, self._target_weight_topic, self._on_target_weight, 10
+        )
+        self.create_subscription(
+            Float32, self._scooped_mass_topic, self._on_scooped_mass, 10
+        )
+        self.create_subscription(
+            String, self._pour_outcome_topic, self._on_pour_outcome, 10
+        )
+        self.create_subscription(
+            Int32, self._episodes_total_topic, self._on_episodes_total, 10
         )
         self.create_subscription(
             String, self._mode_topic, self._on_mode, 10
@@ -268,7 +330,15 @@ class DataCollectionManager(Node):
             'run_key': ctx.folder.name,
             'batch_id': self._batch_id,
             'ingredient_id': self._ingredient_id,
+            'powder_id': self._powder_id,
+            'powder_name': self._ingredient_id,  # lightsout publishes name on ingredient_id
+            'lot_code': self._lot_code,
+            'operator': self._operator,
+            'notes': self._notes,
             'target_weight_g': self._target_weight_g,
+            'scooped_mass_g': self._scooped_mass_g,
+            'pour_outcome': self._pour_outcome,
+            'episodes_total': self._episodes_total,
             'mode': self._resolved_mode(),
             'environment': self._resolved_environment(),
             'bag_path': str(ctx.bag_path),
@@ -571,8 +641,29 @@ class DataCollectionManager(Node):
     def _on_ingredient_id(self, msg: String) -> None:
         self._ingredient_id = msg.data or None
 
+    def _on_powder_id(self, msg: String) -> None:
+        self._powder_id = msg.data or None
+
+    def _on_lot_code(self, msg: String) -> None:
+        self._lot_code = msg.data or None
+
+    def _on_operator(self, msg: String) -> None:
+        self._operator = msg.data or None
+
+    def _on_notes(self, msg: String) -> None:
+        self._notes = msg.data or None
+
     def _on_target_weight(self, msg: Float64) -> None:
         self._target_weight_g = float(msg.data)
+
+    def _on_scooped_mass(self, msg: Float32) -> None:
+        self._scooped_mass_g = float(msg.data)
+
+    def _on_pour_outcome(self, msg: String) -> None:
+        self._pour_outcome = msg.data or None
+
+    def _on_episodes_total(self, msg: Int32) -> None:
+        self._episodes_total = int(msg.data)
 
     def _on_mode(self, msg: String) -> None:
         self._run_mode = msg.data or None

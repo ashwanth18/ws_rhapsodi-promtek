@@ -14,6 +14,7 @@ import {
 } from './components/operations/operationsUtils'
 import Button from './components/ui/button'
 import { useRuntimeConfig } from './config/RuntimeConfig'
+import { useRuntimeMode } from './hooks/useRuntimeMode'
 import { useRos } from './ros/RosContext'
 import { ROSLIB } from './ros/roslib'
 
@@ -60,8 +61,10 @@ type PourStatusMsg = {
 }
 
 const WEIGHT_TOPIC = (import.meta as any).env.VITE_WEIGHT_TOPIC || '/weight'
-const WEBHOOK_PHASE_TOPIC =
+const DEFAULT_WEBHOOK_PHASE_TOPIC =
   (import.meta as any).env.VITE_WEBHOOK_PHASE_TOPIC || '/webhook_run/phase'
+const LIGHTSOUT_PHASE_TOPIC =
+  (import.meta as any).env.VITE_LIGHTSOUT_PHASE_TOPIC || '/lightsout_training/phase'
 const WEBHOOK_ACTIVE_TOPIC =
   (import.meta as any).env.VITE_WEBHOOK_ACTIVE_TOPIC || '/webhook_run/active'
 const WEBHOOK_METADATA_TOPIC =
@@ -97,6 +100,10 @@ function App() {
   const navigate = useNavigate()
   const ros = useRos()
   const { apiBase } = useRuntimeConfig()
+  const { runtime } = useRuntimeMode(apiBase)
+
+  const phaseTopic =
+    runtime?.mode === 'lightsout' ? LIGHTSOUT_PHASE_TOPIC : DEFAULT_WEBHOOK_PHASE_TOPIC
 
   const [runState, setRunState] = useState('idle')
   const [livePhase, setLivePhase] = useState<string | null>(null)
@@ -118,7 +125,7 @@ function App() {
     if (!r) return
 
     const subs = [
-      new ROSLIB.Topic({ ros: r, name: WEBHOOK_PHASE_TOPIC, messageType: 'std_msgs/String' }),
+      new ROSLIB.Topic({ ros: r, name: phaseTopic, messageType: 'std_msgs/String' }),
       new ROSLIB.Topic({ ros: r, name: WEBHOOK_ACTIVE_TOPIC, messageType: 'std_msgs/Bool' }),
       new ROSLIB.Topic({ ros: r, name: WEBHOOK_METADATA_TOPIC, messageType: 'std_msgs/String' }),
       new ROSLIB.Topic({ ros: r, name: WEIGHT_TOPIC, messageType: 'std_msgs/Float64' }),
@@ -160,7 +167,7 @@ function App() {
     subs[7].subscribe((msg: { data: string }) => setRunState((msg.data || 'idle').toLowerCase()))
 
     return () => subs.forEach((t) => t.unsubscribe())
-  }, [ros])
+  }, [ros, phaseTopic])
 
   useEffect(() => {
     let cancelled = false

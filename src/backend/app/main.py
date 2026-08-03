@@ -54,7 +54,11 @@ from .modes.mock_local import (
     allocate_mock_batch_id,
     is_mock_event_id,
 )
-from .run_spec import OperatingMode
+from .modes.powders import get_powder, load_powders
+from .modes.target_sampler import generate_target_schedule
+from .export import router as export_router
+from .exports_dir import ensure_exports_dir, sweep_stale_exports
+from .run_spec import OperatingMode, RunLabel
 from .models import (
     Base,
     LightsOutProcessed,
@@ -191,6 +195,17 @@ def ensure_run_columns() -> None:
         'ALTER TABLE runs ADD COLUMN IF NOT EXISTS metadata_json TEXT',
         'ALTER TABLE runs ADD COLUMN IF NOT EXISTS run_key VARCHAR',
         'ALTER TABLE runs ADD COLUMN IF NOT EXISTS environment VARCHAR',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS powder_id VARCHAR',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS powder_name VARCHAR',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS lot_code VARCHAR',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS operator VARCHAR',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS notes TEXT',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS episodes_total INTEGER',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS scooped_mass_g DOUBLE PRECISION',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS target_mode VARCHAR',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS target_fraction DOUBLE PRECISION',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS pour_outcome VARCHAR',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS rng_seed INTEGER',
     ]
     with engine.begin() as conn:
         for statement in statements:
@@ -198,6 +213,35 @@ def ensure_run_columns() -> None:
 
 
 ensure_run_columns()
+
+
+def ensure_lightsout_processed_label_columns() -> None:
+    statements = [
+        'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS powder_id VARCHAR',
+        'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS powder_name VARCHAR',
+        'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS lot_code VARCHAR',
+        'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS operator VARCHAR',
+        'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS notes TEXT',
+        'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS episodes_total INTEGER',
+        'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS scooped_mass_g DOUBLE PRECISION',
+        'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS target_mode VARCHAR',
+        'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS target_fraction DOUBLE PRECISION',
+        'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS pour_outcome VARCHAR',
+        'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS rng_seed INTEGER',
+    ]
+    with engine.begin() as conn:
+        for statement in statements:
+            conn.execute(text(statement))
+
+
+ensure_lightsout_processed_label_columns()
+
+try:
+    ensure_exports_dir()
+    sweep_stale_exports()
+except Exception:  # noqa: BLE001
+    logger = logging.getLogger('uvicorn.error')
+    logger.warning('exports dir init/sweep failed', exc_info=True)
 
 
 def ensure_robot_weightment_run_columns() -> None:
@@ -217,6 +261,7 @@ def ensure_robot_weightment_run_columns() -> None:
 ensure_robot_weightment_run_columns()
 
 app = FastAPI(title='Rhapsodi Backend')
+app.include_router(export_router)
 
 # Robot dashboards are opened via Tailscale MagicDNS / LAN hostnames
 # (e.g. http://rhapsodi-pi5:8080). Default to reflecting any http(s) Origin
@@ -344,6 +389,16 @@ def get_runtime_capabilities() -> dict:
     return get_mode_manager().capabilities()
 
 
+@app.get('/powders')
+def list_powders() -> dict:
+    """Operator powder catalog for lightsout / mock-local labeling."""
+    try:
+        powders = [p.as_dict() for p in load_powders()]
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {'powders': powders}
+
+
 def build_mock_robot_run_contract(
     row: WebhookWeightment,
     *,
@@ -445,6 +500,9 @@ def create_mock_local_run(payload: MockLocalRunRequest) -> dict:
         raise HTTPException(
             status_code=400, detail='tolerance_g must be >= 0'
         )
+    cycles = int(payload.cycles or 1)
+    if cycles <= 0:
+        raise HTTPException(status_code=400, detail='cycles must be > 0')
 
     if get_lightsout_session().get_active() is not None:
         raise HTTPException(
@@ -452,8 +510,19 @@ def create_mock_local_run(payload: MockLocalRunRequest) -> dict:
             detail='Cannot start mock run while lights-out training is active',
         )
 
+    powder = None
+    powder_id = (payload.powder_id or '').strip()
+    if powder_id:
+        try:
+            powder = get_powder(powder_id)
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    ingredient_id = powder.id if powder else MOCK_INGREDIENT_ID
+    lot_code = (payload.lot_code or '').strip()
+
     db = SessionLocal()
     row: WebhookWeightment | None = None
+    created_rows: list[WebhookWeightment] = []
     try:
         reconcile_stale_robot_runs(db)
         mock_uuid = str(uuid.uuid4())
@@ -461,22 +530,27 @@ def create_mock_local_run(payload: MockLocalRunRequest) -> dict:
         # Negative batch ids cannot collide with Condor (positive) ids.
         batch_id = allocate_mock_batch_id(mock_uuid)
         target_weight_kg = float(payload.target_weight_g) / 1000.0
-        row = WebhookWeightment(
-            event_id=event_id,
-            sent_utc=utc_now(),
-            site_id=MOCK_SITE_ID,
-            batch_id=batch_id,
-            batch_number=f'mock{batch_id}',
-            ingredient_id=MOCK_INGREDIENT_ID,
-            target_weight_kg=target_weight_kg,
-            weightment_completed=False,
-            mes_timeseries_sent=False,
-            batch_auto_run_enabled=False,
-            lot_code='',
-        )
-        db.add(row)
+        auto_run = cycles > 1
+        for _ in range(cycles):
+            created = WebhookWeightment(
+                event_id=event_id,
+                sent_utc=utc_now(),
+                site_id=MOCK_SITE_ID,
+                batch_id=batch_id,
+                batch_number=f'mock{batch_id}',
+                ingredient_id=ingredient_id,
+                target_weight_kg=target_weight_kg,
+                weightment_completed=False,
+                mes_timeseries_sent=False,
+                batch_auto_run_enabled=auto_run,
+                lot_code=lot_code,
+            )
+            db.add(created)
+            created_rows.append(created)
         db.commit()
-        db.refresh(row)
+        for created in created_rows:
+            db.refresh(created)
+        row = created_rows[0]
 
         contract = build_mock_robot_run_contract(
             row,
@@ -486,6 +560,13 @@ def create_mock_local_run(payload: MockLocalRunRequest) -> dict:
             return_target_name=payload.return_target_name,
             tolerance_g=payload.tolerance_g,
         )
+        if powder is not None:
+            contract['ingredient_id'] = powder.id
+            contract['ingredient_name'] = powder.name
+            contract['powder_id'] = powder.id
+            contract['powder_name'] = powder.name
+            contract['operator'] = (payload.operator or '').strip()
+            contract['notes'] = (payload.notes or '').strip()
         result = start_robot_run_for_weightment_row(db, row, contract=contract)
         return {
             'ok': True,
@@ -493,6 +574,10 @@ def create_mock_local_run(payload: MockLocalRunRequest) -> dict:
             'environment': current['environment'],
             'event_id': event_id,
             'weightment_id': row.id,
+            'cycles': cycles,
+            'weightment_ids': [r.id for r in created_rows],
+            'powder_id': powder.id if powder else None,
+            'powder_name': powder.name if powder else None,
             'run': result.get('run'),
             'alreadyRunning': bool(result.get('alreadyRunning')),
             'contract': {
@@ -505,28 +590,30 @@ def create_mock_local_run(payload: MockLocalRunRequest) -> dict:
             },
         }
     except HTTPException:
-        # Roll back orphaned mock weightment if adapter start failed after insert.
-        if row is not None and row.id is not None:
-            try:
+        # Roll back orphaned mock weightments if adapter start failed after insert.
+        try:
+            for orphan_row in created_rows:
+                if orphan_row.id is None:
+                    continue
                 orphan = (
                     db.query(WebhookWeightment)
-                    .filter(WebhookWeightment.id == row.id)
+                    .filter(WebhookWeightment.id == orphan_row.id)
                     .first()
                 )
-                if orphan is not None and is_mock_event_id(orphan.event_id):
-                    has_run = (
-                        db.query(RobotWeightmentRun)
-                        .filter(RobotWeightmentRun.weightment_id == orphan.id)
-                        .first()
-                    )
-                    if has_run is None:
-                        db.delete(orphan)
-                        db.commit()
-            except Exception:
-                logger.exception(
-                    'Failed to purge orphaned mock weightment_id=%s',
-                    getattr(row, 'id', None),
+                if orphan is None or not is_mock_event_id(orphan.event_id):
+                    continue
+                has_run = (
+                    db.query(RobotWeightmentRun)
+                    .filter(RobotWeightmentRun.weightment_id == orphan.id)
+                    .first()
                 )
+                if has_run is None:
+                    db.delete(orphan)
+            db.commit()
+        except Exception:
+            logger.exception(
+                'Failed to purge orphaned mock weightments for event'
+            )
         raise
     except Exception as exc:
         db.rollback()
@@ -536,15 +623,62 @@ def create_mock_local_run(payload: MockLocalRunRequest) -> dict:
         db.close()
 
 
-def start_lightsout_run_via_adapter(payload: LightsoutRunRequest) -> dict[str, Any]:
+def _resolve_lightsout_powder(payload: LightsoutRunRequest):
+    """Resolve powder_id (preferred) against the catalog."""
+    powder_id = (payload.powder_id or '').strip()
+    if not powder_id and (payload.powder_name or '').strip():
+        # One-release compat: map free-text name to catalog by name or id.
+        wanted = payload.powder_name.strip().lower()
+        for powder in load_powders():
+            if powder.id.lower() == wanted or powder.name.lower() == wanted:
+                return powder
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                'powder_id is required; free-text powder_name is deprecated '
+                'and did not match the catalog'
+            ),
+        )
+    try:
+        return get_powder(powder_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def start_lightsout_run_via_adapter(
+    payload: LightsoutRunRequest,
+    *,
+    powder,
+    schedule,
+) -> dict[str, Any]:
     """POST training start to robot_start_adapter /start_lightsout (no Condor)."""
+    min_scooped = (
+        float(payload.min_scooped_g)
+        if payload.min_scooped_g and payload.min_scooped_g > 0
+        else float(powder.min_scooped_g)
+    )
     adapter_payload = {
-        'powder_name': payload.powder_name.strip(),
-        'cycle_end_limit': (payload.cycle_end_limit or '').strip(),
+        'powder_id': powder.id,
+        'powder_name': powder.name,
+        'container_target': powder.container_target,
+        'pour_target': powder.pour_target,
+        'lot_code': (payload.lot_code or '').strip(),
+        'operator': (payload.operator or '').strip(),
+        'notes': (payload.notes or '').strip(),
         'target_weight_g': float(payload.target_weight_g),
         'episodes': int(payload.episodes),
         'batch_id': (payload.batch_id or '').strip(),
         'enable_scoop': bool(payload.enable_scoop),
+        'stop_on': payload.stop_on,
+        'stop_value': float(payload.stop_value or 0.0),
+        'target_mode': schedule.target_mode,
+        'target_fractions': list(schedule.fractions),
+        'min_scooped_g': min_scooped,
+        'target_min_g': float(payload.target_min_g or 0.0),
+        'target_max_g': float(payload.target_max_g or 0.0),
+        'rng_seed': int(schedule.rng_seed),
     }
     return post_json(
         ROBOT_LIGHTSOUT_ADAPTER_URL,
@@ -570,23 +704,63 @@ def create_lightsout_run(payload: LightsoutRunRequest) -> dict:
                 'environment': current['environment'],
             },
         )
-    powder = (payload.powder_name or '').strip()
-    if not powder:
-        raise HTTPException(status_code=400, detail='powder_name is required')
-    if payload.target_weight_g <= 0:
+    powder = _resolve_lightsout_powder(payload)
+    if payload.target_weight_g <= 0 and payload.target_mode == 'fixed':
         raise HTTPException(
             status_code=400, detail='target_weight_g must be > 0'
         )
     if payload.episodes <= 0:
         raise HTTPException(status_code=400, detail='episodes must be > 0')
 
+    try:
+        schedule = generate_target_schedule(
+            cycles=int(payload.episodes),
+            target_mode=payload.target_mode,
+            frac_min=float(payload.frac_min),
+            frac_max=float(payload.frac_max),
+            fixed_target_g=(
+                float(payload.target_weight_g)
+                if payload.target_mode == 'fixed'
+                else None
+            ),
+            rng_seed=payload.rng_seed,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    label = RunLabel(
+        powder_id=powder.id,
+        powder_name=powder.name,
+        container_target=powder.container_target,
+        pour_target=powder.pour_target,
+        lot_code=(payload.lot_code or '').strip() or None,
+        operator=(payload.operator or '').strip() or None,
+        notes=(payload.notes or '').strip() or None,
+        cycles=int(payload.episodes),
+        stop_on=payload.stop_on,
+        stop_value=float(payload.stop_value or 0.0) or None,
+        target_mode=schedule.target_mode,
+        target_fractions=list(schedule.fractions),
+        rng_seed=schedule.rng_seed,
+    )
     request_meta = {
-        'powder_name': powder,
+        'powder_id': powder.id,
+        'powder_name': powder.name,
+        'container_target': powder.container_target,
+        'pour_target': powder.pour_target,
         'target_weight_g': float(payload.target_weight_g),
         'episodes': int(payload.episodes),
         'batch_id': (payload.batch_id or '').strip(),
-        'cycle_end_limit': (payload.cycle_end_limit or '').strip(),
         'enable_scoop': bool(payload.enable_scoop),
+        'lot_code': label.lot_code or '',
+        'operator': label.operator or '',
+        'notes': label.notes or '',
+        'stop_on': payload.stop_on,
+        'stop_value': float(payload.stop_value or 0.0),
+        'target_mode': schedule.target_mode,
+        'target_fractions': list(schedule.fractions),
+        'rng_seed': schedule.rng_seed,
+        'label': label.model_dump(exclude_none=True),
     }
 
     db = SessionLocal()
@@ -619,7 +793,9 @@ def create_lightsout_run(payload: LightsoutRunRequest) -> dict:
         db.close()
 
     try:
-        service_response = start_lightsout_run_via_adapter(payload)
+        service_response = start_lightsout_run_via_adapter(
+            payload, powder=powder, schedule=schedule
+        )
     except HTTPException:
         raise
     except Exception as exc:
@@ -654,6 +830,11 @@ def create_lightsout_run(payload: LightsoutRunRequest) -> dict:
         'message': message,
         'request': request_meta,
         'session': session,
+        'schedule': {
+            'target_mode': schedule.target_mode,
+            'fractions': list(schedule.fractions),
+            'rng_seed': schedule.rng_seed,
+        },
     }
 
 

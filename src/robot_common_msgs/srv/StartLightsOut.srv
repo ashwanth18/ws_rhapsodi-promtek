@@ -1,11 +1,23 @@
+# Closed-loop lights-out training start (breaking change vs powder_name-only).
+string powder_id
 string powder_name
-string cycle_end_limit
+string container_target
+string pour_target
+string lot_code
+string operator_name
+string notes
 float32 target_weight_g
 int32 episodes
 string batch_id
-# When true, LightsOut tree runs ExecuteScoop after MoveTo container.
-# Default false for safety (move/pour-only training).
 bool enable_scoop
+string stop_on
+float32 stop_value
+string target_mode
+float32[] target_fractions
+float32 min_scooped_g
+float32 target_min_g
+float32 target_max_g
+int32 rng_seed
 ---
 bool accepted
 string message

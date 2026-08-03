@@ -35,7 +35,13 @@ always_on:
     - /lightsout_training/run_id
     - /lightsout_training/batch_id
     - /lightsout_training/ingredient_id
+    - /lightsout_training/powder_id
+    - /lightsout_training/lot_code
+    - /lightsout_training/operator
+    - /lightsout_training/notes
     - /lightsout_training/target_weight_g
+    - /lightsout_training/scooped_mass_g
+    - /lightsout_training/pour_outcome
     - /lightsout_training/episode
     - /lightsout_training/episodes_total
     - /lightsout_training/mode

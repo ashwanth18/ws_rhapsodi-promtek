@@ -17,7 +17,9 @@
 #include "robot_orchestrator/weight_fresh_node.hpp"
 #include "robot_orchestrator/capture_baseline_node.hpp"
 #include "robot_orchestrator/compute_scoop_offset_node.hpp"
-#include "robot_orchestrator/weight_delta_node.hpp"
+#include "robot_orchestrator/measure_scooped_mass_node.hpp"
+#include "robot_orchestrator/sample_target_weight_node.hpp"
+#include "robot_orchestrator/record_pour_outcome_node.hpp"
 #include "robot_orchestrator/episode_marker_node.hpp"
 #include "robot_orchestrator/episode_end_marker_node.hpp"
 #include "robot_orchestrator/phase_marker_node.hpp"
@@ -50,7 +52,9 @@ void RegisterNodes(BT::BehaviorTreeFactory & factory)
   factory.registerNodeType<WeightFreshNode>("WeightFresh");
   factory.registerNodeType<CaptureBaselineNode>("CaptureBaseline");
   factory.registerNodeType<ComputeScoopOffsetNode>("ComputeScoopOffset");
-  factory.registerNodeType<WeightDeltaNode>("WeightDelta");
+  factory.registerNodeType<MeasureScoopedMassNode>("MeasureScoopedMass");
+  factory.registerNodeType<SampleTargetWeightNode>("SampleTargetWeight");
+  factory.registerNodeType<RecordPourOutcomeNode>("RecordPourOutcome");
   factory.registerNodeType<EpisodeMarkerNode>("EpisodeMarker");
   factory.registerNodeType<EpisodeEndMarkerNode>("EpisodeEndMarker");
   factory.registerNodeType<PhaseMarkerNode>("PhaseMarker");

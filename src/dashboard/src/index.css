@@ -18,6 +18,8 @@
   --surface-1: #0c0f14;
   --surface-2: #12161d;
   --surface-3: #181d26;
+  --surface: var(--surface-2);
+  --surface-elevated: var(--surface-3);
   --surface-muted: rgba(255, 255, 255, 0.04);
   --surface-strong: rgba(255, 255, 255, 0.08);
   --card-surface: #12161d;
@@ -75,6 +77,8 @@
   --surface-1: #ffffff;
   --surface-2: #f8fafc;
   --surface-3: #eef2f7;
+  --surface: var(--surface-2);
+  --surface-elevated: var(--surface-3);
   --surface-muted: rgba(15, 23, 42, 0.04);
   --surface-strong: rgba(15, 23, 42, 0.07);
   --card-surface: #ffffff;

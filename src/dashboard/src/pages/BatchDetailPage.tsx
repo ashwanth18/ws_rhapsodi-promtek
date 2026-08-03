@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
 
 import DateTimeText from '../components/DateTimeText'
 import GlassCard from '../components/GlassCard'
@@ -10,6 +11,7 @@ import MetricCard from '../components/ui/MetricCard'
 import StatusBadge from '../components/ui/StatusBadge'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { useRuntimeConfig } from '../config/RuntimeConfig'
+import { useRuntimeMode } from '../hooks/useRuntimeMode'
 
 type Summary = {
   event_id: string
@@ -108,6 +110,7 @@ function ChevronIcon({ open }: { open: boolean }) {
 
 export default function BatchDetailPage() {
   const { apiBase } = useRuntimeConfig()
+  const { mesSinkDisabled } = useRuntimeMode(apiBase)
   const { eventId = '' } = useParams()
   const [searchParams] = useSearchParams()
   const decodedEventId = decodeURIComponent(eventId)
@@ -122,6 +125,8 @@ export default function BatchDetailPage() {
   const [runningBatch, setRunningBatch] = useState(false)
   const [sendingId, setSendingId] = useState<number | null>(null)
   const [confirmRunId, setConfirmRunId] = useState<number | null>(null)
+  const [confirmFullBatch, setConfirmFullBatch] = useState(false)
+  const [confirmSendId, setConfirmSendId] = useState<number | null>(null)
   const [drawerRow, setDrawerRow] = useState<Row | null>(null)
   const [openRobotDetailIds, setOpenRobotDetailIds] = useState<number[]>([])
   const [robotDetailsInitialized, setRobotDetailsInitialized] = useState(false)
@@ -256,7 +261,7 @@ export default function BatchDetailPage() {
         error instanceof Error
           ? error.message
           : `Failed to start robot run for weightment ${weightmentId}`
-      window.alert(message)
+      toast.error(message)
     } finally {
       setRunningId(null)
       setConfirmRunId(null)
@@ -279,7 +284,7 @@ export default function BatchDetailPage() {
         error instanceof Error
           ? error.message
           : `Failed to start full batch for event ${decodedEventId}`
-      window.alert(message)
+      toast.error(message)
     } finally {
       setRunningBatch(false)
     }
@@ -299,7 +304,7 @@ export default function BatchDetailPage() {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : `Failed to send weightment ${weightmentId}`
-      window.alert(message)
+      toast.error(message)
     } finally {
       setSendingId(null)
     }
@@ -362,7 +367,7 @@ export default function BatchDetailPage() {
               />
               {!summary?.completed && (
                 <Button
-                  onClick={() => runFullBatch()}
+                  onClick={() => setConfirmFullBatch(true)}
                   disabled={
                     loading ||
                     runningBatch ||
@@ -529,12 +534,18 @@ export default function BatchDetailPage() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                onClick={() => sendWeightment(row.weightment_id)}
+                                onClick={() => setConfirmSendId(row.weightment_id)}
                                 disabled={
+                                  mesSinkDisabled ||
                                   sendingId === row.weightment_id ||
                                   row.location_id == null ||
                                   row.robot_status === 'starting' ||
                                   row.robot_status === 'running'
+                                }
+                                title={
+                                  mesSinkDisabled
+                                    ? 'MES send disabled in mock-local / lightsout mode'
+                                    : undefined
                                 }
                               >
                                 {sendingId === row.weightment_id ? 'Sending…' : 'Send To MES'}
@@ -564,6 +575,31 @@ export default function BatchDetailPage() {
           loading={runningId != null}
           onConfirm={() => confirmRunId != null && void runRobot(confirmRunId)}
           onCancel={() => setConfirmRunId(null)}
+        />
+        <ConfirmDialog
+          open={confirmFullBatch}
+          title="Run full batch?"
+          message={`Start robot runs for all incomplete weightments in batch ${summary?.batch_id ?? decodedEventId}?`}
+          confirmLabel="Run Full Batch"
+          loading={runningBatch}
+          onConfirm={() => {
+            setConfirmFullBatch(false)
+            void runFullBatch()
+          }}
+          onCancel={() => setConfirmFullBatch(false)}
+        />
+        <ConfirmDialog
+          open={confirmSendId != null}
+          title="Send to MES?"
+          message={`Send weightment ${confirmSendId} results to MES?`}
+          confirmLabel="Send To MES"
+          loading={sendingId != null}
+          onConfirm={() => {
+            const id = confirmSendId
+            setConfirmSendId(null)
+            if (id != null) void sendWeightment(id)
+          }}
+          onCancel={() => setConfirmSendId(null)}
         />
         <RunDetailDrawer row={drawerRow} onClose={() => setDrawerRow(null)} />
       </div>

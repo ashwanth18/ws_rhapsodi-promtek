@@ -6,4 +6,5 @@ pydantic==2.7.4
 roslibpy
 pandas==2.2.2
 pyarrow
+PyYAML==6.0.2
 

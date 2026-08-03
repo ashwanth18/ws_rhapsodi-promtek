@@ -19,6 +19,7 @@
 #include <thread>
 #include "robot_orchestrator/register.hpp"
 #include "robot_orchestrator/mode_start.hpp"
+#include <std_msgs/msg/float32.hpp>
 #include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/int32.hpp>
@@ -148,6 +149,15 @@ int main(int argc, char ** argv)
   auto lightsout_mode_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/mode", latched_qos);
   auto lightsout_robot_id_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/robot_id", latched_qos);
   auto lightsout_episodes_total_pub = ros_node->create_publisher<std_msgs::msg::Int32>("/lightsout_training/episodes_total", latched_qos);
+  auto lightsout_powder_id_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/powder_id", latched_qos);
+  auto lightsout_lot_code_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/lot_code", latched_qos);
+  auto lightsout_operator_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/operator", latched_qos);
+  auto lightsout_notes_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/notes", latched_qos);
+  auto lightsout_scooped_mass_pub = ros_node->create_publisher<std_msgs::msg::Float32>("/lightsout_training/scooped_mass_g", latched_qos);
+  auto lightsout_pour_outcome_pub = ros_node->create_publisher<std_msgs::msg::String>("/lightsout_training/pour_outcome", latched_qos);
+  blackboard->set("lightsout_target_weight_pub", lightsout_target_pub);
+  blackboard->set("lightsout_scooped_mass_pub", lightsout_scooped_mass_pub);
+  blackboard->set("lightsout_pour_outcome_pub", lightsout_pour_outcome_pub);
   auto webhook_active_pub = ros_node->create_publisher<std_msgs::msg::Bool>("/webhook_run/active", latched_qos);
   auto webhook_meta_pub = ros_node->create_publisher<std_msgs::msg::String>("/webhook_run/metadata", latched_qos);
   auto run_state_pub = ros_node->create_publisher<std_msgs::msg::String>("/orchestrator/run_state", latched_qos);
@@ -288,7 +298,9 @@ int main(int argc, char ** argv)
     [&, lightsout_active_pub,
       lightsout_run_id_pub, lightsout_batch_id_pub, lightsout_ingredient_pub,
       lightsout_target_pub, lightsout_mode_pub, lightsout_robot_id_pub,
-      lightsout_episodes_total_pub](const std::shared_ptr<StartLightsOut::Request> req,
+      lightsout_episodes_total_pub, lightsout_powder_id_pub, lightsout_lot_code_pub,
+      lightsout_operator_pub, lightsout_notes_pub, lightsout_scooped_mass_pub](
+        const std::shared_ptr<StartLightsOut::Request> req,
                     std::shared_ptr<StartLightsOut::Response> resp){
       std::string reject_message;
       if (!tryClaimStart(reject_message)) {
@@ -309,16 +321,46 @@ int main(int argc, char ** argv)
       std::strftime(ts_buf, sizeof(ts_buf), "%Y%m%dT%H%M%SZ", &tm);
       const std::string run_id = std::string(ts_buf);
 
+      const std::string container_target =
+        req->container_target.empty() ? req->powder_name : req->container_target;
+      const std::string pour_target =
+        req->pour_target.empty() ? container_target : req->pour_target;
+
+      std::string fractions_csv;
+      for (std::size_t i = 0; i < req->target_fractions.size(); ++i) {
+        if (i > 0) {
+          fractions_csv += ',';
+        }
+        fractions_csv += std::to_string(req->target_fractions[i]);
+      }
+
       beginPendingRun("LightsOut", "lightsout", "/lightsout_training/phase");
+      blackboard->set("lightsout_powder_id", req->powder_id);
       blackboard->set("lightsout_powder_name", req->powder_name);
-      blackboard->set("lightsout_cycle_end_limit", req->cycle_end_limit);
+      blackboard->set("lightsout_container_name", container_target);
+      blackboard->set("lightsout_pour_target", pour_target);
+      blackboard->set("lightsout_lot_code", req->lot_code);
+      blackboard->set("lightsout_operator", req->operator_name);
+      blackboard->set("lightsout_notes", req->notes);
+      blackboard->set("lightsout_stop_on", req->stop_on);
+      blackboard->set("lightsout_stop_value", static_cast<double>(req->stop_value));
+      blackboard->set("lightsout_stop_requested", false);
+      blackboard->set("lightsout_target_mode",
+                      req->target_mode.empty() ? std::string("fixed") : req->target_mode);
+      blackboard->set("lightsout_fixed_target_g", target_g);
+      blackboard->set("lightsout_target_fractions_csv", fractions_csv);
+      blackboard->set("lightsout_min_scooped_g",
+                      req->min_scooped_g > 0.0f
+                        ? static_cast<double>(req->min_scooped_g)
+                        : 20.0);
+      blackboard->set("lightsout_target_min_g", static_cast<double>(req->target_min_g));
+      blackboard->set("lightsout_target_max_g", static_cast<double>(req->target_max_g));
+      blackboard->set("lightsout_rng_seed", req->rng_seed);
       blackboard->set("lightsout_target_weight_g", target_g);
       blackboard->set("lightsout_tolerance_g", tolerance_g);
       blackboard->set("lightsout_episodes", episodes);
       blackboard->set("lightsout_batch_id", req->batch_id);
-      blackboard->set("lightsout_container_name", req->powder_name);
       blackboard->set("lightsout_episode_index", 0);
-      // Default off: ExecuteScoop is gated in lightsout.xml via Precondition.
       blackboard->set("enable_scoop", static_cast<bool>(req->enable_scoop));
 
       lightsout_active = true;
@@ -338,6 +380,22 @@ int main(int argc, char ** argv)
       std_msgs::msg::String ingredient_msg;
       ingredient_msg.data = req->powder_name;
       lightsout_ingredient_pub->publish(ingredient_msg);
+
+      std_msgs::msg::String powder_id_msg;
+      powder_id_msg.data = req->powder_id;
+      lightsout_powder_id_pub->publish(powder_id_msg);
+
+      std_msgs::msg::String lot_code_msg;
+      lot_code_msg.data = req->lot_code;
+      lightsout_lot_code_pub->publish(lot_code_msg);
+
+      std_msgs::msg::String operator_msg;
+      operator_msg.data = req->operator_name;
+      lightsout_operator_pub->publish(operator_msg);
+
+      std_msgs::msg::String notes_msg;
+      notes_msg.data = req->notes;
+      lightsout_notes_pub->publish(notes_msg);
 
       std_msgs::msg::Float64 target_msg;
       target_msg.data = target_g;

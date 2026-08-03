@@ -1,6 +1,6 @@
-from typing import Any, Optional
+from typing import Any, List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class RuntimeModeRequest(BaseModel):
@@ -17,18 +17,36 @@ class MockLocalRunRequest(BaseModel):
     pickup_target_name: Optional[str] = None
     weigh_target_name: Optional[str] = None
     return_target_name: Optional[str] = None
+    powder_id: Optional[str] = None
+    cycles: int = 1
+    lot_code: str = ''
+    operator: str = ''
+    notes: str = ''
 
 
 class LightsoutRunRequest(BaseModel):
     """Operator-triggered lights-out training run (lightsout mode)."""
 
-    powder_name: str
-    target_weight_g: float
-    episodes: int
+    powder_id: str
+    target_weight_g: float = 250.0
+    episodes: int = 10
     batch_id: str = ''
-    cycle_end_limit: str = ''
-    # Opt-in: LightsOut tree skips ExecuteScoop unless true (safe default).
-    enable_scoop: bool = False
+    enable_scoop: bool = True
+    lot_code: str = ''
+    operator: str = ''
+    notes: str = ''
+    stop_on: Literal['episodes', 'total_weight_g', 'duration_min'] = 'episodes'
+    stop_value: float = 0.0
+    target_mode: Literal['fixed', 'random_fraction', 'stratified'] = 'stratified'
+    frac_min: float = 0.4
+    frac_max: float = 0.9
+    target_min_g: float = 0.0
+    target_max_g: float = 0.0
+    min_scooped_g: float = 0.0
+    rng_seed: Optional[int] = None
+    # Kept for one-release backward compatibility with old clients that still
+    # POST powder_name. Ignored when powder_id is present.
+    powder_name: str = ''
 
 
 class ProcessedRequest(BaseModel):
@@ -63,6 +81,17 @@ class ProcessedRequest(BaseModel):
     metadata_json: Optional[str] = None
     phase_events_json: Optional[str] = None
     features_json: Optional[str] = None
+    powder_id: Optional[str] = None
+    powder_name: Optional[str] = None
+    lot_code: Optional[str] = None
+    operator: Optional[str] = None
+    notes: Optional[str] = None
+    episodes_total: Optional[int] = None
+    scooped_mass_g: Optional[float] = None
+    target_mode: Optional[str] = None
+    target_fraction: Optional[float] = None
+    pour_outcome: Optional[str] = None
+    rng_seed: Optional[int] = None
 
 
 class ProcessedResponse(BaseModel):

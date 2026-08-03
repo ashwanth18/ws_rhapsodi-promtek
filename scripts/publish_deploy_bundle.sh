@@ -71,6 +71,8 @@ BUNDLE_FILES=(
   config/device_classes.yaml
   config/profiles.yaml
   config/recording_profiles.yaml
+  config/powders.yaml
+  config/powders.yaml.example
   docker/nginx-dashboard.conf
   monitoring/exporters/docker-compose.exporters.yml
   monitoring/exporters/promtail-config.yml

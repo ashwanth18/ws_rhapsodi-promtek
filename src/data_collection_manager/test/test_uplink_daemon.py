@@ -2,7 +2,10 @@ from pathlib import Path
 
 from data_collection_manager.manifest import TIER_0, TIER_1, RunManifest
 from data_collection_manager.uplink_client import UplinkError
-from data_collection_manager.uplink_daemon import run_uplink_pass
+from data_collection_manager.uplink_daemon import (
+    resolve_tier0_files,
+    run_uplink_pass,
+)
 
 
 class FakeClient:
@@ -158,3 +161,72 @@ def test_missing_fleet_log_is_not_an_error(tmp_path):
     )
     assert summary.fleet_log_synced_bytes == 0
     assert client.fleet_appends == []
+
+
+def test_resolve_tier0_picks_episode_parquet_as_features(tmp_path):
+    """processing writes episode_N_0.parquet — must map to features_parquet."""
+    run_dir = tmp_path / 'run-1'
+    bag_dir = run_dir / 'episode_1'
+    bag_dir.mkdir(parents=True)
+    metadata = run_dir / 'metadata.json'
+    metadata.write_text('{}')
+    events = run_dir / 'events.jsonl'
+    events.write_text('{}\n')
+    episode_parquet = bag_dir / 'episode_1_0.parquet'
+    episode_parquet.write_bytes(b'parquet-bytes')
+
+    class _Art:
+        def __init__(self, path):
+            self.path = str(path)
+
+    files, extras = resolve_tier0_files(
+        [_Art(metadata), _Art(events)],
+        run_folder=run_dir,
+    )
+    assert files['metadata_json'] == metadata
+    assert files['events_jsonl'] == events
+    assert files['features_parquet'] == episode_parquet
+    assert extras == []
+
+
+def test_resolve_tier0_prefers_explicit_features_parquet(tmp_path):
+    run_dir = tmp_path / 'run-1'
+    run_dir.mkdir()
+    features = run_dir / 'features.parquet'
+    features.write_bytes(b'features')
+    older = run_dir / 'episode_1_0.parquet'
+    older.write_bytes(b'older')
+
+    class _Art:
+        def __init__(self, path):
+            self.path = str(path)
+
+    files, extras = resolve_tier0_files([_Art(features), _Art(older)], run_dir)
+    assert files['features_parquet'] == features
+    assert extras == [older]
+
+
+def test_tier0_sync_maps_episode_parquet(tmp_path):
+    manifest = RunManifest(tmp_path / 'manifest.sqlite')
+    run_dir = tmp_path / 'run-1'
+    bag_dir = run_dir / 'episode_1'
+    bag_dir.mkdir(parents=True)
+    metadata = run_dir / 'metadata.json'
+    metadata.write_text('{}')
+    parquet = bag_dir / 'episode_1_0.parquet'
+    parquet.write_bytes(b'x' * 50)
+    (bag_dir / 'episode_1_0.mcap').write_bytes(b'x' * 100)
+
+    manifest.upsert_run('run-1', 'robot-1', run_dir, device_id='robot-1')
+    manifest.record_artifact('run-1', TIER_0, metadata)
+    # Parquet may only exist on disk (not yet as a Tier-0 artifact).
+    manifest.record_artifact('run-1', TIER_1, bag_dir)
+
+    client = FakeClient()
+    summary = run_uplink_pass(manifest, client, device_id='robot-1')
+
+    assert summary.tier0_synced_run_keys == ['run-1']
+    assert client.tier0_calls, 'expected a Tier-0 sync call'
+    field_names = client.tier0_calls[0][3]
+    assert 'features_parquet' in field_names
+    assert 'metadata_json' in field_names

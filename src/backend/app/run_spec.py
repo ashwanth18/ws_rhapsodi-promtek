@@ -10,9 +10,9 @@ rather than inventing per-mode shapes.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class OperatingMode(str, Enum):
@@ -28,7 +28,7 @@ class Environment(str, Enum):
 
 
 # Behavior tree / start-service identity. MES family + mock share one tree;
-# lights-out uses a separate tree (Phase 2 may rename/refactor further).
+# lights-out uses a separate tree.
 TREE_WEBHOOK_WEIGHTMENT = 'WebhookWeightment'
 TREE_LIGHTSOUT = 'LightsOut'
 
@@ -39,6 +39,28 @@ _MES_FAMILY = frozenset(
         OperatingMode.MOCK_LOCAL,
     }
 )
+
+
+class RunLabel(BaseModel):
+    """Snapshot of powder / operator labels written into each run.
+
+    Stored by value (not catalog FK) so renaming a powder later cannot
+    rewrite historical training data.
+    """
+
+    powder_id: Optional[str] = None
+    powder_name: Optional[str] = None
+    container_target: Optional[str] = None
+    pour_target: Optional[str] = None
+    lot_code: Optional[str] = None
+    operator: Optional[str] = None
+    notes: Optional[str] = None
+    cycles: Optional[int] = None
+    stop_on: Optional[str] = None
+    stop_value: Optional[float] = None
+    target_mode: Optional[str] = None
+    target_fractions: Optional[List[float]] = None
+    rng_seed: Optional[int] = None
 
 
 class RunSpec(BaseModel):
@@ -54,6 +76,7 @@ class RunSpec(BaseModel):
     weightment_id: Optional[str] = None
     expected_lot: Optional[str] = None
     tree_id: str = ''
+    label: Optional[RunLabel] = None
 
     @model_validator(mode='after')
     def _default_tree_id(self) -> 'RunSpec':
@@ -98,4 +121,24 @@ class RunSpec(BaseModel):
         for key, value in optional.items():
             if value is not None:
                 payload[key] = value
+        if self.label is not None:
+            label_payload = self.label.model_dump(exclude_none=True)
+            payload['label'] = label_payload
+            # Also flatten common label keys for consumers that read top-level.
+            for key in (
+                'powder_id',
+                'powder_name',
+                'container_target',
+                'pour_target',
+                'lot_code',
+                'operator',
+                'notes',
+                'cycles',
+                'stop_on',
+                'stop_value',
+                'target_mode',
+                'rng_seed',
+            ):
+                if key in label_payload and key not in payload:
+                    payload[key] = label_payload[key]
         return payload

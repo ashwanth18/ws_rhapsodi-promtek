@@ -49,8 +49,8 @@ class LightsOutMode(ModeAdapter):
             blackboard={
                 'target_weight_g': run_spec.target_weight_g,
                 'tolerance_g': run_spec.tolerance_g,
-                # ExecuteScoop gated off unless the start request opts in.
-                'enable_scoop': False,
+                # Closed-loop training scoops by default.
+                'enable_scoop': True,
             },
         )
 

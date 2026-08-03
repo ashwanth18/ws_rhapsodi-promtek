@@ -4,6 +4,7 @@ import {
   Activity,
   ChevronLeft,
   ChevronRight,
+  Database,
   FlaskConical,
   GraduationCap,
   History,
@@ -21,6 +22,7 @@ import SettingsDrawer from '../components/SettingsDrawer'
 import { useRuntimeConfig } from '../config/RuntimeConfig'
 import { ThemePreference, useTheme } from '../theme/ThemeContext'
 import { useConnectionStatus } from '../hooks/useConnectionStatus'
+import { useRuntimeMode } from '../hooks/useRuntimeMode'
 import { useShellTelemetry } from '../hooks/useShellTelemetry'
 
 const SIDEBAR_OPEN_STORAGE_KEY = 'rhapsodi.sidebarOpen'
@@ -53,6 +55,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/test', label: 'Test', icon: <FlaskConical className="h-4 w-4" />, group: 'operate' },
   { to: '/training', label: 'Training', icon: <GraduationCap className="h-4 w-4" />, group: 'operate' },
   { to: '/logs', label: 'Run History', icon: <History className="h-4 w-4" />, group: 'analyze' },
+  { to: '/data', label: 'Data Export', icon: <Database className="h-4 w-4" />, group: 'analyze' },
   { to: '/stock-location', label: 'Locations', icon: <MapPin className="h-4 w-4" />, group: 'system' },
   { to: '/controls', label: 'Controls', icon: <SlidersHorizontal className="h-4 w-4" />, group: 'system' },
 ]
@@ -74,6 +77,19 @@ function robotStateLabel(state: string) {
   return 'Idle'
 }
 
+function modeBadgeTone(mode: string | undefined): 'good' | 'warn' | 'bad' | 'idle' | 'info' {
+  if (mode === 'mes-condor') return 'info'
+  if (mode === 'mock-local' || mode === 'lightsout') return 'warn'
+  if (mode === 'mes-generic') return 'idle'
+  return 'idle'
+}
+
+function environmentBadgeTone(env: string | undefined): 'good' | 'warn' | 'idle' {
+  if (env === 'sim') return 'warn'
+  if (env === 'real') return 'good'
+  return 'idle'
+}
+
 export default function SidebarLayout({ children }: { children?: ReactNode }) {
   const [open, setOpenState] = useState(() => {
     const stored = localStorage.getItem(SIDEBAR_OPEN_STORAGE_KEY)
@@ -85,6 +101,7 @@ export default function SidebarLayout({ children }: { children?: ReactNode }) {
   const { themePreference, setThemePreference } = useTheme()
   const { runState, weightStale } = useShellTelemetry()
   const { apiStatus, rosStatus, hostName } = useConnectionStatus(weightStale)
+  const { runtime } = useRuntimeMode(apiBase)
   const [activeRun, setActiveRun] = useState<ActiveRobotRun | null>(null)
   const prevRosStatus = useRef(rosStatus)
 
@@ -212,6 +229,18 @@ export default function SidebarLayout({ children }: { children?: ReactNode }) {
                 tone={robotStateTone(effectiveState)}
                 pulse={effectiveState === 'running' || effectiveState === 'starting'}
               />
+              {runtime?.mode && (
+                <StatusBadge
+                  label={runtime.mode}
+                  tone={modeBadgeTone(runtime.mode)}
+                />
+              )}
+              {runtime?.environment && (
+                <StatusBadge
+                  label={`env ${runtime.environment}`}
+                  tone={environmentBadgeTone(runtime.environment)}
+                />
+              )}
               {/* Link health lives on Controls (Signal Deck); sticky only nudges when something is down. */}
               {linksUnhealthy && !onControls ? (
                 <Link to="/controls" title="Open Cell Signal Deck">
@@ -238,10 +267,16 @@ export default function SidebarLayout({ children }: { children?: ReactNode }) {
                 size="sm"
                 onClick={() => setThemePreference(nextTheme)}
                 title={`Theme: ${themePreference}`}
+                aria-label={`Switch theme (current: ${themePreference})`}
               >
                 <SunMoon className="h-4 w-4" />
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSettingsOpen(true)}
+                aria-label="Open settings"
+              >
                 <Settings className="h-4 w-4" />
                 {open && <span className="hidden sm:inline">Settings</span>}
               </Button>

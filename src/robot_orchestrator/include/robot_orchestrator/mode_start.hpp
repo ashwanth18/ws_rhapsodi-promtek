@@ -28,14 +28,31 @@ inline const std::vector<std::string> kWebhookBlackboardKeys = {
 };
 
 inline const std::vector<std::string> kLightsoutBlackboardKeys = {
+  "lightsout_powder_id",
   "lightsout_powder_name",
-  "lightsout_cycle_end_limit",
+  "lightsout_container_name",
+  "lightsout_pour_target",
+  "lightsout_lot_code",
+  "lightsout_operator",
+  "lightsout_notes",
+  "lightsout_stop_on",
+  "lightsout_stop_value",
+  "lightsout_stop_requested",
+  "lightsout_target_mode",
+  "lightsout_fixed_target_g",
+  "lightsout_target_fractions_csv",
   "lightsout_target_weight_g",
+  "lightsout_target_fraction",
   "lightsout_tolerance_g",
+  "lightsout_min_scooped_g",
+  "lightsout_target_min_g",
+  "lightsout_target_max_g",
+  "lightsout_rng_seed",
   "lightsout_episodes",
   "lightsout_batch_id",
-  "lightsout_container_name",
   "lightsout_episode_index",
+  "scooped_mass_g",
+  "lightsout_pour_outcome",
   "enable_scoop",
 };
 

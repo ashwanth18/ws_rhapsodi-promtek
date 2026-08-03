@@ -29,8 +29,15 @@ export default function ConfirmDialog({
         onClick={onCancel}
         aria-label="Cancel"
       />
-      <div className="relative z-10 w-full max-w-md rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-1)] p-5 shadow-card-md">
-        <h3 className="font-display text-lg font-semibold">{title}</h3>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dialog-title"
+        className="relative z-10 w-full max-w-md rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-1)] p-5 shadow-card-md"
+      >
+        <h3 id="confirm-dialog-title" className="font-display text-lg font-semibold">
+          {title}
+        </h3>
         <p className="mt-2 text-sm text-[var(--text-muted)]">{message}</p>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="ghost" onClick={onCancel} disabled={loading}>

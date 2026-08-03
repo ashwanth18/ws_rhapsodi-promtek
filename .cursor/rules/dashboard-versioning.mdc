@@ -1,0 +1,40 @@
+---
+description: Bump robot dashboard SemVer in package.json on operator-visible UI/API changes.
+globs: src/dashboard/**/*
+alwaysApply: false
+---
+
+# Dashboard versioning
+
+The robot HMI dashboard shows a SemVer from
+`src/dashboard/package.json` → Vite `__APP_VERSION__` (when wired).
+
+This is **product UI version**, separate from fleet **Release `#N (sha)`**
+(deployable robot images).
+
+## When to bump
+
+Bump `src/dashboard/package.json` `version` (and keep
+`package-lock.json` in sync) whenever you ship an **operator-visible** change:
+
+| Change | Bump |
+|--------|------|
+| New screen/feature, new columns, new API fields shown in UI | **minor** (`0.2.0` → `0.3.0`) |
+| Bug fix / polish that operators can notice | **patch** (`0.3.0` → `0.3.1`) |
+| Breaking dashboard UX / data model reset | **major** |
+
+Do **not** bump for pure refactors, comments, or internal-only changes with no
+UI/API surface change.
+
+## How
+
+1. Edit `"version"` in `src/dashboard/package.json`.
+2. Update the top-level `"version"` fields in `package-lock.json` (or run
+   `npm install` in `src/dashboard/`).
+3. Ensure the UI picks it up via Vite `define` / footer if present.
+
+## After bump
+
+Robot images host the dashboard — commit, rebuild `dashboard` (+ backend when
+APIs changed), publish deploy bundle, and converge the Pi via Fleet Console /
+fleet-agent.
