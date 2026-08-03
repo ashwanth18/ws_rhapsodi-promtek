@@ -92,6 +92,24 @@ services:
       - db
     restart: unless-stopped
 
+  # Receiving side of the Rhapsodi data-collection uplink (central-ingestion-service):
+  # fleet health log, Tier 0 metadata/features/events, and resumable
+  # checksum-verified Tier 1 blobs from data_collection_manager's
+  # uplink_daemon. Fully separate from condor_agent/MES's webhook/backend
+  # flow — see src/backend/ingestion/ingestion/main.py.
+  ingestion:
+    image: ${INGESTION_IMAGE:-iserenity/rhapsodi-promtek:ingestion}
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/robot_data
+      OBJECT_STORE_ROOT: ${OBJECT_STORE_ROOT:-/data/ingested}
+    ports:
+      - "${INGESTION_PORT:-8011}:8011"
+    volumes:
+      - ./data:/data
+    depends_on:
+      - db
+    restart: unless-stopped
+
   webhook_service:
     image: ${WEBHOOK_IMAGE:-iserenity/rhapsodi-promtek:webhook}
     environment:
@@ -290,12 +308,43 @@ services:
     # above at /ws/config/device.yaml) via rhapsodi_common.device_config —
     # no longer hardcoded here. Override with -p robot_id:=... /
     # -p processing_url:=... only for one-off testing.
+    # recording_profiles.yaml is under ./config (mounted at /ws/config:ro
+    # via x-ros-robot-service) — pour/scoop/camera topics come from there.
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+      FASTDDS_BUILTIN_TRANSPORTS: ${FASTDDS_BUILTIN_TRANSPORTS:-UDPv4}
+      ROBOT_IP: ${ROBOT_IP:-169.254.200.200}
+      RHAPSODI_DEVICE_CONFIG: ${RHAPSODI_DEVICE_CONFIG:-/ws/config/device.yaml}
+      RHAPSODI_RECORDING_PROFILES: ${RHAPSODI_RECORDING_PROFILES:-/ws/config/recording_profiles.yaml}
     command: >
       ros2 run data_collection_manager data_collection_manager
       --ros-args
       -p output_root:=${DATA_OUTPUT_ROOT:-/data/webhook}
     depends_on:
       - processing
+
+  # Enforces manifest.sqlite's Tier 0/Tier 1 retention policy (local-manifest-retention):
+  # Tier 1 (run.mcap, vision/) is only pruned once the uplink daemon acks a
+  # run, oldest-first, anomaly-flagged runs exempt. Runs independently of
+  # data_collection so a stuck recorder never blocks retention enforcement.
+  retention_watchdog:
+    <<: *ros-robot-service
+    command: >
+      ros2 run data_collection_manager retention_watchdog
+      --ros-args
+      -p output_root:=${DATA_OUTPUT_ROOT:-/data/webhook}
+
+  # Store-and-forward uplink to central-ingestion-service (the "ingestion" service)
+  # (uplink-daemon): fleet health log, then Tier 0, then Tier 1, in that
+  # priority order. ingestion_url defaults from config/device.yaml.
+  uplink_daemon:
+    <<: *ros-robot-service
+    command: >
+      ros2 run data_collection_manager uplink_daemon
+      --ros-args
+      -p output_root:=${DATA_OUTPUT_ROOT:-/data/webhook}
 
   orchestrator:
     <<: *ros-robot-service
