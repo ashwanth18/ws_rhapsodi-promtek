@@ -38,6 +38,33 @@ function agentTone(status?: string | null): 'good' | 'bad' | 'warn' | 'info' | '
   return 'neutral'
 }
 
+/** Compact <option> text — long subjects/dates blow out native selects + CSS grid. */
+function releaseOptionLabel(r: Release, device: Device | null): string {
+  const marks: string[] = []
+  if (r.demo || r.git_sha === 'deadbee') marks.push('demo')
+  if (r.status && r.status !== 'success') marks.push(r.status)
+  if (device?.image_tag && r.git_sha === device.image_tag) marks.push('running')
+  if (device?.desired_image_tag && r.git_sha === device.desired_image_tag) {
+    marks.push('desired')
+  }
+  if (
+    device?.update_available &&
+    device.latest_release &&
+    r.id === device.latest_release.id
+  ) {
+    marks.push('NEW')
+  }
+  const plats = (r.platforms || [])
+    .map((p) => p.replace('linux/', ''))
+    .join('+')
+  if (plats) marks.push(plats)
+  const mark = marks.length ? ` [${marks.join(', ')}]` : ''
+  return `${releaseVersion(r)} · ${r.branch} · ${shortSha(r.git_sha)}${mark}`
+}
+
+const selectClassName =
+  'mt-1 w-full min-w-0 max-w-full truncate rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-1)] px-3 py-2 text-sm'
+
 export default function DeviceDetailPage() {
   const { deviceId = '' } = useParams()
   const [device, setDevice] = useState<Device | null>(null)
@@ -507,8 +534,8 @@ export default function DeviceDetailPage() {
         </p>
       ) : null}
 
-      <div className="mb-8 grid gap-6 lg:grid-cols-2">
-        <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--card-surface)] p-4">
+      <div className="mb-8 grid min-w-0 gap-6 lg:grid-cols-2">
+        <div className="min-w-0 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--card-surface)] p-4">
           <h3 className="font-display text-base font-semibold">Desired state</h3>
           <p className="mt-1 text-sm text-[var(--text-muted)]">
             Only Releases with Hub images built for this device&apos;s platform
@@ -516,11 +543,11 @@ export default function DeviceDetailPage() {
             the on-device agent pulls and converges.
           </p>
 
-          <div className="mt-4 space-y-3">
-            <label className="block text-xs text-[var(--text-muted)]">
+          <div className="mt-4 min-w-0 space-y-3">
+            <label className="block min-w-0 text-xs text-[var(--text-muted)]">
               Tracked branch
               <select
-                className="mt-1 w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-1)] px-3 py-2 text-sm"
+                className={selectClassName}
                 value={trackedBranch}
                 onChange={(e) => setTrackedBranch(e.target.value)}
               >
@@ -530,17 +557,17 @@ export default function DeviceDetailPage() {
                   branches.map((b) => (
                     <option key={b.name} value={b.name}>
                       {b.name}
-                      {b.sha ? ` (${b.sha})` : ''}
+                      {b.sha ? ` (${shortSha(b.sha)})` : ''}
                     </option>
                   ))
                 )}
               </select>
             </label>
 
-            <label className="block text-xs text-[var(--text-muted)]">
+            <label className="block min-w-0 text-xs text-[var(--text-muted)]">
               Robot type
               <select
-                className="mt-1 w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-1)] px-3 py-2 text-sm disabled:opacity-60"
+                className={`${selectClassName} disabled:opacity-60`}
                 value={robotType}
                 disabled={robotTypeLocked && Boolean(device?.provisioned)}
                 onChange={(e) => setRobotType(e.target.value)}
@@ -559,90 +586,71 @@ export default function DeviceDetailPage() {
               ) : null}
             </label>
 
-            <label className="block text-xs text-[var(--text-muted)]">
+            <label className="block min-w-0 text-xs text-[var(--text-muted)]">
               Site ID
               <input
-                className="mt-1 w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-1)] px-3 py-2 text-sm"
+                className="mt-1 w-full min-w-0 max-w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-1)] px-3 py-2 text-sm"
                 value={siteId}
                 onChange={(e) => setSiteId(e.target.value)}
               />
             </label>
 
-            <label className="block text-xs text-[var(--text-muted)]">
+            <label className="block min-w-0 text-xs text-[var(--text-muted)]">
               Profile
               <select
-                className="mt-1 w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-1)] px-3 py-2 text-sm"
+                className={selectClassName}
                 value={profileId}
                 onChange={(e) => setProfileId(e.target.value)}
               >
                 {profiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.id} — {p.description}
+                  <option key={p.id} value={p.id} title={`${p.id} — ${p.description}`}>
+                    {p.id}
+                    {p.description ? ` — ${p.description}` : ''}
                   </option>
                 ))}
               </select>
             </label>
 
-            <label className="block text-xs text-[var(--text-muted)]">
+            <label className="block min-w-0 text-xs text-[var(--text-muted)]">
               <span className="flex items-center justify-between gap-2">
                 Release (on Docker Hub)
                 <button
                   type="button"
-                  className="text-[11px] text-[var(--accent)] hover:underline"
+                  className="shrink-0 text-[11px] text-[var(--accent)] hover:underline"
                   onClick={() => void loadReleases(true)}
                 >
                   Refresh list
                 </button>
               </span>
               <select
-                className="mt-1 w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-1)] px-3 py-2 text-sm"
+                className={selectClassName}
                 value={releaseId === '' ? '' : String(releaseId)}
                 onChange={(e) =>
                   setReleaseId(e.target.value ? Number(e.target.value) : '')
                 }
               >
                 <option value="">Select a release…</option>
-                {releases.map((r) => {
-                  const marks: string[] = []
-                  if (r.demo || r.git_sha === 'deadbee') marks.push('demo — skip')
-                  if (r.status && r.status !== 'success') marks.push(r.status)
-                  if (device?.image_tag && r.git_sha === device.image_tag) {
-                    marks.push('running')
-                  }
-                  if (
-                    device?.desired_image_tag &&
-                    r.git_sha === device.desired_image_tag
-                  ) {
-                    marks.push('desired')
-                  }
-                  if (
-                    device?.update_available &&
-                    device.latest_release &&
-                    r.id === device.latest_release.id
-                  ) {
-                    marks.push('NEW UPDATE')
-                  }
-                  const plats = (r.platforms || [])
-                    .map((p) => p.replace('linux/', ''))
-                    .join('+')
-                  if (plats) marks.push(plats)
-                  const subject = r.subject ? ` — ${r.subject}` : ''
-                  const when = r.reported_at
-                    ? ` · ${new Date(r.reported_at).toLocaleString()}`
-                    : ''
-                  const dur = formatDuration(r.duration_seconds)
-                  const build = dur ? ` · build ${dur}` : ''
-                  const mark = marks.length ? ` [${marks.join(', ')}]` : ''
-                  return (
-                    <option key={r.id} value={r.id}>
-                      {releaseVersion(r)} · {r.branch}
-                      {subject}
-                      {when}
-                      {build}
-                      {mark}
-                    </option>
-                  )
-                })}
+                {releases.map((r) => (
+                  <option
+                    key={r.id}
+                    value={r.id}
+                    title={[
+                      releaseVersion(r),
+                      r.branch,
+                      r.subject,
+                      r.reported_at
+                        ? new Date(r.reported_at).toLocaleString()
+                        : '',
+                      formatDuration(r.duration_seconds)
+                        ? `build ${formatDuration(r.duration_seconds)}`
+                        : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  >
+                    {releaseOptionLabel(r, device)}
+                  </option>
+                ))}
               </select>
               {selectedRelease ? (
                 <span className="mt-1 block text-[11px] text-[var(--text-secondary)]">
@@ -682,10 +690,10 @@ export default function DeviceDetailPage() {
               ) : null}
             </label>
 
-            <label className="block text-xs text-[var(--text-muted)]">
+            <label className="block min-w-0 text-xs text-[var(--text-muted)]">
               Cell layout
               <select
-                className="mt-1 w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-1)] px-3 py-2 text-sm"
+                className={selectClassName}
                 value={desiredLayoutId}
                 onChange={(e) => setDesiredLayoutId(e.target.value)}
               >
@@ -748,7 +756,7 @@ export default function DeviceDetailPage() {
           </div>
         </div>
 
-        <div>
+        <div className="min-w-0">
           <h3 className="mb-2 font-display text-base font-semibold">
             Job console
           </h3>
