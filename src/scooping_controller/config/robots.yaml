@@ -105,13 +105,14 @@ robots:
         path: config/move_group_controller_params.yaml
       timing:
         move_group_delay: 1.0
-        move_to_delay: 2.0
-        target_recorder_delay: 2.2
+        # Wait for move_group to publish robot_description_semantic.
+        move_to_delay: 4.0
+        target_recorder_delay: 4.2
         task_frame_delay: 1.5
         marker_delay: 1.5
         container_delay: 1.7
         collisions_delay: 1.8
-        mtc_delay: 2.0
+        mtc_delay: 4.5
         rviz_delay: 2.5
 
   jaka:

@@ -144,11 +144,20 @@ def _robot_bench_setup(context, *args, **kwargs):
                 default_planning_pipeline=profile["planning_pipeline"],
                 pipelines=["ompl", "chomp", "pilz_industrial_motion_planner", "stomp"],
             )
+            # Required so move_to_server / target_recorder can subscribe to SRDF.
+            .planning_scene_monitor(
+                publish_robot_description=True,
+                publish_robot_description_semantic=True,
+            )
             .to_moveit_configs()
         )
     else:
         moveit_config = (
             builder.robot_description(mappings=xacro_mappings)
+            .planning_scene_monitor(
+                publish_robot_description=True,
+                publish_robot_description_semantic=True,
+            )
             .to_moveit_configs()
         )
 
