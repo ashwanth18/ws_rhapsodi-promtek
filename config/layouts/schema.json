@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Rhapsodi cell layout v1",
+  "type": "object",
+  "required": ["schema_version", "layout_id", "task_container_id", "tool_id", "targets_yaml", "poses_yaml", "objects", "scoop_envelope", "safe_retreat_target"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "layout_id": {"type": "string", "minLength": 1},
+    "task_container_id": {"type": "string", "minLength": 1},
+    "tool_id": {"type": "string", "minLength": 1},
+    "targets_yaml": {"type": "string", "minLength": 1},
+    "poses_yaml": {"type": "string", "minLength": 1},
+    "scoop_cartesian_avoid_collisions": {"type": "boolean", "default": false},
+    "safe_retreat_target": {"type": "string", "minLength": 1},
+    "calibration": {"type": "object"},
+    "sim": {"type": "object", "properties": {"overlay": {"type": "object", "properties": {"mass": {"type": "number"}, "friction": {"type": "number"}}}}},
+    "scoop_envelope": {"type": "object", "required": ["x_min", "x_max", "y_min", "y_max", "z_min", "z_max"], "properties": {"x_min": {"type": "number"}, "x_max": {"type": "number"}, "y_min": {"type": "number"}, "y_max": {"type": "number"}, "z_min": {"type": "number"}, "z_max": {"type": "number"}}},
+    "objects": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["id", "enabled", "geometry_type", "position_xyz", "orientation", "scale_xyz", "dimensions_xyz", "color_rgb"], "properties": {"id": {"type": "string"}, "enabled": {"type": "boolean"}, "geometry_type": {"enum": ["mesh", "box"]}, "mesh_resource": {"type": "string"}, "mesh_units": {"enum": ["mm", "m"]}, "position_xyz": {"$ref": "#/$defs/vector3"}, "orientation": {"oneOf": [{"type": "object", "required": ["quat_xyzw"], "properties": {"quat_xyzw": {"$ref": "#/$defs/vector4"}}}, {"type": "object", "required": ["rpy_deg"], "properties": {"rpy_deg": {"$ref": "#/$defs/vector3"}}}]}, "scale_xyz": {"$ref": "#/$defs/vector3"}, "dimensions_xyz": {"$ref": "#/$defs/vector3"}, "color_rgb": {"$ref": "#/$defs/vector3"}}}}
+  },
+  "$defs": {"vector3": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}}, "vector4": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number"}}}
+}

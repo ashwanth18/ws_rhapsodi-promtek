@@ -1,0 +1,13 @@
+# Single-vessel layouts retain the named workflow contract; calibrate before production use.
+targets:
+  home: {frame_id: base_link, position: {x: 0.2792488643, y: 0.0000243691, z: 0.4301192053}, orientation: {x: 0.0000926543, y: -0.0000152042, z: 0.0000436348, w: 0.9999999946}}
+  boxA: {frame_id: base_link, position: {x: 0.3605126783, y: -0.2091052801, z: 0.3248828081}, orientation: {x: 0.0411038116, y: 0.0543985086, z: -0.2589115728, w: 0.9634916068}}
+  MoveToWeighingContainer: {frame_id: base_link, position: {x: -0.0103, y: -0.3471, z: 0.2685}, orientation: {x: -0.122787804, y: -0.122787804, z: -0.6963642403, w: 0.6963642403}}
+  PrePourTiltbackAtWeighingContainer: {frame_id: base_link, position: {x: -0.0103, y: -0.3471, z: 0.2685}, orientation: {x: -0.2418447626, y: -0.2418447626, z: -0.6644630244, w: 0.6644630244}}
+  PourAtWeighingContainer: {frame_id: base_link, position: {x: -0.0103, y: -0.3471, z: 0.2685}, orientation: {x: 0.0308435646, y: 0.0308435646, z: -0.7064337722, w: 0.7064337722}}
+  PourStartAtWeighingContainer: {frame_id: base_link, position: {x: -0.0103, y: -0.3471, z: 0.2633}, orientation: {x: 0.0308435646, y: 0.0308435646, z: -0.7064337722, w: 0.7064337722}}
+  RecoverFromPourAtWeighingContainer: {frame_id: base_link, position: {x: -0.0103, y: -0.3471, z: 0.3185}, orientation: {x: 0.0922959556, y: 0.0922959556, z: -0.701057385, w: 0.701057385}}
+  PostPourTiltbackAtWeighingContainer: {frame_id: base_link, position: {x: -0.0103, y: -0.3471, z: 0.2685}, orientation: {x: -0.122787804, y: -0.122787804, z: -0.6963642403, w: 0.6963642403}}
+  PourDoneAtWeighingContainer: {frame_id: base_link, position: {x: -0.0103, y: -0.3904, z: 0.3107}, orientation: {x: -0.122787804, y: -0.122787804, z: -0.6963642403, w: 0.6963642403}}
+  MoveToScoopingContainer: {frame_id: base_link, position: {x: 0.0, y: -0.3471, z: 0.24}, orientation: {x: 0, y: 0, z: 0, w: 1}}
+  ReturnHome: {frame_id: base_link, position: {x: 0.4229, y: -0.0123, z: 0.2064}, orientation: {x: 0, y: 0, z: 0, w: 1}}

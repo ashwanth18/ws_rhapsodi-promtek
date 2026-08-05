@@ -1,0 +1,22 @@
+# Operator-facing powder catalog for lightsout / mock-local labeling.
+# `id` and `name` tag the data; `container_target` / `pour_target` drive
+# robot motion and are intentionally decoupled from the label.
+# Do NOT use purely numeric ids — those collide with Condor stock-item ids.
+powders:
+  - id: alumina-5um
+    name: Alumina 5 um
+    container_target: boxA
+    pour_target: PourStartAtBoxA
+    default_target_weight_g: 250
+    default_tolerance_g: 5
+    min_scooped_g: 20
+    density_g_per_ml: 3.95
+    notes: ""
+  - id: box-a
+    name: Box A (generic)
+    container_target: boxA
+    pour_target: PourStartAtBoxA
+    default_target_weight_g: 200
+    default_tolerance_g: 5
+    min_scooped_g: 15
+    notes: "Legacy training container"
