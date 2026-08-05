@@ -5,6 +5,7 @@
 #include <functional>
 
 #include <pluginlib/class_list_macros.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include <yaml-cpp/yaml.h>
 
 #include <QCheckBox>
@@ -25,6 +26,7 @@
 #include <fstream>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <tf2/LinearMath/Matrix3x3.h>
@@ -218,6 +220,7 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
 , save_pose_set_button_(new QPushButton("Save Pose Set", this))
 , load_pose_set_button_(new QPushButton("Load Pose Set", this))
 , refresh_pose_sets_button_(new QPushButton("Refresh Sets", this))
+, pose_set_status_label_(new QLabel(this))
 , target_name_edit_(new QLineEdit(this))
 , target_selector_combo_(new QComboBox(this))
 , scoop_marker_combo_(new QComboBox(this))
@@ -364,15 +367,20 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   scoop_pitch_edit_->setPlaceholderText("pitch");
   scoop_yaw_edit_->setPlaceholderText("yaw");
 
-  auto* button_grid = new QGridLayout();
-  button_grid->setHorizontalSpacing(8);
-  button_grid->setVerticalSpacing(6);
-  button_grid->addWidget(save_button_, 0, 0);
-  button_grid->addWidget(load_button_, 0, 1);
-  button_grid->addWidget(plan_button_, 0, 2);
-  button_grid->addWidget(execute_button_, 0, 3);
-  button_grid->addWidget(execute_continuous_button_, 1, 0, 1, 2);
-  button_grid->addWidget(execute_waypoint_motion_button_, 1, 2, 1, 2);
+  auto* run_grid = new QGridLayout();
+  run_grid->setHorizontalSpacing(8);
+  run_grid->setVerticalSpacing(6);
+  run_grid->addWidget(plan_button_, 0, 0);
+  run_grid->addWidget(execute_button_, 0, 1);
+  run_grid->addWidget(execute_continuous_button_, 1, 0);
+  run_grid->addWidget(execute_waypoint_motion_button_, 1, 1);
+  // Session cache kept available but de-emphasized; pose sets are the primary path.
+  save_button_->setText("Save Session Cache");
+  load_button_->setText("Reload Session Cache");
+  save_button_->setToolTip(
+    "Also creates a timestamped pose set. Prefer Save Pose Set with a note.");
+  load_button_->setToolTip(
+    "Reloads ~/.ros device cache (not the git seed). Use Load Pose Set → default for poses.yaml.");
 
   auto* authoring_row = new QHBoxLayout();
   authoring_row->addWidget(target_name_edit_, 1);
@@ -595,11 +603,15 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
     return box;
   };
 
-  auto* execution_box = make_group_box("Execution");
-  auto* execution_layout = new QVBoxLayout(execution_box);
-  execution_layout->addWidget(service_state_label_);
-  execution_layout->addLayout(button_grid);
-  execution_box->setLayout(execution_layout);
+  auto* run_box = make_group_box("Run");
+  auto* run_layout = new QVBoxLayout(run_box);
+  run_layout->addWidget(service_state_label_);
+  run_layout->addLayout(run_grid);
+  auto* session_cache_row = new QHBoxLayout();
+  session_cache_row->addWidget(save_button_);
+  session_cache_row->addWidget(load_button_);
+  run_layout->addLayout(session_cache_row);
+  run_box->setLayout(run_layout);
 
   auto* motion_box = make_group_box("Motion Tuning");
   auto* motion_layout = new QVBoxLayout(motion_box);
@@ -608,7 +620,7 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   motion_layout->addLayout(motion_actions_row);
   motion_box->setLayout(motion_layout);
 
-  auto* scoop_box = make_group_box("Scoop Marker Editor");
+  auto* scoop_box = make_group_box("Markers");
   auto* scoop_layout = new QVBoxLayout(scoop_box);
   scoop_layout->addLayout(scoop_pose_grid);
   scoop_layout->addWidget(apply_scoop_pose_button_);
@@ -633,7 +645,7 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   pour_layout->addWidget(pour_metrics_label_);
   pour_box->setLayout(pour_layout);
 
-  auto* parameterized_box = make_group_box("Scooping Parameter Workflow");
+  auto* parameterized_box = make_group_box("Parameterized Template");
   auto* parameterized_layout = new QVBoxLayout(parameterized_box);
   parameterized_layout->addLayout(parameterized_grid);
   parameterized_layout->addLayout(parameterized_buttons);
@@ -667,31 +679,46 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   layout_actions->addWidget(planar_mode_checkbox_, 0, 0, 1, 2);
   layout_actions->addWidget(capture_touch_button_, 1, 0);
   layout_actions->addWidget(fit_touch_button_, 1, 1);
-  layout_actions->addWidget(check_reachability_button_, 2, 0);
-  layout_actions->addWidget(save_layout_button_, 2, 1);
-  layout_actions->addWidget(reload_layout_button_, 3, 0, 1, 2);
+  layout_actions->addWidget(save_layout_button_, 2, 0);
+  layout_actions->addWidget(reload_layout_button_, 2, 1);
 
-  pose_set_note_edit_->setPlaceholderText("pose set note (optional)");
+  pose_set_note_edit_->setPlaceholderText("optional label, e.g. open-face-ik");
+  pose_set_combo_->setMinimumContentsLength(28);
+  pose_set_combo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
   export_poses_button_->setToolTip(
     "Save a timestamped pose set under layouts/<id>/poses/sets/. Does not change default poses.yaml.");
   save_pose_set_button_->setToolTip(export_poses_button_->toolTip());
   load_pose_set_button_->setToolTip(
-    "Load default (poses.yaml) or a saved set. Does not modify the default seed.");
-  auto* pose_sets_box = make_group_box("Scoop Pose Sets");
+    "Load default (poses.yaml) or a saved set into markers. Does not modify the default seed.");
+  check_reachability_button_->setToolTip(
+    "IK / collision diagnose for the currently loaded scoop markers (does not save).");
+  pose_set_status_label_->setWordWrap(true);
+  pose_set_status_label_->setText("Pose sets: waiting for marker server…");
+  auto* pose_sets_hint = new QLabel(
+    "default = git seed poses.yaml. Save Pose Set bakes Motion Tuning offsets into markers "
+    "(then zeroes offsets). Load Pose Set restores markers and clears Motion Tuning geometry. "
+    "Sets never overwrite the seed.",
+    this);
+  pose_sets_hint->setWordWrap(true);
+  pose_sets_hint->setStyleSheet("color: #9ca3af;");
+  auto* pose_sets_box = make_group_box("Pose Sets");
   auto* pose_sets_layout = new QVBoxLayout(pose_sets_box);
-  auto* pose_set_note_row = new QHBoxLayout();
-  pose_set_note_row->addWidget(new QLabel("Note", this));
-  pose_set_note_row->addWidget(pose_set_note_edit_, 1);
   auto* pose_set_combo_row = new QHBoxLayout();
   pose_set_combo_row->addWidget(new QLabel("Set", this));
   pose_set_combo_row->addWidget(pose_set_combo_, 1);
   pose_set_combo_row->addWidget(refresh_pose_sets_button_);
+  auto* pose_set_note_row = new QHBoxLayout();
+  pose_set_note_row->addWidget(new QLabel("Note", this));
+  pose_set_note_row->addWidget(pose_set_note_edit_, 1);
   auto* pose_set_buttons = new QHBoxLayout();
-  pose_set_buttons->addWidget(save_pose_set_button_);
-  pose_set_buttons->addWidget(load_pose_set_button_);
-  pose_sets_layout->addLayout(pose_set_note_row);
+  pose_set_buttons->addWidget(load_pose_set_button_, 1);
+  pose_set_buttons->addWidget(save_pose_set_button_, 1);
+  pose_set_buttons->addWidget(check_reachability_button_, 1);
+  pose_sets_layout->addWidget(pose_sets_hint);
   pose_sets_layout->addLayout(pose_set_combo_row);
+  pose_sets_layout->addLayout(pose_set_note_row);
   pose_sets_layout->addLayout(pose_set_buttons);
+  pose_sets_layout->addWidget(pose_set_status_label_);
   export_poses_button_->hide();  // legacy Trigger alias; Save Pose Set is the UI entry point
 
   auto* layout_tab = new QWidget(this);
@@ -700,14 +727,15 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   layout_tab_layout->addLayout(layout_object_row);
   layout_tab_layout->addLayout(catalog_row);
   layout_tab_layout->addLayout(layout_actions);
-  layout_tab_layout->addWidget(pose_sets_box);
   layout_tab_layout->addWidget(layout_status_label_);
   layout_tab_layout->addWidget(layout_fault_label_);
   layout_tab_layout->addStretch(1);
 
   auto* scoop_tab = new QWidget(this);
   auto* scoop_tab_layout = new QVBoxLayout(scoop_tab);
-  scoop_tab_layout->addWidget(execution_box);
+  scoop_tab_layout->setSpacing(8);
+  scoop_tab_layout->addWidget(pose_sets_box);
+  scoop_tab_layout->addWidget(run_box);
   scoop_tab_layout->addWidget(scoop_box);
   scoop_tab_layout->addWidget(parameterized_box);
   scoop_tab_layout->addStretch(1);
@@ -2898,12 +2926,12 @@ void ScoopingPanel::onFitTouchPointsClicked()
 void ScoopingPanel::onCheckReachabilityClicked()
 {
   if (!diagnose_poses_client_ || !diagnose_poses_client_->service_is_ready()) {
-    updateStatus("Diagnose scoop poses service not ready", "#fca5a5");
+    updatePoseSetStatus("Diagnose scoop poses service not ready", "#fca5a5");
     refreshServiceState();
     return;
   }
 
-  updateStatus("Diagnosing scoop poses (IK vs collision)...", "#93c5fd");
+  updatePoseSetStatus("Diagnosing scoop poses (IK vs collision)…", "#93c5fd");
   auto request = std::make_shared<DiagnoseScoopPoses::Request>();
   diagnose_poses_client_->async_send_request(
     request,
@@ -2919,7 +2947,7 @@ void ScoopingPanel::onCheckReachabilityClicked()
                     .arg(QString::fromStdString(response->verdicts[i]))
                     .arg(QString::fromStdString(response->details[i]));
         }
-        updateStatus(
+        updatePoseSetStatus(
           QString::fromStdString(
             response->summary.empty() ? "Diagnose finished." : response->summary),
           response->success ? "#86efac" : "#fca5a5");
@@ -2930,7 +2958,7 @@ void ScoopingPanel::onCheckReachabilityClicked()
         box.setDetailedText(body.isEmpty() ? "(no per-marker details)" : body);
         box.exec();
       } catch (const std::exception& ex) {
-        updateStatus(QString("Diagnose failed: %1").arg(ex.what()), "#fca5a5");
+        updatePoseSetStatus(QString("Diagnose failed: %1").arg(ex.what()), "#fca5a5");
       }
       refreshServiceState();
     });
@@ -2941,61 +2969,219 @@ void ScoopingPanel::onExportPosesClicked()
   onSavePoseSetClicked();
 }
 
-void ScoopingPanel::onSavePoseSetClicked()
+void ScoopingPanel::updatePoseSetStatus(const QString& text, const QString& color)
+{
+  pose_set_status_label_->setText(text);
+  pose_set_status_label_->setStyleSheet(QString("color: %1;").arg(color));
+  updateStatus(text, color);
+  if (!node_) {
+    return;
+  }
+  // Mirror panel status into the RViz / author terminal (errors were easy to miss).
+  const bool is_error =
+    color.contains("fca5a5", Qt::CaseInsensitive) ||
+    color.contains("ef4444", Qt::CaseInsensitive) ||
+    text.contains("fail", Qt::CaseInsensitive) ||
+    text.contains("not ready", Qt::CaseInsensitive) ||
+    text.contains("refus", Qt::CaseInsensitive);
+  if (is_error) {
+    RCLCPP_ERROR(node_->get_logger(), "[pose_set] %s", text.toStdString().c_str());
+  } else {
+    RCLCPP_INFO(node_->get_logger(), "[pose_set] %s", text.toStdString().c_str());
+  }
+}
+
+void ScoopingPanel::resetMotionTuningGeometry()
+{
+  setLineEditValue(pattern_offset_x_edit_, 0.0, 3);
+  setLineEditValue(pattern_offset_y_edit_, 0.0, 3);
+  setLineEditValue(pattern_offset_z_edit_, 0.0, 3);
+  setLineEditValue(sweep_scale_edit_, 1.0, 3);
+  setLineEditValue(pitch_offset_edit_, 0.0, 1);
+  setLineEditValue(lift_offset_z_edit_, 0.0, 3);
+}
+
+bool ScoopingPanel::bakeMotionTuningIntoScoopMarkers(QString& detail)
+{
+  detail.clear();
+  double offset_x = 0.0;
+  double offset_y = 0.0;
+  double offset_z = 0.0;
+  double sweep_scale = 1.0;
+  double pitch_offset_deg = 0.0;
+  double lift_offset_z = 0.0;
+  if (!readDoubleField(pattern_offset_x_edit_, "Pattern offset X", offset_x) ||
+      !readDoubleField(pattern_offset_y_edit_, "Pattern offset Y", offset_y) ||
+      !readDoubleField(pattern_offset_z_edit_, "Pattern offset Z", offset_z) ||
+      !readDoubleField(sweep_scale_edit_, "Sweep scale", sweep_scale) ||
+      !readDoubleField(pitch_offset_edit_, "Pitch offset", pitch_offset_deg) ||
+      !readDoubleField(lift_offset_z_edit_, "Lift offset Z", lift_offset_z))
+  {
+    detail = "Could not read Motion Tuning fields";
+    return false;
+  }
+
+  const bool identity =
+    std::abs(offset_x) < 1e-9 && std::abs(offset_y) < 1e-9 && std::abs(offset_z) < 1e-9 &&
+    std::abs(sweep_scale - 1.0) < 1e-9 && std::abs(pitch_offset_deg) < 1e-9 &&
+    std::abs(lift_offset_z) < 1e-9;
+  if (identity) {
+    return true;
+  }
+
+  if (!has_scoop_poses_ || latest_scoop_poses_.size() < 5 || !scoop_poses_cmd_pub_) {
+    detail =
+      "Motion Tuning is non-zero, but scoop markers are not available to bake into the pose set";
+    return false;
+  }
+
+  const auto baked = apply_manual_pose_adjustments(
+    latest_scoop_poses_,
+    offset_x,
+    offset_y,
+    offset_z,
+    sweep_scale,
+    degrees_to_radians(pitch_offset_deg),
+    lift_offset_z);
+  latest_scoop_poses_ = baked;
+  geometry_msgs::msg::PoseArray msg;
+  msg.header.stamp = node_->now();
+  msg.header.frame_id =
+    latest_scoop_frame_id_.empty() ? kScoopTaskFrame : latest_scoop_frame_id_;
+  msg.poses = baked;
+  scoop_poses_cmd_pub_->publish(msg);
+  // Do not nest rclcpp::spin_some here — this panel node is already spun by
+  // onRosTimer. Callers that need the marker server to apply /scoop_poses_cmd
+  // before a follow-up service should defer with QTimer::singleShot.
+
+  resetMotionTuningGeometry();
+  applyMotionTuning();
+  detail = QString(
+             "Baked Motion Tuning into markers (offsets=%1,%2,%3 sweep=%4 pitch=%5° lift_z=%6)")
+             .arg(offset_x, 0, 'f', 3)
+             .arg(offset_y, 0, 'f', 3)
+             .arg(offset_z, 0, 'f', 3)
+             .arg(sweep_scale, 0, 'f', 3)
+             .arg(pitch_offset_deg, 0, 'f', 1)
+             .arg(lift_offset_z, 0, 'f', 3);
+  RCLCPP_INFO(node_->get_logger(), "[pose_set] %s", detail.toStdString().c_str());
+  RCLCPP_INFO(
+    node_->get_logger(),
+    "[pose_set] baked approach xyz=[%.4f, %.4f, %.4f]",
+    baked[0].position.x,
+    baked[0].position.y,
+    baked[0].position.z);
+  return true;
+}
+
+void ScoopingPanel::sendSavePoseSetRequest(const QString& bake_detail)
 {
   if (!save_pose_set_client_ || !save_pose_set_client_->service_is_ready()) {
-    updateStatus("Save pose set service not ready", "#fca5a5");
+    updatePoseSetStatus("Save pose set service not ready", "#fca5a5");
     refreshServiceState();
     return;
   }
-  updateStatus("Saving scoop pose set...", "#93c5fd");
   auto request = std::make_shared<SaveScoopPoseSet::Request>();
   request->note = pose_set_note_edit_->text().trimmed().toStdString();
   save_pose_set_client_->async_send_request(
     request,
-    [this](rclcpp::Client<SaveScoopPoseSet>::SharedFuture future) {
+    [this, bake_detail](rclcpp::Client<SaveScoopPoseSet>::SharedFuture future) {
       try {
         const auto response = future.get();
-        updateStatus(
-          QString::fromStdString(
-            response->message.empty() ? "Pose set save finished." : response->message),
-          response->success ? "#86efac" : "#fca5a5");
+        QString message = QString::fromStdString(
+          response->message.empty() ? "Pose set save finished." : response->message);
+        if (response->success && !bake_detail.isEmpty()) {
+          message = bake_detail + " · " + message;
+        }
+        updatePoseSetStatus(message, response->success ? "#86efac" : "#fca5a5");
         if (response->success) {
+          pose_set_note_edit_->clear();
           refreshPoseSetList();
         }
       } catch (const std::exception& ex) {
-        updateStatus(QString("Save pose set failed: %1").arg(ex.what()), "#fca5a5");
+        updatePoseSetStatus(QString("Save pose set failed: %1").arg(ex.what()), "#fca5a5");
       }
       refreshServiceState();
     });
 }
 
+void ScoopingPanel::onSavePoseSetClicked()
+{
+  if (!save_pose_set_client_ || !save_pose_set_client_->service_is_ready()) {
+    updatePoseSetStatus("Save pose set service not ready", "#fca5a5");
+    refreshServiceState();
+    return;
+  }
+
+  QString bake_detail;
+  if (!bakeMotionTuningIntoScoopMarkers(bake_detail)) {
+    updatePoseSetStatus(bake_detail, "#fca5a5");
+    refreshServiceState();
+    return;
+  }
+  if (!bake_detail.isEmpty()) {
+    updatePoseSetStatus(bake_detail + " — saving set…", "#93c5fd");
+    // Wait for a couple of onRosTimer spins so the marker server applies the
+    // baked /scoop_poses_cmd before SaveScoopPoseSet reads poses_.
+    QTimer::singleShot(350, this, [this, bake_detail]() { sendSavePoseSetRequest(bake_detail); });
+    return;
+  }
+  updatePoseSetStatus("Saving scoop pose set…", "#93c5fd");
+  sendSavePoseSetRequest(bake_detail);
+}
+
 void ScoopingPanel::onLoadPoseSetClicked()
 {
   if (!load_pose_set_client_ || !load_pose_set_client_->service_is_ready()) {
-    updateStatus("Load pose set service not ready", "#fca5a5");
+    updatePoseSetStatus("Load pose set service not ready — is scooping_marker_server up?", "#fca5a5");
     refreshServiceState();
     return;
   }
   const auto set_id = pose_set_combo_->currentData().toString();
   if (set_id.isEmpty()) {
-    updateStatus("Select a pose set to load", "#fca5a5");
+    updatePoseSetStatus("Select a pose set (Refresh Sets if the list is empty)", "#fca5a5");
     return;
   }
-  updateStatus(QString("Loading pose set %1...").arg(set_id), "#93c5fd");
+  // Clear Motion Tuning geometry first so Load Default is not hidden by leftover offsets.
+  resetMotionTuningGeometry();
+  applyMotionTuning();
+  updatePoseSetStatus(QString("Loading pose set “%1”…").arg(set_id), "#93c5fd");
   auto request = std::make_shared<LoadScoopPoseSet::Request>();
   request->set_id = set_id.toStdString();
   load_pose_set_client_->async_send_request(
     request,
-    [this](rclcpp::Client<LoadScoopPoseSet>::SharedFuture future) {
+    [this, set_id](rclcpp::Client<LoadScoopPoseSet>::SharedFuture future) {
       try {
         const auto response = future.get();
-        updateStatus(
-          QString::fromStdString(
-            response->message.empty() ? "Pose set load finished." : response->message),
-          response->success ? "#86efac" : "#fca5a5");
+        QString message = QString::fromStdString(
+          response->message.empty() ? "Pose set load finished." : response->message);
+        if (response->success) {
+          message += " · Motion Tuning geometry cleared";
+          // Never nest rclcpp::spin_some from a service callback — this node is
+          // already spun by onRosTimer ("already been added to an executor").
+          // Defer UI refresh so the next timer ticks deliver /scoop_poses.
+          QTimer::singleShot(200, this, [this, set_id]() {
+            updateScoopEditorsFromSelection();
+            publishManualScoopPreviewMarkers();
+            showAllScoopMarkers();
+            RCLCPP_INFO(
+              node_->get_logger(),
+              "[pose_set] panel applied load set_id=%s approach=[%.4f, %.4f, %.4f]",
+              set_id.toStdString().c_str(),
+              has_scoop_poses_ && !latest_scoop_poses_.empty()
+                ? latest_scoop_poses_[0].position.x
+                : 0.0,
+              has_scoop_poses_ && !latest_scoop_poses_.empty()
+                ? latest_scoop_poses_[0].position.y
+                : 0.0,
+              has_scoop_poses_ && !latest_scoop_poses_.empty()
+                ? latest_scoop_poses_[0].position.z
+                : 0.0);
+          });
+        }
+        updatePoseSetStatus(message, response->success ? "#86efac" : "#fca5a5");
       } catch (const std::exception& ex) {
-        updateStatus(QString("Load pose set failed: %1").arg(ex.what()), "#fca5a5");
+        updatePoseSetStatus(QString("Load pose set failed: %1").arg(ex.what()), "#fca5a5");
       }
       refreshServiceState();
     });
@@ -3003,12 +3189,14 @@ void ScoopingPanel::onLoadPoseSetClicked()
 
 void ScoopingPanel::onRefreshPoseSetsClicked()
 {
+  updatePoseSetStatus("Refreshing pose set list…", "#93c5fd");
   refreshPoseSetList();
 }
 
 void ScoopingPanel::refreshPoseSetList()
 {
   if (!list_pose_sets_client_ || !list_pose_sets_client_->service_is_ready()) {
+    updatePoseSetStatus("List pose sets service not ready — is scooping_marker_server up?", "#fca5a5");
     return;
   }
   auto request = std::make_shared<ListScoopPoseSets::Request>();
@@ -3018,7 +3206,7 @@ void ScoopingPanel::refreshPoseSetList()
       try {
         const auto response = future.get();
         if (!response->success) {
-          updateStatus(
+          updatePoseSetStatus(
             QString::fromStdString(
               response->message.empty() ? "Failed to list pose sets" : response->message),
             "#fca5a5");
@@ -3034,11 +3222,12 @@ void ScoopingPanel::refreshPoseSetList()
           const auto created = QString::fromStdString(response->created_at[i]);
           const auto note = QString::fromStdString(response->notes[i]);
           QString label = id;
-          if (!created.isEmpty() || !note.isEmpty()) {
-            label = QString("%1 | %2 | %3")
-                      .arg(id)
-                      .arg(created.isEmpty() ? "-" : created)
-                      .arg(note.isEmpty() ? "-" : note);
+          if (id == QStringLiteral("default")) {
+            label = QStringLiteral("default (poses.yaml seed)");
+          } else if (!created.isEmpty() || !note.isEmpty()) {
+            label = QString("%1 — %2")
+                      .arg(note.isEmpty() ? id : note)
+                      .arg(created.isEmpty() ? id : created);
           }
           pose_set_combo_->addItem(label, id);
         }
@@ -3047,8 +3236,11 @@ void ScoopingPanel::refreshPoseSetList()
         load_pose_set_button_->setEnabled(
           load_pose_set_client_ && load_pose_set_client_->service_is_ready() &&
           pose_set_combo_->count() > 0);
+        updatePoseSetStatus(
+          QString("Pose sets ready (%1 including default)").arg(pose_set_combo_->count()),
+          "#86efac");
       } catch (const std::exception& ex) {
-        updateStatus(QString("List pose sets failed: %1").arg(ex.what()), "#fca5a5");
+        updatePoseSetStatus(QString("List pose sets failed: %1").arg(ex.what()), "#fca5a5");
       }
     });
 }

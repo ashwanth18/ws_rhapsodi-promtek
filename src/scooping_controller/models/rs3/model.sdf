@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <model name="rs3">
+    <static>true</static>
+    <link name="container_link">
+      <collision name="collision">
+        <pose>0 0 0.04 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.14 0.14 0.08</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <!-- Shared mesh under legacy weighing_container package tree. -->
+            <uri>model://weighing_container/meshes/rs3_container.STL</uri>
+            <scale>0.001 0.001 0.001</scale>
+          </mesh>
+        </geometry>
+        <material>
+          <ambient>0.4 0.8 0.4 1.0</ambient>
+          <diffuse>0.4 0.8 0.4 1.0</diffuse>
+          <specular>0.2 0.2 0.2 1.0</specular>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>

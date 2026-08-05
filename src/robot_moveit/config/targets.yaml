@@ -388,6 +388,17 @@ targets:
       y: 0
       z: 0
       w: 1
+  lightsoutPourStart:
+    frame_id: base_link
+    position:
+      x: 0.4278
+      y: -0.0094
+      z: 0.2502
+    orientation:
+      x: 0
+      y: 0
+      z: 0
+      w: 1
   ReturnHome:
     frame_id: base_link
     position:

@@ -3,6 +3,8 @@
 import os
 import sys
 
+import yaml
+
 sys.path.insert(0, os.path.dirname(__file__))
 
 from launch import LaunchDescription
@@ -131,6 +133,17 @@ def _robot_sim_setup(context):
         os.path.abspath(os.path.join(layouts_dir_value, "..", "models", "catalog.yaml")),
     )
     layout_yaml = os.path.join(layouts_dir_value, f"{layout_id}.yaml")
+    layout_task_container_id = "rs6"
+    layout_tool_id = ""
+    try:
+        with open(layout_yaml, "r", encoding="utf-8") as handle:
+            layout_doc = yaml.safe_load(handle) or {}
+        layout_task_container_id = str(
+            layout_doc.get("task_container_id") or layout_task_container_id
+        )
+        layout_tool_id = str(layout_doc.get("tool_id") or layout_tool_id)
+    except Exception:
+        pass
 
     use_sim_time = LaunchConfiguration("use_sim_time")
     use_rviz = LaunchConfiguration("use_rviz")
@@ -373,6 +386,8 @@ def _robot_sim_setup(context):
                 "layouts_dir": layouts_dir,
                 "poses_env": poses_env,
                 "layout_id": layout_id,
+                "task_container_id": layout_task_container_id,
+                "tool_id": layout_tool_id,
                 "authored_in": "sim",
                 "robot_key": robot,
                 "tool_mesh_resource": cfg["tool_mesh_resource"],

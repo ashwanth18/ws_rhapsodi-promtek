@@ -6,6 +6,8 @@ from __future__ import annotations
 import os
 import sys
 
+import yaml
+
 sys.path.insert(0, os.path.dirname(__file__))
 
 from launch import LaunchDescription
@@ -76,6 +78,18 @@ def _robot_real_setup(context, *args, **kwargs):
         if layout_id_value
         else ""
     )
+    layout_task_container_id = "rs6"
+    layout_tool_id = ""
+    if layout_yaml:
+        try:
+            with open(layout_yaml, "r", encoding="utf-8") as handle:
+                layout_doc = yaml.safe_load(handle) or {}
+            layout_task_container_id = str(
+                layout_doc.get("task_container_id") or layout_task_container_id
+            )
+            layout_tool_id = str(layout_doc.get("tool_id") or layout_tool_id)
+        except Exception:
+            pass
     drivers_list_file = LaunchConfiguration("drivers_list_file")
     whitelist_params_file = LaunchConfiguration("whitelist_params_file")
     driver_log_level = LaunchConfiguration("driver_log_level")
@@ -239,6 +253,9 @@ def _robot_real_setup(context, *args, **kwargs):
                 "seed_poses_yaml": seed_poses_yaml,
                 "layouts_dir": layouts_dir,
                 "poses_env": poses_env,
+                "layout_id": layout_id_value,
+                "task_container_id": layout_task_container_id,
+                "tool_id": layout_tool_id,
                 "authored_in": "real",
                 "robot_key": robot_key,
                 "tool_mesh_resource": profile["tool"]["mesh_resource"],

@@ -11,6 +11,8 @@ from __future__ import annotations
 import os
 import sys
 
+import yaml
+
 sys.path.insert(0, os.path.dirname(__file__))
 
 from ament_index_python.packages import get_package_share_directory
@@ -83,6 +85,17 @@ def _robot_bench_setup(context, *args, **kwargs):
     layout_yaml = os.path.join(
         layouts_dir_value, f"{layout_id.perform(context)}.yaml"
     )
+    layout_task_container_id = "rs6"
+    layout_tool_id = ""
+    try:
+        with open(layout_yaml, "r", encoding="utf-8") as handle:
+            layout_doc = yaml.safe_load(handle) or {}
+        layout_task_container_id = str(
+            layout_doc.get("task_container_id") or layout_task_container_id
+        )
+        layout_tool_id = str(layout_doc.get("tool_id") or layout_tool_id)
+    except Exception:
+        pass
 
     legacy_targets = PathJoinSubstitution(
         [FindPackageShare("robot_moveit"), "targets.yaml"]
@@ -244,6 +257,8 @@ def _robot_bench_setup(context, *args, **kwargs):
                 "layouts_dir": layouts_dir,
                 "poses_env": "bench",
                 "layout_id": layout_id,
+                "task_container_id": layout_task_container_id,
+                "tool_id": layout_tool_id,
                 "authored_in": "bench",
                 "robot_key": robot_key,
                 "tool_mesh_resource": profile["tool"]["mesh_resource"],

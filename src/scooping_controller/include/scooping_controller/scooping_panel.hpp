@@ -184,6 +184,10 @@ private:
     const QString& action_name,
     const rclcpp::Client<Trigger>::SharedPtr& client);
   void refreshPoseSetList();
+  void updatePoseSetStatus(const QString& text, const QString& color = "#e5e7eb");
+  void resetMotionTuningGeometry();
+  bool bakeMotionTuningIntoScoopMarkers(QString& detail);
+  void sendSavePoseSetRequest(const QString& bake_detail);
 
   QLabel* service_state_label_;
   QLabel* status_label_;
@@ -209,6 +213,7 @@ private:
   QPushButton* save_pose_set_button_;
   QPushButton* load_pose_set_button_;
   QPushButton* refresh_pose_sets_button_;
+  QLabel* pose_set_status_label_;
   QLineEdit* target_name_edit_;
   QComboBox* target_selector_combo_;
   QComboBox* scoop_marker_combo_;

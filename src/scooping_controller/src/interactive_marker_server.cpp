@@ -570,6 +570,31 @@ private:
 
   void process_feedback(const Feedback::ConstSharedPtr& feedback)
   {
+    // KEEP_ALIVE carries the client's last-known pose and was stomping Load Pose
+    // Set / programmatic updates. Only apply intentional drag events.
+    if (feedback->event_type == Feedback::KEEP_ALIVE ||
+        feedback->event_type == Feedback::MENU_SELECT ||
+        feedback->event_type == Feedback::BUTTON_CLICK)
+    {
+      return;
+    }
+    if (feedback->event_type != Feedback::POSE_UPDATE &&
+        feedback->event_type != Feedback::MOUSE_UP &&
+        feedback->event_type != Feedback::MOUSE_DOWN)
+    {
+      return;
+    }
+    if (this->now() < ignore_marker_feedback_until_) {
+      RCLCPP_INFO_THROTTLE(
+        this->get_logger(),
+        *this->get_clock(),
+        1000,
+        "[pose_set] ignoring marker feedback during post-load gate (%s event=%u)",
+        feedback->marker_name.c_str(),
+        static_cast<unsigned>(feedback->event_type));
+      return;
+    }
+
     if (feedback->marker_name == goal_seed_.marker_name) {
       goal_pose_ = feedback->pose;
       publish_goal_pose();
@@ -627,6 +652,7 @@ private:
     for (const auto& seed : seeds_) {
       scoop_server_->erase(seed.marker_name);
     }
+    scoop_server_->applyChanges();
     for (std::size_t i = 0; i < seeds_.size(); ++i) {
       if (focus_index_ >= 0 && static_cast<int>(i) != focus_index_) {
         continue;
@@ -634,6 +660,38 @@ private:
       insert_pose_marker(i);
     }
     scoop_server_->applyChanges();
+  }
+
+  void push_poses_to_rviz_markers()
+  {
+    // Gate client KEEP_ALIVE / stale POSE_UPDATE so they cannot undo the load.
+    ignore_marker_feedback_until_ = this->now() + rclcpp::Duration::from_seconds(0.75);
+    focus_index_ = -1;
+    if (!scoop_server_) {
+      publish_pose_array();
+      return;
+    }
+    // Prefer setPose (keeps controls, forces RViz pose sync); fall back to rebuild.
+    bool all_set = true;
+    for (std::size_t i = 0; i < seeds_.size(); ++i) {
+      if (!scoop_server_->setPose(seeds_[i].marker_name, poses_[i])) {
+        all_set = false;
+        break;
+      }
+    }
+    if (all_set) {
+      scoop_server_->applyChanges();
+      RCLCPP_INFO(
+        this->get_logger(),
+        "[pose_set] pushed %zu poses to RViz via InteractiveMarkerServer::setPose",
+        poses_.size());
+    } else {
+      RCLCPP_WARN(
+        this->get_logger(),
+        "[pose_set] setPose incomplete; rebuilding scoop interactive markers");
+      rebuild_scoop_markers();
+    }
+    publish_pose_array();
   }
 
   void handle_goal_pose_command(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
@@ -799,9 +857,15 @@ private:
     const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response)
   {
+    RCLCPP_INFO(this->get_logger(), "[pose_set] /save_scoop_poses → save_pose_set");
     std::string set_id;
     std::string path;
     response->success = save_pose_set(/*note=*/"", response->message, set_id, path);
+    if (response->success) {
+      RCLCPP_INFO(this->get_logger(), "[pose_set] %s", response->message.c_str());
+    } else {
+      RCLCPP_ERROR(this->get_logger(), "[pose_set] %s", response->message.c_str());
+    }
     update_status(
       response->message,
       response->success ? std::array<float, 3>{0.75f, 0.95f, 0.75f}
@@ -812,6 +876,11 @@ private:
     const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response)
   {
+    RCLCPP_INFO(
+      this->get_logger(),
+      "[pose_set] /load_scoop_poses cache=%s seed=%s",
+      poses_yaml_path_.c_str(),
+      seed_poses_yaml_path_.c_str());
     // Prefer the device-local cache; if missing/refused, reseed from the
     // versioned layout poses so Load picks up repo edits.
     bool loaded = false;
@@ -820,10 +889,16 @@ private:
         poses_yaml_path_, response->message, /*strict_authored_in=*/true);
     } else {
       response->message = "Device-local poses not found: " + poses_yaml_path_;
+      RCLCPP_WARN(this->get_logger(), "[pose_set] %s", response->message.c_str());
     }
     if (!loaded && !seed_poses_yaml_path_.empty() &&
         std::filesystem::exists(seed_poses_yaml_path_))
     {
+      RCLCPP_WARN(
+        this->get_logger(),
+        "[pose_set] cache load failed (%s); falling back to seed %s",
+        response->message.c_str(),
+        seed_poses_yaml_path_.c_str());
       loaded = load_poses_from_yaml(
         seed_poses_yaml_path_, response->message, /*strict_authored_in=*/false);
       if (loaded) {
@@ -832,11 +907,16 @@ private:
           response->message =
             "Reseeded from versioned layout poses: " + response->message;
         } else {
-          RCLCPP_WARN(this->get_logger(), "%s", save_message.c_str());
+          RCLCPP_WARN(this->get_logger(), "[pose_set] %s", save_message.c_str());
         }
       }
     }
     response->success = loaded;
+    if (loaded) {
+      RCLCPP_INFO(this->get_logger(), "[pose_set] %s", response->message.c_str());
+    } else {
+      RCLCPP_ERROR(this->get_logger(), "[pose_set] %s", response->message.c_str());
+    }
     update_status(
       response->message,
       loaded ? std::array<float, 3>{0.75f, 0.95f, 0.75f}
@@ -848,9 +928,15 @@ private:
     std::shared_ptr<std_srvs::srv::Trigger::Response> response)
   {
     // Export no longer overwrites layout poses.yaml; it creates a timestamped set.
+    RCLCPP_INFO(this->get_logger(), "[pose_set] /export_scoop_poses → save_pose_set(note=export)");
     std::string set_id;
     std::string path;
     response->success = save_pose_set(/*note=*/"export", response->message, set_id, path);
+    if (response->success) {
+      RCLCPP_INFO(this->get_logger(), "[pose_set] %s", response->message.c_str());
+    } else {
+      RCLCPP_ERROR(this->get_logger(), "[pose_set] %s", response->message.c_str());
+    }
     update_status(
       response->message,
       response->success ? std::array<float, 3>{0.75f, 0.95f, 0.75f}
@@ -861,8 +947,25 @@ private:
     const std::shared_ptr<robot_common_msgs::srv::SaveScoopPoseSet::Request> request,
     std::shared_ptr<robot_common_msgs::srv::SaveScoopPoseSet::Response> response)
   {
+    RCLCPP_INFO(
+      this->get_logger(),
+      "[pose_set] SaveScoopPoseSet request note='%s'",
+      request->note.c_str());
     response->success = save_pose_set(
       request->note, response->message, response->set_id, response->path);
+    if (response->success) {
+      RCLCPP_INFO(
+        this->get_logger(),
+        "[pose_set] SaveScoopPoseSet OK set_id=%s path=%s — %s",
+        response->set_id.c_str(),
+        response->path.c_str(),
+        response->message.c_str());
+    } else {
+      RCLCPP_ERROR(
+        this->get_logger(),
+        "[pose_set] SaveScoopPoseSet FAILED — %s",
+        response->message.c_str());
+    }
     update_status(
       response->message,
       response->success ? std::array<float, 3>{0.75f, 0.95f, 0.75f}
@@ -873,15 +976,73 @@ private:
     const std::shared_ptr<robot_common_msgs::srv::ListScoopPoseSets::Request> /*request*/,
     std::shared_ptr<robot_common_msgs::srv::ListScoopPoseSets::Response> response)
   {
+    RCLCPP_INFO(this->get_logger(), "[pose_set] ListScoopPoseSets request");
     response->success = list_pose_sets(
       response->message, response->set_ids, response->created_at, response->notes);
+    if (response->success) {
+      RCLCPP_INFO(
+        this->get_logger(),
+        "[pose_set] ListScoopPoseSets OK count=%zu — %s",
+        response->set_ids.size(),
+        response->message.c_str());
+      for (std::size_t i = 0; i < response->set_ids.size(); ++i) {
+        const auto note =
+          i < response->notes.size() ? response->notes[i] : std::string{};
+        const auto created =
+          i < response->created_at.size() ? response->created_at[i] : std::string{};
+        RCLCPP_INFO(
+          this->get_logger(),
+          "[pose_set]   [%zu] id=%s created=%s note=%s",
+          i,
+          response->set_ids[i].c_str(),
+          created.empty() ? "-" : created.c_str(),
+          note.empty() ? "-" : note.c_str());
+      }
+    } else {
+      RCLCPP_ERROR(
+        this->get_logger(),
+        "[pose_set] ListScoopPoseSets FAILED — %s",
+        response->message.c_str());
+    }
   }
 
   void handle_load_pose_set_request(
     const std::shared_ptr<robot_common_msgs::srv::LoadScoopPoseSet::Request> request,
     std::shared_ptr<robot_common_msgs::srv::LoadScoopPoseSet::Response> response)
   {
+    RCLCPP_INFO(
+      this->get_logger(),
+      "[pose_set] LoadScoopPoseSet request set_id='%s' layout_id=%s "
+      "task_container_id=%s tool_id=%s active_hash=%s seed=%s cache=%s",
+      request->set_id.c_str(),
+      this->get_parameter("layout_id").as_string().c_str(),
+      this->get_parameter("task_container_id").as_string().c_str(),
+      this->get_parameter("tool_id").as_string().c_str(),
+      active_layout_hash_.c_str(),
+      seed_poses_yaml_path_.c_str(),
+      poses_yaml_path_.c_str());
     response->success = load_pose_set(request->set_id, response->message);
+    if (response->success) {
+      RCLCPP_INFO(
+        this->get_logger(),
+        "[pose_set] LoadScoopPoseSet OK — %s",
+        response->message.c_str());
+      for (std::size_t i = 0; i < poses_.size() && i < seeds_.size(); ++i) {
+        RCLCPP_INFO(
+          this->get_logger(),
+          "[pose_set]   marker %s xyz=[%.4f, %.4f, %.4f]",
+          seeds_[i].marker_name.c_str(),
+          poses_[i].position.x,
+          poses_[i].position.y,
+          poses_[i].position.z);
+      }
+    } else {
+      RCLCPP_ERROR(
+        this->get_logger(),
+        "[pose_set] LoadScoopPoseSet FAILED set_id='%s' — %s",
+        request->set_id.c_str(),
+        response->message.c_str());
+    }
     update_status(
       response->message,
       response->success ? std::array<float, 3>{0.75f, 0.95f, 0.75f}
@@ -997,10 +1158,20 @@ private:
     const auto layout_id = this->get_parameter("layout_id").as_string();
     if (layouts_dir_.empty() || layout_id.empty()) {
       message = "Saving a pose set requires layouts_dir and an active layout_id";
+      RCLCPP_ERROR(
+        this->get_logger(),
+        "[pose_set] save rejected: layouts_dir='%s' layout_id='%s'",
+        layouts_dir_.c_str(),
+        layout_id.c_str());
       return false;
     }
     if (poses_.size() != seeds_.size()) {
       message = "Scoop poses are not initialized";
+      RCLCPP_ERROR(
+        this->get_logger(),
+        "[pose_set] save rejected: poses=%zu seeds=%zu",
+        poses_.size(),
+        seeds_.size());
       return false;
     }
 
@@ -1012,18 +1183,34 @@ private:
     std::filesystem::create_directories(sets_dir, ec);
     if (ec) {
       message = "Failed to create pose sets directory: " + sets_dir.string() + " (" + ec.message() + ")";
+      RCLCPP_ERROR(this->get_logger(), "[pose_set] %s", message.c_str());
       return false;
     }
     path = (sets_dir / (set_id + ".yaml")).string();
     const auto created_at = utc_iso8601();
+    RCLCPP_INFO(
+      this->get_logger(),
+      "[pose_set] writing set_id=%s created_at=%s path=%s",
+      set_id.c_str(),
+      created_at.c_str(),
+      path.c_str());
     if (!save_poses_to_yaml(path, message, set_id, created_at, note)) {
+      RCLCPP_ERROR(this->get_logger(), "[pose_set] write failed — %s", message.c_str());
       return false;
     }
 
     // Refresh device working cache for session continuity; never touch poses.yaml.
     std::string cache_message;
     if (!save_poses_to_yaml(poses_yaml_path_, cache_message)) {
-      RCLCPP_WARN(this->get_logger(), "%s", cache_message.c_str());
+      RCLCPP_WARN(
+        this->get_logger(),
+        "[pose_set] set saved but device cache refresh failed — %s",
+        cache_message.c_str());
+    } else {
+      RCLCPP_INFO(
+        this->get_logger(),
+        "[pose_set] refreshed device cache %s (default poses.yaml untouched)",
+        poses_yaml_path_.c_str());
     }
     message = "Saved pose set '" + set_id + "' to " + path +
       " (default poses.yaml unchanged)";
@@ -1043,6 +1230,11 @@ private:
     const auto layout_id = this->get_parameter("layout_id").as_string();
     if (layouts_dir_.empty() || layout_id.empty()) {
       message = "Listing pose sets requires layouts_dir and an active layout_id";
+      RCLCPP_ERROR(
+        this->get_logger(),
+        "[pose_set] list rejected: layouts_dir='%s' layout_id='%s'",
+        layouts_dir_.c_str(),
+        layout_id.c_str());
       return false;
     }
 
@@ -1098,10 +1290,16 @@ private:
     const auto layout_id = this->get_parameter("layout_id").as_string();
     if (layouts_dir_.empty() || layout_id.empty()) {
       message = "Loading a pose set requires layouts_dir and an active layout_id";
+      RCLCPP_ERROR(
+        this->get_logger(),
+        "[pose_set] load rejected: layouts_dir='%s' layout_id='%s'",
+        layouts_dir_.c_str(),
+        layout_id.c_str());
       return false;
     }
     if (set_id.empty()) {
       message = "Pose set id is empty";
+      RCLCPP_ERROR(this->get_logger(), "[pose_set] load rejected: empty set_id");
       return false;
     }
 
@@ -1110,28 +1308,70 @@ private:
       path = seed_poses_yaml_path_;
       if (path.empty() || !std::filesystem::exists(path)) {
         message = "Default poses.yaml not found for layout " + layout_id;
+        RCLCPP_ERROR(
+          this->get_logger(),
+          "[pose_set] default seed missing path='%s'",
+          path.c_str());
         return false;
       }
+      RCLCPP_INFO(
+        this->get_logger(),
+        "[pose_set] resolving set_id=default → seed %s",
+        path.c_str());
     } else {
       if (!is_safe_pose_set_id(set_id)) {
         message = "Invalid pose set id";
+        RCLCPP_ERROR(
+          this->get_logger(),
+          "[pose_set] load rejected: unsafe set_id='%s'",
+          set_id.c_str());
         return false;
       }
       path = (pose_sets_dir() / (set_id + ".yaml")).string();
       if (!std::filesystem::exists(path)) {
         message = "Pose set not found: " + path;
+        RCLCPP_ERROR(this->get_logger(), "[pose_set] %s", message.c_str());
         return false;
       }
+      RCLCPP_INFO(
+        this->get_logger(),
+        "[pose_set] resolving set_id=%s → %s",
+        set_id.c_str(),
+        path.c_str());
     }
 
-    if (!load_poses_from_yaml(path, message, /*strict_authored_in=*/false)) {
+    // Pose-set loads are layout-scoped; adopt container/tool from the file so a
+    // stale default (e.g. rs6) does not refuse lightsout rs3 seeds.
+    if (!load_poses_from_yaml(
+          path, message, /*strict_authored_in=*/false, /*adopt_file_contract=*/true))
+    {
+      RCLCPP_ERROR(
+        this->get_logger(),
+        "[pose_set] load_poses_from_yaml failed for %s — %s",
+        path.c_str(),
+        message.c_str());
       return false;
     }
     std::string cache_message;
     if (!save_poses_to_yaml(poses_yaml_path_, cache_message)) {
-      RCLCPP_WARN(this->get_logger(), "%s", cache_message.c_str());
+      RCLCPP_WARN(
+        this->get_logger(),
+        "[pose_set] markers loaded but device cache refresh failed — %s",
+        cache_message.c_str());
+    } else {
+      RCLCPP_INFO(
+        this->get_logger(),
+        "[pose_set] device cache refreshed → %s",
+        poses_yaml_path_.c_str());
     }
     message = "Loaded pose set '" + set_id + "' from " + path;
+    if (!poses_.empty()) {
+      message += " · approach [" +
+        std::to_string(poses_[0].position.x) + ", " +
+        std::to_string(poses_[0].position.y) + ", " +
+        std::to_string(poses_[0].position.z) + "]";
+    }
+    update_status(message, {0.75f, 0.95f, 0.75f});
     return true;
   }
 
@@ -1170,7 +1410,8 @@ private:
   bool load_poses_from_yaml(
     const std::string& path,
     std::string& message,
-    bool strict_authored_in)
+    bool strict_authored_in,
+    bool adopt_file_contract = false)
   {
     try {
       if (path.empty() || !std::filesystem::exists(path)) {
@@ -1179,8 +1420,19 @@ private:
       }
 
       const YAML::Node root = YAML::LoadFile(path);
-      const auto fail_provenance = [this, &message](const std::string& reason) {
+      const auto fail_provenance = [this, &message, &path](const std::string& reason) {
           message = "Refusing pose YAML provenance: " + reason;
+          RCLCPP_ERROR(
+            this->get_logger(),
+            "[pose_set] provenance refuse path=%s reason=%s "
+            "(layout_id=%s task_container_id=%s tool_id=%s frame=%s active_hash=%s)",
+            path.c_str(),
+            reason.c_str(),
+            this->get_parameter("layout_id").as_string().c_str(),
+            this->get_parameter("task_container_id").as_string().c_str(),
+            this->get_parameter("tool_id").as_string().c_str(),
+            scoop_frame_id_.c_str(),
+            active_layout_hash_.c_str());
           std_msgs::msg::String fault;
           fault.data = message;
           pose_fault_pub_->publish(fault);
@@ -1207,22 +1459,46 @@ private:
       const auto expected_tool = this->get_parameter("tool_id").as_string();
       const auto expected_authored = this->get_parameter("authored_in").as_string();
       const auto file_hash = root["container_spec_hash"].as<std::string>();
-      if (root["layout_id"].as<std::string>() != expected_layout ||
-          root["task_container_id"].as<std::string>() != expected_container ||
-          root["frame_id"].as<std::string>() != scoop_frame_id_ ||
-          (!expected_tool.empty() &&
-           root["tool_id"].as<std::string>() != expected_tool)) {
+      const auto file_layout = root["layout_id"].as<std::string>();
+      const auto file_container = root["task_container_id"].as<std::string>();
+      const auto file_frame = root["frame_id"].as<std::string>();
+      const auto file_tool = root["tool_id"].as<std::string>();
+      if (file_layout != expected_layout || file_frame != scoop_frame_id_) {
+        return fail_provenance("layout or frame mismatch");
+      }
+      if (adopt_file_contract) {
+        if (file_container != expected_container ||
+            (!expected_tool.empty() && file_tool != expected_tool) ||
+            (expected_tool.empty() && !file_tool.empty()))
+        {
+          this->set_parameters({
+            rclcpp::Parameter("task_container_id", file_container),
+            rclcpp::Parameter("tool_id", file_tool)});
+          RCLCPP_INFO(
+            this->get_logger(),
+            "Adopted pose-set contract task_container_id=%s tool_id=%s",
+            file_container.c_str(),
+            file_tool.c_str());
+        }
+      } else if (
+        file_container != expected_container ||
+        (!expected_tool.empty() && file_tool != expected_tool))
+      {
         return fail_provenance("layout, container, frame, or tool mismatch");
       }
       // Versioned seeds may carry an empty hash until first export. For the
       // strict device-local path, refuse empty vs non-empty. For seed fallback
       // (strict_authored_in=false), allow empty hash when layout_id already
       // matched so the first apply can bootstrap and re-stamp.
-      if (!file_hash.empty() && file_hash != active_layout_hash_) {
-        return fail_provenance("container_spec_hash mismatch");
-      }
-      if (!active_layout_hash_.empty() && file_hash.empty() && strict_authored_in) {
-        return fail_provenance("container_spec_hash missing for active layout");
+      // Pose-set loads (adopt_file_contract) ignore hash so authoring preview
+      // (layout_hash=preview) can still switch between saved sets and default.
+      if (!adopt_file_contract) {
+        if (!file_hash.empty() && file_hash != active_layout_hash_) {
+          return fail_provenance("container_spec_hash mismatch");
+        }
+        if (!active_layout_hash_.empty() && file_hash.empty() && strict_authored_in) {
+          return fail_provenance("container_spec_hash missing for active layout");
+        }
       }
       if (strict_authored_in && !expected_authored.empty() &&
           root["authored_in"].as<std::string>() != expected_authored) {
@@ -1259,14 +1535,21 @@ private:
         pose.orientation.z = pose_node["orientation"]["z"].as<double>();
         pose.orientation.w = pose_node["orientation"]["w"].as<double>();
 
-        poses_[static_cast<std::size_t>(index)] = convert_loaded_scoop_pose(pose, source_frame);
+        poses_[static_cast<std::size_t>(index)] =
+          clamp_to_envelope(convert_loaded_scoop_pose(pose, source_frame));
         ++updated;
       }
 
-      rebuild_scoop_markers();
-      publish_pose_array();
+      push_poses_to_rviz_markers();
       this->set_parameter(rclcpp::Parameter("poses_provenance_ok", true));
       message = "Loaded " + std::to_string(updated) + " scoop poses from " + path;
+      if (updated > 0 && !poses_.empty()) {
+        message += " (approach xyz=" +
+          std::to_string(poses_[0].position.x) + "," +
+          std::to_string(poses_[0].position.y) + "," +
+          std::to_string(poses_[0].position.z) + ")";
+      }
+      RCLCPP_INFO(this->get_logger(), "%s", message.c_str());
       return updated > 0;
     } catch (const std::exception& ex) {
       message = std::string("Failed to load scoop poses: ") + ex.what();
@@ -1276,6 +1559,10 @@ private:
 
   void handle_active_layout(const robot_common_msgs::msg::CellLayoutActive::SharedPtr layout)
   {
+    const bool layout_identity_changed =
+      layout->layout_id != applied_layout_id_ ||
+      layout->layout_hash != active_layout_hash_;
+
     active_layout_hash_ = layout->layout_hash;
     this->set_parameters({
       rclcpp::Parameter("layout_id", layout->layout_id),
@@ -1296,6 +1583,19 @@ private:
       RCLCPP_ERROR(this->get_logger(), "Invalid active layout envelope: %s", ex.what());
       has_envelope_ = false;
     }
+
+    // Only (re)load scoop poses when the active layout identity changes.
+    // Republishes of the same preview/applied layout were stomping Load Pose Set
+    // and unsaved marker drags by reloading the device cache.
+    if (!layout_identity_changed) {
+      RCLCPP_DEBUG(
+        this->get_logger(),
+        "Ignoring duplicate /cell_layout/active for %s hash=%s (poses unchanged)",
+        layout->layout_id.c_str(),
+        layout->layout_hash.c_str());
+      return;
+    }
+    applied_layout_id_ = layout->layout_id;
 
     // Prefer the layout-scoped device-local cache; on provenance failure fall
     // back to the versioned seed under layouts_dir/<id>/poses.yaml.
@@ -1428,6 +1728,7 @@ private:
   std::string seed_poses_yaml_path_;
   std::string tool_mesh_resource_;
   std::string active_layout_hash_;
+  std::string applied_layout_id_;
   std::array<double, 6> envelope_{};
   bool has_envelope_{false};
   std::array<double, 3> tcp_visual_offset_xyz_{
@@ -1438,6 +1739,7 @@ private:
   MarkerSeed goal_seed_{};
   geometry_msgs::msg::Pose goal_pose_{};
   int focus_index_{-1};
+  rclcpp::Time ignore_marker_feedback_until_{0, 0, RCL_ROS_TIME};
   std::string status_text_{"Waiting for marker updates"};
   std::array<float, 3> status_color_{0.95f, 0.95f, 0.95f};
   rclcpp::TimerBase::SharedPtr init_timer_;

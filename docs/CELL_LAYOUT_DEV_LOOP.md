@@ -6,7 +6,7 @@ unit. Scoop poses are layout-scoped (`poses_<env>_<layout_id>.yaml` on device).
 The **default seed** is `config/layouts/<id>/poses.yaml` (container-frame;
 robot-agnostic) and is never overwritten by Save/Export. Timestamped labeled
 sets go under `config/layouts/<id>/poses/sets/` for traceability; load
-`default` or any set from the Cell Layout → Scoop Pose Sets panel. Named
+`default` or any set from Scoop Motion → Pose Sets. Named
 MoveTo targets live under `config/layouts/<id>/robots/<robot_key>/targets.yaml`.
 
 ## Discoverable entry points
