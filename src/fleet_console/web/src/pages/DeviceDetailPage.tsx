@@ -51,6 +51,7 @@ export default function DeviceDetailPage() {
   const [siteId, setSiteId] = useState('site-1')
   const [profileId, setProfileId] = useState('prod-niryo')
   const [trackedBranch, setTrackedBranch] = useState('main')
+  const [desiredLayoutId, setDesiredLayoutId] = useState('')
   const [busy, setBusy] = useState(false)
   const [confirm, setConfirm] = useState<'provision' | 'deploy' | null>(null)
   const [activeDeploymentId, setActiveDeploymentId] = useState<number | null>(null)
@@ -104,6 +105,7 @@ export default function DeviceDetailPage() {
         } else if (payload.device.desired_release?.id) {
           setReleaseId(payload.device.desired_release.id)
         }
+        setDesiredLayoutId(payload.device.target?.desired_layout_id || '')
       }
       const agentDone = ['converged', 'success', 'failed', 'rolled_back'].includes(
         String(payload.device.agent_status || ''),
@@ -222,8 +224,26 @@ export default function DeviceDetailPage() {
         profile_id: profileId,
         release_id: typeof releaseId === 'number' ? releaseId : undefined,
         site_id: siteId,
+        desired_layout_id: desiredLayoutId,
         ...(robotTypeLocked ? {} : { robot_type: robotType }),
       })
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const applyLayout = async () => {
+    if (!device) return
+    setBusy(true)
+    setError(null)
+    try {
+      const resp = await api.applyLayout(device.id, {
+        layout_id: desiredLayoutId || null,
+      })
+      setActiveDeploymentId(resp.deployment.id)
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -255,6 +275,7 @@ export default function DeviceDetailPage() {
           release_id: releaseId,
           profile_id: profileId,
           tracked_branch: trackedBranch,
+          desired_layout_id: desiredLayoutId,
         })
         deployment = resp.deployment
       }
@@ -661,6 +682,32 @@ export default function DeviceDetailPage() {
               ) : null}
             </label>
 
+            <label className="block text-xs text-[var(--text-muted)]">
+              Cell layout
+              <select
+                className="mt-1 w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-1)] px-3 py-2 text-sm"
+                value={desiredLayoutId}
+                onChange={(e) => setDesiredLayoutId(e.target.value)}
+              >
+                <option value="">Follow mode mapping</option>
+                {(device?.available_layouts || []).map((layout) => (
+                  <option key={layout.layout_id} value={layout.layout_id}>
+                    {layout.layout_id}
+                    {layout.active ? ' (active)' : ''}
+                    {layout.layout_hash
+                      ? ` · ${layout.layout_hash.slice(0, 8)}`
+                      : ''}
+                    {layout.error ? ' · invalid' : ''}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-[10px] text-[var(--text-muted)]">
+                Empty follows <code>mode_layouts</code> on mode switch. Apply
+                layout asks fleet-agent to call the robot adapter (edge-triggered).
+                Options come from this device&apos;s deploy bundle.
+              </span>
+            </label>
+
             <div className="flex flex-wrap gap-2 pt-1">
               <Button type="button" variant="outline" onClick={saveTarget} disabled={busy}>
                 Save target
@@ -674,6 +721,14 @@ export default function DeviceDetailPage() {
                   Deploy (set desired)
                 </Button>
               )}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void applyLayout()}
+                disabled={busy || !device?.provisioned}
+              >
+                Apply layout
+              </Button>
               <Link
                 to={`/releases?branch=${encodeURIComponent(trackedBranch || 'main')}`}
                 className="inline-flex items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] px-3.5 py-2 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-white/5"

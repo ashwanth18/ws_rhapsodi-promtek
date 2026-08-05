@@ -295,6 +295,8 @@ def _robot_sim_setup(context):
         ],
     )
 
+    layouts_dir = LaunchConfiguration("layouts_dir")
+    poses_env = LaunchConfiguration("poses_env")
     marker_server = Node(
         package="scooping_controller",
         executable="scooping_marker_server",
@@ -306,6 +308,9 @@ def _robot_sim_setup(context):
                 "goal_frame_id": base_frame,
                 "poses_yaml": poses_yaml,
                 "seed_poses_yaml": seed_poses_yaml,
+                "layouts_dir": layouts_dir,
+                "poses_env": poses_env,
+                "authored_in": "sim",
                 "tool_mesh_resource": cfg["tool_mesh_resource"],
                 "tcp_visual_offset_xyz": cfg["tcp_visual_offset_xyz"],
                 "use_sim_time": use_sim_time,
@@ -509,22 +514,36 @@ def generate_launch_description():
     )
     declare_poses_yaml = DeclareLaunchArgument(
         "poses_yaml",
-        default_value=os.path.expanduser("~/.ros/scooping_controller/poses_real.yaml"),
-        description="YAML file used by RViz Save/Load scoop pose buttons",
+        default_value="",
+        description=(
+            "Optional override; empty derives "
+            "poses_sim_<layout_id>.yaml under ~/.ros/scooping_controller"
+        ),
     )
     declare_seed_poses_yaml = DeclareLaunchArgument(
         "seed_poses_yaml",
-        default_value=PathJoinSubstitution(
-            [
-                FindPackageShare("scooping_controller"),
-                "config",
-                "poses_real_seed.yaml",
-            ]
-        ),
+        default_value="",
         description=(
-            "Checked-in seed YAML copied on first startup when poses_yaml is "
-            "missing"
+            "Optional override; empty uses "
+            "<layouts_dir>/<layout_id>/poses.yaml"
         ),
+    )
+    declare_layouts_dir = DeclareLaunchArgument(
+        "layouts_dir",
+        default_value=os.environ.get(
+            "CELL_LAYOUTS_DIR",
+            os.path.abspath(
+                os.path.join(
+                    os.path.dirname(__file__), "..", "..", "..", "config", "layouts"
+                )
+            ),
+        ),
+        description="Directory containing versioned cell-layout YAML files",
+    )
+    declare_poses_env = DeclareLaunchArgument(
+        "poses_env",
+        default_value="sim",
+        description="Pose cache environment tag (real|bench|sim)",
     )
     declare_targets_yaml = DeclareLaunchArgument(
         "targets_yaml",
@@ -661,6 +680,8 @@ def generate_launch_description():
             declare_rviz_config,
             declare_poses_yaml,
             declare_seed_poses_yaml,
+            declare_layouts_dir,
+            declare_poses_env,
             declare_targets_yaml,
             declare_scoop_frame_id,
             declare_pattern_offset_y,

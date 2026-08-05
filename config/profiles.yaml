@@ -34,7 +34,9 @@ profiles:
       # Sim is laptop-only; never enable on Pi5 profiles.
       SIM_ALLOWED: "0"
       ENVIRONMENT: real
-      POSES_YAML: /root/.ros/scooping_controller/poses_real.yaml
+      # Empty: scooping_marker_server derives poses_real_<layout_id>.yaml
+      POSES_YAML: ""
+      POSES_ENV: real
       TARGETS_YAML: /ws/install/share/robot_moveit/targets.yaml
       CONTAINER_SCENE_YAML: /ws/install/share/scooping_controller/config/container_scene_real.yaml
 
@@ -48,7 +50,8 @@ profiles:
       DATA_OUTPUT_ROOT: /data/runs
       SIM_ALLOWED: "0"
       ENVIRONMENT: real
-      POSES_YAML: /root/.ros/scooping_controller/poses_real.yaml
+      POSES_YAML: ""
+      POSES_ENV: real
       TARGETS_YAML: /ws/install/share/robot_moveit/targets.yaml
       CONTAINER_SCENE_YAML: /ws/install/share/scooping_controller/config/container_scene_real.yaml
 
@@ -60,7 +63,8 @@ profiles:
       PROFILE_ID: prod-jaka
       BT_TREE: /ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml
       DATA_OUTPUT_ROOT: /data/runs
-      POSES_YAML: /root/.ros/scooping_controller/poses_real.yaml
+      POSES_YAML: ""
+      POSES_ENV: real
       TARGETS_YAML: /ws/install/share/robot_moveit/targets_jaka.yaml
       CONTAINER_SCENE_YAML: /ws/install/share/scooping_controller/config/container_scene_real.yaml
 

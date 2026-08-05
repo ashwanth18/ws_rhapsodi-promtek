@@ -59,6 +59,7 @@ from .modes.cell_layout import (
     configured_layout_id,
     layout_path,
     layout_provenance,
+    list_layouts,
     load_layout,
     provenance_is_safe,
 )
@@ -506,6 +507,26 @@ def put_runtime_mode(payload: RuntimeModeRequest) -> dict:
 @app.get('/runtime/capabilities')
 def get_runtime_capabilities() -> dict:
     return get_mode_manager().capabilities()
+
+
+@app.get('/layouts')
+def get_layouts() -> dict:
+    """List cell layouts present on this device's deploy bundle."""
+    active = get_active_cell_layout() or {}
+    active_id = active.get('layout_id')
+    layouts = []
+    for item in list_layouts():
+        layouts.append(
+            {
+                **item,
+                'active': bool(active_id) and item.get('layout_id') == active_id,
+            }
+        )
+    return {
+        'layouts': layouts,
+        'active_layout_id': active_id,
+        'active_layout_hash': active.get('layout_hash'),
+    }
 
 
 @app.get('/powders')

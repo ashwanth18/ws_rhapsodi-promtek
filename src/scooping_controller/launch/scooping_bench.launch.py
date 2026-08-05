@@ -30,6 +30,15 @@ def generate_launch_description():
     scoop_frame_id = LaunchConfiguration("scoop_frame_id")
     layout_id = LaunchConfiguration("layout_id")
 
+    default_layouts_dir = os.environ.get(
+        "CELL_LAYOUTS_DIR",
+        os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__), "..", "..", "..", "config", "layouts"
+            )
+        ),
+    )
+
     moveit_share = get_package_share_directory("niryo_ned3pro_moveit_config")
     initial_positions = os.path.join(moveit_share, "config", "initial_positions.yaml")
     urdf_xacro = os.path.join(moveit_share, "config", "niryo_ned3pro.urdf.xacro")
@@ -150,6 +159,8 @@ def generate_launch_description():
                 "goal_frame_id": "base_link",
                 "poses_yaml": poses_yaml,
                 "seed_poses_yaml": seed_poses_yaml,
+                "layouts_dir": default_layouts_dir,
+                "poses_env": "bench",
                 "layout_id": layout_id,
                 "authored_in": "bench",
                 "use_sim_time": False,
@@ -227,14 +238,6 @@ def generate_launch_description():
         ],
     )
 
-    default_layouts_dir = os.environ.get(
-        "CELL_LAYOUTS_DIR",
-        os.path.abspath(
-            os.path.join(
-                os.path.dirname(__file__), "..", "..", "..", "config", "layouts"
-            )
-        ),
-    )
     cell_layout_manager = Node(
         package="scooping_controller",
         executable="cell_layout_manager",
@@ -286,18 +289,18 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "poses_yaml",
-                default_value=os.path.expanduser(
-                    "~/.ros/scooping_controller/poses_bench.yaml"
+                default_value="",
+                description=(
+                    "Optional override; empty derives "
+                    "poses_bench_<layout_id>.yaml under ~/.ros/scooping_controller"
                 ),
             ),
             DeclareLaunchArgument(
                 "seed_poses_yaml",
-                default_value=PathJoinSubstitution(
-                    [
-                        FindPackageShare("scooping_controller"),
-                        "config",
-                        "poses_real_seed.yaml",
-                    ]
+                default_value="",
+                description=(
+                    "Optional override; empty uses "
+                    "<layouts_dir>/<layout_id>/poses.yaml"
                 ),
             ),
             DeclareLaunchArgument(

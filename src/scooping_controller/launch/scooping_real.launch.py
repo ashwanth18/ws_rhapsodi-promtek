@@ -49,22 +49,25 @@ def generate_launch_description():
     )
     declare_poses_yaml = DeclareLaunchArgument(
         "poses_yaml",
-        default_value=os.path.expanduser("~/.ros/scooping_controller/poses_real.yaml"),
-        description="YAML file used by RViz Save/Load scoop pose buttons",
+        default_value="",
+        description=(
+            "Optional override for the device-local pose cache. Empty lets "
+            "scooping_marker_server derive "
+            "~/.ros/scooping_controller/poses_real_<layout_id>.yaml"
+        ),
     )
     declare_seed_poses_yaml = DeclareLaunchArgument(
         "seed_poses_yaml",
-        default_value=PathJoinSubstitution(
-            [
-                FindPackageShare("scooping_controller"),
-                "config",
-                "poses_real_seed.yaml",
-            ]
-        ),
+        default_value="",
         description=(
-            "Checked-in seed YAML copied on first startup when poses_yaml is "
-            "missing"
+            "Optional override for versioned seed poses. Empty lets "
+            "scooping_marker_server use <layouts_dir>/<layout_id>/poses.yaml"
         ),
+    )
+    declare_poses_env = DeclareLaunchArgument(
+        "poses_env",
+        default_value="real",
+        description="Pose cache environment tag (real|bench|sim)",
     )
     declare_targets_yaml = DeclareLaunchArgument(
         "targets_yaml",
@@ -244,6 +247,7 @@ def generate_launch_description():
         ],
     )
 
+    poses_env = LaunchConfiguration("poses_env")
     marker_server = Node(
         package="scooping_controller",
         executable="scooping_marker_server",
@@ -255,6 +259,9 @@ def generate_launch_description():
                 "goal_frame_id": "base_link",
                 "poses_yaml": poses_yaml,
                 "seed_poses_yaml": seed_poses_yaml,
+                "layouts_dir": layouts_dir,
+                "poses_env": poses_env,
+                "authored_in": "real",
                 "use_sim_time": False,
             }
         ],
@@ -384,6 +391,7 @@ def generate_launch_description():
             declare_rviz_config,
             declare_poses_yaml,
             declare_seed_poses_yaml,
+            declare_poses_env,
             declare_targets_yaml,
             declare_scoop_frame_id,
             declare_pattern_offset_y,

@@ -9,6 +9,7 @@ import httpx
 HOST_INFO_TIMEOUT = 2.5
 ACTIVE_TIMEOUT = 2.5
 RUNTIME_MODE_TIMEOUT = 2.5
+LAYOUTS_TIMEOUT = 2.5
 
 
 async def poll_host_info(ip: str, port: int = 8000) -> dict[str, Any] | None:
@@ -51,6 +52,25 @@ async def poll_runtime_mode(ip: str, port: int = 8000) -> dict[str, Any] | None:
         return None
 
 
+async def poll_layouts(ip: str, port: int = 8000) -> list[dict[str, Any]] | None:
+    """GET /layouts → list of layout ids available on the device bundle."""
+    url = f'http://{ip}:{port}/layouts'
+    try:
+        async with httpx.AsyncClient(timeout=LAYOUTS_TIMEOUT) as client:
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                return None
+            payload = resp.json()
+            if not isinstance(payload, dict):
+                return None
+            layouts = payload.get('layouts')
+            if not isinstance(layouts, list):
+                return None
+            return [item for item in layouts if isinstance(item, dict)]
+    except Exception:
+        return None
+
+
 async def enrich_device(device: dict[str, Any]) -> dict[str, Any]:
     ip = device.get('ip')
     if not ip:
@@ -61,12 +81,14 @@ async def enrich_device(device: dict[str, Any]) -> dict[str, Any]:
         device['environment'] = None
         device['layout_id'] = None
         device['layout_hash'] = None
+        device['available_layouts'] = []
         device['provisioned'] = False
         return device
-    host_info, active, runtime = await asyncio.gather(
+    host_info, active, runtime, layouts = await asyncio.gather(
         poll_host_info(ip),
         poll_active_run(ip),
         poll_runtime_mode(ip),
+        poll_layouts(ip),
     )
     device['host_info'] = host_info
     device['active_run'] = active
@@ -105,6 +127,7 @@ async def enrich_device(device: dict[str, Any]) -> dict[str, Any]:
         device['environment'] = None
         device['layout_id'] = None
         device['layout_hash'] = None
+    device['available_layouts'] = layouts or []
     return device
 
 

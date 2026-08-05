@@ -20,6 +20,7 @@ name: Build and release
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
     inputs:
       branch:
@@ -36,7 +37,28 @@ permissions:
   contents: write
 
 jobs:
+  validate-layouts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install layout validation deps
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip
+          python3 -m pip install pyyaml jsonschema
+
+      - name: Validate layouts + structural reachability
+        run: bash scripts/ci_layout_reachability.sh
+
+      - name: Sim/real layout parity
+        run: python3 scripts/test_layout_sim_parity.py
+
   build-push-bundle:
+    needs: [validate-layouts]
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:

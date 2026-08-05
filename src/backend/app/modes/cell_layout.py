@@ -112,17 +112,50 @@ def configured_layout_id(mode: str) -> str:
     return mode_to_layout_id(mode, profiles)
 
 
+def layouts_dir() -> Path:
+    """Resolve the layouts directory (env override, then repo checkout)."""
+    configured = Path(os.environ.get("CELL_LAYOUTS_DIR", "/ws/config/layouts"))
+    if configured.is_dir():
+        return configured.resolve()
+    return (_repo_root() / "config/layouts").resolve()
+
+
 def layout_path(layout_id: str) -> Path:
     """Return the configured layout file, rejecting traversal outside the dir."""
-    layouts_dir = Path(
-        os.environ.get("CELL_LAYOUTS_DIR", "/ws/config/layouts")
-    )
-    if not layouts_dir.is_dir():
-        layouts_dir = _repo_root() / "config/layouts"
-    candidate = (layouts_dir / f"{layout_id}.yaml").resolve()
-    if candidate.parent != layouts_dir.resolve():
+    root = layouts_dir()
+    candidate = (root / f"{layout_id}.yaml").resolve()
+    if candidate.parent != root:
         raise ValueError("layout_id must name a top-level layout")
     return candidate
+
+
+def list_layouts() -> list[dict[str, Any]]:
+    """Enumerate top-level layout YAML files with hashes."""
+    root = layouts_dir()
+    items: list[dict[str, Any]] = []
+    if not root.is_dir():
+        return items
+    for path in sorted(root.glob("*.yaml")):
+        try:
+            layout = load_layout(path)
+        except Exception as exc:  # noqa: BLE001 — skip invalid; list the rest
+            items.append(
+                {
+                    "layout_id": path.stem,
+                    "layout_hash": None,
+                    "error": str(exc),
+                }
+            )
+            continue
+        items.append(
+            {
+                "layout_id": str(layout["layout_id"]),
+                "layout_hash": layout_hash(layout),
+                "tool_id": str(layout.get("tool_id") or ""),
+                "task_container_id": str(layout.get("task_container_id") or ""),
+            }
+        )
+    return items
 
 
 def layout_provenance(layout: dict[str, Any]) -> dict[str, Any]:

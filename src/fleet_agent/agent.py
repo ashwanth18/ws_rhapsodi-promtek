@@ -37,6 +37,10 @@ HEALTH_URL = os.environ.get('HEALTH_URL', 'http://127.0.0.1:8000/health')
 RUNTIME_MODE_URL = os.environ.get(
     'RUNTIME_MODE_URL', 'http://127.0.0.1:8000/runtime/mode'
 )
+LAYOUTS_URL = os.environ.get('LAYOUTS_URL', 'http://127.0.0.1:8000/layouts')
+LAYOUT_ADAPTER_URL = os.environ.get(
+    'LAYOUT_ADAPTER_URL', 'http://127.0.0.1:8010/apply_cell_layout'
+)
 HEALTH_RETRIES = int(os.environ.get('HEALTH_RETRIES', '30'))
 HEALTH_DELAY = int(os.environ.get('HEALTH_DELAY_SECONDS', '5'))
 GIT_REMOTE = os.environ.get('GIT_REMOTE', 'origin')
@@ -90,12 +94,55 @@ def fetch_runtime_mode() -> dict[str, str]:
         return {}
     mode = str(data.get('mode') or '').strip()
     environment = str(data.get('environment') or '').strip()
+    layout_id = str(data.get('layout_id') or '').strip()
+    layout_hash = str(data.get('layout_hash') or '').strip()
     out: dict[str, str] = {}
     if mode:
         out['active_mode'] = mode
     if environment:
         out['environment'] = environment
+    if layout_id:
+        out['layout_id'] = layout_id
+    if layout_hash:
+        out['layout_hash'] = layout_hash
     return out
+
+
+def fetch_local_layouts() -> list[dict[str, Any]]:
+    """List layouts present on this device's deploy bundle."""
+    try:
+        with urllib.request.urlopen(LAYOUTS_URL, timeout=5) as resp:
+            raw = resp.read().decode()
+            data = json.loads(raw) if raw.strip() else {}
+    except Exception as exc:  # noqa: BLE001
+        LOG.warning('layouts probe failed: %s', exc)
+        return []
+    if not isinstance(data, dict):
+        return []
+    layouts = data.get('layouts')
+    if not isinstance(layouts, list):
+        return []
+    return [item for item in layouts if isinstance(item, dict)]
+
+
+def apply_cell_layout(layout_id: str) -> dict[str, Any]:
+    """POST local robot adapter /apply_cell_layout."""
+    body = json.dumps({'layout_id': layout_id}).encode()
+    req = urllib.request.Request(
+        LAYOUT_ADAPTER_URL,
+        data=body,
+        headers={'Content-Type': 'application/json', 'Accept': 'application/json'},
+        method='POST',
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            raw = resp.read().decode()
+            return json.loads(raw) if raw.strip() else {}
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode(errors='replace')[:300]
+        raise RuntimeError(
+            f'apply_cell_layout {layout_id} -> {exc.code}: {detail}'
+        ) from exc
 
 
 def report(
@@ -118,6 +165,69 @@ def report(
         _request('POST', '/api/agent/report', body)
     except Exception as exc:  # noqa: BLE001
         LOG.warning('Failed to report status=%s: %s', status, exc)
+
+
+def needs_layout_apply(desired: dict[str, Any], current: dict[str, Any]) -> bool:
+    """Edge-triggered: act only when console pin differs from last applied pin."""
+    desired_layout = str(desired.get('desired_layout_id') or '').strip()
+    current_layout = str(current.get('desired_layout_id') or '').strip()
+    return desired_layout != current_layout
+
+
+def apply_desired_layout(desired: dict[str, Any], current: dict[str, Any]) -> None:
+    """Apply (or clear) desired_layout_id without fighting mode-switch applies."""
+    layout_id = str(desired.get('desired_layout_id') or '').strip()
+    if not layout_id:
+        current['desired_layout_id'] = ''
+        save_local_state(current)
+        report(
+            status='success',
+            message='Cleared desired layout pin (follow mode mapping)',
+            applied_release_id=desired.get('release_id') or current.get('release_id'),
+            profile_id=desired.get('profile_id') or current.get('profile_id'),
+            image_tag=desired.get('git_sha') or current.get('image_tag'),
+        )
+        return
+
+    available = {
+        str(item.get('layout_id') or '')
+        for item in fetch_local_layouts()
+        if item.get('layout_id') and not item.get('error')
+    }
+    if layout_id not in available:
+        raise RuntimeError(
+            f'Layout {layout_id!r} not present on device bundle '
+            f'(available={sorted(available)})'
+        )
+
+    report(
+        status='applying',
+        message=f'Applying cell layout {layout_id}',
+        applied_release_id=desired.get('release_id') or current.get('release_id'),
+        profile_id=desired.get('profile_id') or current.get('profile_id'),
+        image_tag=desired.get('git_sha') or current.get('image_tag'),
+    )
+    result = apply_cell_layout(layout_id)
+    if not result.get('success'):
+        raise RuntimeError(
+            f'apply_cell_layout failed: {result.get("message") or result}'
+        )
+    if result.get('preflight_ok') is False:
+        raise RuntimeError(
+            f'apply_cell_layout preflight failed: {result.get("message") or result}'
+        )
+    current['desired_layout_id'] = layout_id
+    save_local_state(current)
+    report(
+        status='success',
+        message=(
+            f'Applied cell layout {layout_id} '
+            f'hash={(result.get("layout_hash") or "")[:12]}'
+        ),
+        applied_release_id=desired.get('release_id') or current.get('release_id'),
+        profile_id=desired.get('profile_id') or current.get('profile_id'),
+        image_tag=desired.get('git_sha') or current.get('image_tag'),
+    )
 
 
 def load_local_state() -> dict[str, Any]:
@@ -365,10 +475,14 @@ def apply_desired(desired: dict[str, Any]) -> dict[str, Any]:
     compose_up(desired)
     if not wait_health():
         raise RuntimeError(f'Health check failed after applying {git_sha}')
+    prior = load_local_state()
     state = {
         'release_id': release_id,
         'image_tag': git_sha,
         'profile_id': profile_id,
+        'desired_layout_id': prior.get('desired_layout_id')
+        or desired.get('desired_layout_id')
+        or '',
         'deployed_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
         'robot_type': desired.get('robot_type'),
         'site_id': desired.get('site_id'),
@@ -425,10 +539,14 @@ def rollback_last_good() -> dict[str, Any] | None:
     compose_up(desired)
     if not wait_health():
         raise RuntimeError('Health check failed after rollback')
+    prior = load_local_state()
     state = {
         'release_id': desired.get('release_id'),
         'image_tag': git_sha,
         'profile_id': desired.get('profile_id'),
+        'desired_layout_id': prior.get('desired_layout_id')
+        or last.get('desired_layout_id')
+        or '',
         'deployed_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
         'robot_type': desired.get('robot_type'),
         'site_id': desired.get('site_id'),
@@ -441,6 +559,30 @@ def rollback_last_good() -> dict[str, Any] | None:
 def reconcile_once() -> None:
     desired = fetch_desired()
     current = load_local_state()
+
+    # Layout pin is independent of compose pull/up and edge-triggered so that
+    # an operator's PUT /runtime/mode layout apply is not fought back.
+    if needs_layout_apply(desired, current):
+        LOG.info(
+            'Layout pin change: desired=%r current=%r',
+            desired.get('desired_layout_id'),
+            current.get('desired_layout_id'),
+        )
+        try:
+            apply_desired_layout(desired, current)
+            current = load_local_state()
+        except Exception as exc:  # noqa: BLE001
+            LOG.exception('Layout apply failed: %s', exc)
+            report(
+                status='failed',
+                message=f'Layout apply failed: {exc}',
+                applied_release_id=desired.get('release_id')
+                or current.get('release_id'),
+                profile_id=desired.get('profile_id') or current.get('profile_id'),
+                image_tag=desired.get('git_sha') or current.get('image_tag'),
+            )
+            return
+
     if not needs_apply(desired, current):
         if desired.get('release_id'):
             report(

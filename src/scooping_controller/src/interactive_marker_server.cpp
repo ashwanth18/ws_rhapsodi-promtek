@@ -257,7 +257,9 @@ public:
     this->declare_parameter<std::string>("tool_id", "");
     this->declare_parameter<std::string>("authored_in", "");
     this->declare_parameter<bool>("poses_provenance_ok", false);
-    this->declare_parameter<std::string>("poses_yaml", "~/.ros/scooping_controller/poses.yaml");
+    this->declare_parameter<std::string>("layouts_dir", "");
+    this->declare_parameter<std::string>("poses_env", "real");
+    this->declare_parameter<std::string>("poses_yaml", "");
     this->declare_parameter<std::string>("seed_poses_yaml", "");
     this->declare_parameter<bool>("auto_load_poses_on_startup", true);
     this->declare_parameter<std::string>(
@@ -269,8 +271,12 @@ public:
     scooping_controller::declare_container_scene_parameters(*this);
     scoop_frame_id_ = this->get_parameter("scoop_frame_id").as_string();
     goal_frame_id_ = this->get_parameter("goal_frame_id").as_string();
-    poses_yaml_path_ = expand_user_path(this->get_parameter("poses_yaml").as_string());
-    seed_poses_yaml_path_ = expand_user_path(this->get_parameter("seed_poses_yaml").as_string());
+    layouts_dir_ = expand_user_path(this->get_parameter("layouts_dir").as_string());
+    poses_env_ = this->get_parameter("poses_env").as_string();
+    if (poses_env_.empty()) {
+      poses_env_ = "real";
+    }
+    refresh_pose_paths(this->get_parameter("layout_id").as_string());
     tool_mesh_resource_ = this->get_parameter("tool_mesh_resource").as_string();
     const auto tcp_visual_offset =
       this->get_parameter("tcp_visual_offset_xyz").as_double_array();
@@ -322,6 +328,9 @@ public:
     load_srv_ = this->create_service<std_srvs::srv::Trigger>(
       "/load_scoop_poses",
       std::bind(&ScoopingMarkerServer::handle_load_request, this, std::placeholders::_1, std::placeholders::_2));
+    export_srv_ = this->create_service<std_srvs::srv::Trigger>(
+      "/export_scoop_poses",
+      std::bind(&ScoopingMarkerServer::handle_export_request, this, std::placeholders::_1, std::placeholders::_2));
 
     init_timer_ = this->create_wall_timer(
       std::chrono::milliseconds(0),
@@ -364,10 +373,27 @@ private:
         std::filesystem::exists(poses_yaml_path_))
     {
       std::string load_message;
-      loaded_saved_poses = load_poses_from_yaml(load_message);
+      loaded_saved_poses = load_poses_from_yaml(
+        poses_yaml_path_, load_message, /*strict_authored_in=*/true);
       if (loaded_saved_poses) {
         update_status(load_message, {0.75f, 0.95f, 0.75f});
         RCLCPP_INFO(this->get_logger(), "%s", load_message.c_str());
+      } else if (
+        !seed_poses_yaml_path_.empty() &&
+        std::filesystem::exists(seed_poses_yaml_path_))
+      {
+        // Device-local cache may be stale after a layout change; try versioned seed.
+        loaded_saved_poses = load_poses_from_yaml(
+          seed_poses_yaml_path_, load_message, /*strict_authored_in=*/false);
+        if (loaded_saved_poses) {
+          std::string save_message;
+          (void)save_poses_to_yaml(poses_yaml_path_, save_message);
+          update_status(load_message, {0.75f, 0.95f, 0.75f});
+          RCLCPP_INFO(this->get_logger(), "%s", load_message.c_str());
+        } else {
+          RCLCPP_WARN(
+            this->get_logger(), "Auto-load scoop poses failed: %s", load_message.c_str());
+        }
       } else {
         RCLCPP_WARN(this->get_logger(), "Auto-load scoop poses failed: %s", load_message.c_str());
       }
@@ -686,7 +712,7 @@ private:
     const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response)
   {
-    response->success = save_poses_to_yaml(response->message);
+    response->success = save_poses_to_yaml(poses_yaml_path_, response->message);
     update_status(response->message);
   }
 
@@ -694,17 +720,71 @@ private:
     const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response)
   {
-    response->success = load_poses_from_yaml(response->message);
+    response->success = load_poses_from_yaml(
+      poses_yaml_path_, response->message, /*strict_authored_in=*/true);
     update_status(response->message);
   }
 
-  bool save_poses_to_yaml(std::string& message)
+  void handle_export_request(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+  {
+    const auto layout_id = this->get_parameter("layout_id").as_string();
+    if (layouts_dir_.empty() || layout_id.empty()) {
+      response->success = false;
+      response->message =
+        "export_scoop_poses requires layouts_dir and an active layout_id";
+      update_status(response->message, {0.95f, 0.45f, 0.45f});
+      return;
+    }
+    const auto export_path =
+      (std::filesystem::path(layouts_dir_) / layout_id / "poses.yaml").string();
+    response->success = save_poses_to_yaml(export_path, response->message);
+    update_status(
+      response->message,
+      response->success ? std::array<float, 3>{0.75f, 0.95f, 0.75f}
+                        : std::array<float, 3>{0.95f, 0.45f, 0.45f});
+  }
+
+  void refresh_pose_paths(const std::string& layout_id)
+  {
+    const auto explicit_poses = this->get_parameter("poses_yaml").as_string();
+    const auto explicit_seed = this->get_parameter("seed_poses_yaml").as_string();
+
+    if (!layout_id.empty()) {
+      poses_yaml_path_ = expand_user_path(
+        "~/.ros/scooping_controller/poses_" + poses_env_ + "_" + layout_id + ".yaml");
+    } else if (!explicit_poses.empty()) {
+      poses_yaml_path_ = expand_user_path(explicit_poses);
+    } else {
+      poses_yaml_path_ = expand_user_path(
+        "~/.ros/scooping_controller/poses_" + poses_env_ + ".yaml");
+    }
+
+    if (!layouts_dir_.empty() && !layout_id.empty()) {
+      seed_poses_yaml_path_ =
+        (std::filesystem::path(layouts_dir_) / layout_id / "poses.yaml").string();
+    } else if (!explicit_seed.empty()) {
+      seed_poses_yaml_path_ = expand_user_path(explicit_seed);
+    } else {
+      seed_poses_yaml_path_.clear();
+    }
+
+    this->set_parameters({
+      rclcpp::Parameter("poses_yaml", poses_yaml_path_),
+      rclcpp::Parameter("seed_poses_yaml", seed_poses_yaml_path_)});
+  }
+
+  bool save_poses_to_yaml(const std::string& path, std::string& message)
   {
     try {
-      poses_yaml_path_ = expand_user_path(this->get_parameter("poses_yaml").as_string());
-      const std::filesystem::path path(poses_yaml_path_);
-      if (!path.parent_path().empty()) {
-        std::filesystem::create_directories(path.parent_path());
+      if (path.empty()) {
+        message = "Pose YAML path is empty";
+        return false;
+      }
+      const std::filesystem::path dest(path);
+      if (!dest.parent_path().empty()) {
+        std::filesystem::create_directories(dest.parent_path());
       }
 
       YAML::Node root;
@@ -730,14 +810,14 @@ private:
       }
       root["markers"] = markers;
 
-      std::ofstream out(poses_yaml_path_, std::ios::out | std::ios::trunc);
+      std::ofstream out(path, std::ios::out | std::ios::trunc);
       if (!out.is_open()) {
-        message = "Failed to open pose YAML for writing: " + poses_yaml_path_;
+        message = "Failed to open pose YAML for writing: " + path;
         return false;
       }
 
       out << root;
-      message = "Saved scoop poses to " + poses_yaml_path_;
+      message = "Saved scoop poses to " + path;
       return true;
     } catch (const std::exception& ex) {
       message = std::string("Failed to save scoop poses: ") + ex.what();
@@ -770,23 +850,25 @@ private:
           seed_poses_yaml_path_.c_str());
       }
 
-      return save_poses_to_yaml(message);
+      return save_poses_to_yaml(poses_yaml_path_, message);
     } catch (const std::exception& ex) {
       message = std::string("Failed to seed scoop poses: ") + ex.what();
       return false;
     }
   }
 
-  bool load_poses_from_yaml(std::string& message)
+  bool load_poses_from_yaml(
+    const std::string& path,
+    std::string& message,
+    bool strict_authored_in)
   {
     try {
-      poses_yaml_path_ = expand_user_path(this->get_parameter("poses_yaml").as_string());
-      if (!std::filesystem::exists(poses_yaml_path_)) {
-        message = "Pose YAML not found: " + poses_yaml_path_;
+      if (path.empty() || !std::filesystem::exists(path)) {
+        message = "Pose YAML not found: " + path;
         return false;
       }
 
-      const YAML::Node root = YAML::LoadFile(poses_yaml_path_);
+      const YAML::Node root = YAML::LoadFile(path);
       const auto fail_provenance = [this, &message](const std::string& reason) {
           message = "Refusing pose YAML provenance: " + reason;
           std_msgs::msg::String fault;
@@ -801,13 +883,32 @@ private:
           return fail_provenance(std::string("missing ") + field);
         }
       }
-      if (root["layout_id"].as<std::string>() != this->get_parameter("layout_id").as_string() ||
-          root["task_container_id"].as<std::string>() != this->get_parameter("task_container_id").as_string() ||
+      const auto expected_layout = this->get_parameter("layout_id").as_string();
+      const auto expected_container =
+        this->get_parameter("task_container_id").as_string();
+      const auto expected_tool = this->get_parameter("tool_id").as_string();
+      const auto expected_authored = this->get_parameter("authored_in").as_string();
+      const auto file_hash = root["container_spec_hash"].as<std::string>();
+      if (root["layout_id"].as<std::string>() != expected_layout ||
+          root["task_container_id"].as<std::string>() != expected_container ||
           root["frame_id"].as<std::string>() != scoop_frame_id_ ||
-          root["tool_id"].as<std::string>() != this->get_parameter("tool_id").as_string() ||
-          root["container_spec_hash"].as<std::string>() != active_layout_hash_ ||
-          root["authored_in"].as<std::string>() != this->get_parameter("authored_in").as_string()) {
-        return fail_provenance("layout, container, frame, tool, hash, or authoring context mismatch");
+          (!expected_tool.empty() &&
+           root["tool_id"].as<std::string>() != expected_tool)) {
+        return fail_provenance("layout, container, frame, or tool mismatch");
+      }
+      // Versioned seeds may carry an empty hash until first export. For the
+      // strict device-local path, refuse empty vs non-empty. For seed fallback
+      // (strict_authored_in=false), allow empty hash when layout_id already
+      // matched so the first apply can bootstrap and re-stamp.
+      if (!file_hash.empty() && file_hash != active_layout_hash_) {
+        return fail_provenance("container_spec_hash mismatch");
+      }
+      if (!active_layout_hash_.empty() && file_hash.empty() && strict_authored_in) {
+        return fail_provenance("container_spec_hash missing for active layout");
+      }
+      if (strict_authored_in && !expected_authored.empty() &&
+          root["authored_in"].as<std::string>() != expected_authored) {
+        return fail_provenance("authored_in mismatch");
       }
       const std::string source_frame =
         root["frame_id"] ? root["frame_id"].as<std::string>() : scoop_frame_id_;
@@ -847,7 +948,7 @@ private:
       rebuild_scoop_markers();
       publish_pose_array();
       this->set_parameter(rclcpp::Parameter("poses_provenance_ok", true));
-      message = "Loaded " + std::to_string(updated) + " scoop poses from " + poses_yaml_path_;
+      message = "Loaded " + std::to_string(updated) + " scoop poses from " + path;
       return updated > 0;
     } catch (const std::exception& ex) {
       message = std::string("Failed to load scoop poses: ") + ex.what();
@@ -862,6 +963,7 @@ private:
       rclcpp::Parameter("layout_id", layout->layout_id),
       rclcpp::Parameter("task_container_id", layout->task_container_id),
       rclcpp::Parameter("tool_id", layout->tool_id)});
+    refresh_pose_paths(layout->layout_id);
     try {
       const auto root = YAML::LoadFile(layout->scene_yaml_path);
       const auto envelope = root["scoop_envelope"];
@@ -875,6 +977,49 @@ private:
     } catch (const std::exception& ex) {
       RCLCPP_ERROR(this->get_logger(), "Invalid active layout envelope: %s", ex.what());
       has_envelope_ = false;
+    }
+
+    // Prefer the layout-scoped device-local cache; on provenance failure fall
+    // back to the versioned seed under layouts_dir/<id>/poses.yaml.
+    std::string load_message;
+    bool loaded = false;
+    if (std::filesystem::exists(poses_yaml_path_)) {
+      loaded = load_poses_from_yaml(
+        poses_yaml_path_, load_message, /*strict_authored_in=*/true);
+      if (!loaded) {
+        RCLCPP_WARN(
+          this->get_logger(),
+          "Device-local poses refused for layout %s: %s",
+          layout->layout_id.c_str(),
+          load_message.c_str());
+      }
+    }
+    if (!loaded && !seed_poses_yaml_path_.empty() &&
+        std::filesystem::exists(seed_poses_yaml_path_))
+    {
+      loaded = load_poses_from_yaml(
+        seed_poses_yaml_path_, load_message, /*strict_authored_in=*/false);
+      if (loaded) {
+        // Materialize a layout-scoped device-local cache from the versioned seed.
+        std::string save_message;
+        if (!save_poses_to_yaml(poses_yaml_path_, save_message)) {
+          RCLCPP_WARN(this->get_logger(), "%s", save_message.c_str());
+        }
+        load_message = "Reseeded from versioned layout poses: " + load_message;
+      }
+    }
+    if (loaded) {
+      update_status(load_message, {0.75f, 0.95f, 0.75f});
+      RCLCPP_INFO(this->get_logger(), "%s", load_message.c_str());
+    } else {
+      this->set_parameter(rclcpp::Parameter("poses_provenance_ok", false));
+      std_msgs::msg::String fault;
+      fault.data = load_message.empty()
+        ? ("No provenance-matched poses for layout " + layout->layout_id)
+        : load_message;
+      pose_fault_pub_->publish(fault);
+      update_status(fault.data, {0.95f, 0.45f, 0.45f});
+      RCLCPP_ERROR(this->get_logger(), "%s", fault.data.c_str());
     }
   }
 
@@ -959,6 +1104,8 @@ private:
 
   std::string scoop_frame_id_;
   std::string goal_frame_id_;
+  std::string layouts_dir_;
+  std::string poses_env_;
   std::string poses_yaml_path_;
   std::string seed_poses_yaml_path_;
   std::string tool_mesh_resource_;
@@ -988,6 +1135,7 @@ private:
   rclcpp::Subscription<robot_common_msgs::msg::CellLayoutActive>::SharedPtr layout_sub_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr save_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr load_srv_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr export_srv_;
   std::vector<geometry_msgs::msg::Pose> poses_;
 };
 

@@ -117,6 +117,8 @@ class DeviceTarget(Base):
     # Last agent-reported runtime mode (fallback when live /runtime/mode poll fails)
     active_mode = Column(String(64), nullable=True)
     environment = Column(String(32), nullable=True)
+    # Edge-triggered desired cell layout (None = follow mode_layouts mapping)
+    desired_layout_id = Column(String(128), nullable=True)
     updated_at = Column(DateTime, nullable=False, default=utc_now)
 
 
@@ -168,6 +170,10 @@ def init_db() -> None:
         if 'environment' not in cols:
             migrations.append(
                 'ALTER TABLE device_targets ADD COLUMN environment VARCHAR(32)'
+            )
+        if 'desired_layout_id' not in cols:
+            migrations.append(
+                'ALTER TABLE device_targets ADD COLUMN desired_layout_id VARCHAR(128)'
             )
         # Drop legacy pinned_image_tag usage by leaving the column if present
         # (SQLite cannot DROP COLUMN reliably on older versions).

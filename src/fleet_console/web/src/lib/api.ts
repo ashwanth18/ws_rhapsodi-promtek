@@ -126,9 +126,19 @@ export type DeviceTarget = {
   agent_reported_at?: string | null
   active_mode?: string | null
   environment?: string | null
+  desired_layout_id?: string | null
   layout_id?: string | null
   layout_hash?: string | null
   has_agent_token?: boolean
+}
+
+export type AvailableLayout = {
+  layout_id: string
+  layout_hash?: string | null
+  tool_id?: string
+  task_container_id?: string
+  active?: boolean
+  error?: string
 }
 
 export type Profile = {
@@ -181,6 +191,7 @@ export type Device = {
   environment?: string | null
   layout_id?: string | null
   layout_hash?: string | null
+  available_layouts?: AvailableLayout[]
   runtime_mode?: Record<string, unknown> | null
   version_check?: Record<string, unknown>
   metrics?: { cpu_pct?: number | null; mem_pct?: number | null; disk_pct?: number | null }
@@ -460,6 +471,7 @@ export const api = {
       auto_update?: boolean
       robot_type?: string
       site_id?: string
+      desired_layout_id?: string | null
     },
   ) =>
     request<{ target: DeviceTarget }>(`/api/devices/${id}/target`, {
@@ -510,10 +522,23 @@ export const api = {
     }),
   deploy: (
     id: string,
-    body: { release_id: number; profile_id?: string; tracked_branch?: string },
+    body: {
+      release_id: number
+      profile_id?: string
+      tracked_branch?: string
+      desired_layout_id?: string | null
+    },
   ) =>
     request<{ deployment: Deployment; target: DeviceTarget }>(
       `/api/devices/${id}/deploy`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      },
+    ),
+  applyLayout: (id: string, body: { layout_id?: string | null }) =>
+    request<{ deployment: Deployment; target: DeviceTarget }>(
+      `/api/devices/${id}/apply_layout`,
       {
         method: 'POST',
         body: JSON.stringify(body),

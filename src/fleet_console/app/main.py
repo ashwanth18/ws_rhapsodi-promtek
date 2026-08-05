@@ -154,6 +154,7 @@ class DeployRequest(BaseModel):
     release_id: int
     profile_id: str | None = None
     tracked_branch: str | None = None
+    desired_layout_id: str | None = None
 
 
 class TargetUpdateRequest(BaseModel):
@@ -165,6 +166,13 @@ class TargetUpdateRequest(BaseModel):
     site_id: str | None = None
     platform: str | None = None
     device_class: str | None = None
+    # Empty string clears the pin (follow mode_layouts). Omit to leave unchanged.
+    desired_layout_id: str | None = None
+
+
+class ApplyLayoutRequest(BaseModel):
+    """Pin a layout for edge-triggered fleet-agent apply. Empty = follow mode."""
+    layout_id: str | None = None
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -224,6 +232,8 @@ class AgentReportRequest(BaseModel):
     # Runtime mode from robot backend GET /runtime/mode (heartbeat cache)
     active_mode: str | None = None
     environment: str | None = None
+    layout_id: str | None = None
+    layout_hash: str | None = None
 
 
 def _repo_root() -> Path:
@@ -356,6 +366,7 @@ def _serialize_target(row: DeviceTarget | None, device_id: str) -> dict[str, Any
             'agent_reported_at': None,
             'active_mode': None,
             'environment': None,
+            'desired_layout_id': None,
             'has_agent_token': False,
             'updated_at': None,
         }
@@ -383,6 +394,7 @@ def _serialize_target(row: DeviceTarget | None, device_id: str) -> dict[str, Any
         ),
         'active_mode': row.active_mode,
         'environment': row.environment,
+        'desired_layout_id': row.desired_layout_id,
         'has_agent_token': bool(row.agent_token),
         'updated_at': row.updated_at.isoformat() if row.updated_at else None,
     }
@@ -612,6 +624,8 @@ def _upsert_target(
     site_id: str | None = None,
     platform: str | None = None,
     device_class: str | None = None,
+    desired_layout_id: str | None = None,
+    set_desired_layout: bool = False,
     allow_robot_type_change: bool = False,
 ) -> DeviceTarget:
     db = SessionLocal()
@@ -679,6 +693,9 @@ def _upsert_target(
             row.robot_type = robot_type
         if site_id is not None:
             row.site_id = site_id
+        if set_desired_layout:
+            cleaned = (desired_layout_id or '').strip()
+            row.desired_layout_id = cleaned or None
         if not row.device_class:
             row.device_class = infer_device_class(
                 device_id=device_id, platform=row.platform
@@ -1143,6 +1160,7 @@ def _resolve_agent_target(target: DeviceTarget) -> dict[str, Any]:
             'compose_file': compose_file,
             'env': profile.get('env') or {},
             'image_registry': _image_registry(),
+            'desired_layout_id': target.desired_layout_id,
         }
         if release is None:
             return {
@@ -1516,6 +1534,8 @@ def api_put_target(device_id: str, body: TargetUpdateRequest) -> dict:
         site_id=body.site_id,
         platform=body.platform,
         device_class=body.device_class,
+        desired_layout_id=body.desired_layout_id,
+        set_desired_layout='desired_layout_id' in body.model_fields_set,
         allow_robot_type_change=False,
     )
     return {'target': _serialize_target(row, device_id)}
@@ -1708,6 +1728,8 @@ def api_deploy(device_id: str, body: DeployRequest) -> dict:
         release_id=body.release_id,
         platform=device_platform,
         device_class=device_class,
+        desired_layout_id=body.desired_layout_id,
+        set_desired_layout='desired_layout_id' in body.model_fields_set,
     )
     profile_id = body.profile_id or target.profile_id
 
@@ -1750,6 +1772,74 @@ def api_deploy(device_id: str, body: DeployRequest) -> dict:
                     f'[{_ts()}] NOTE: If this never advances, fleet-agent is not installed or',
                     f'[{_ts()}]       cannot reach this console. Re-run Flash install / provision',
                     f'[{_ts()}]       so the systemd unit and AGENT_TOKEN are present on the Pi.',
+                    f'[{_ts()}] waiting for agent report…',
+                ]
+            ),
+        )
+        row.log_path = str(path)
+        db.commit()
+        db.refresh(row)
+        return {
+            'deployment': _serialize_deployment(row),
+            'target': _serialize_target(target, device_id),
+        }
+    finally:
+        db.close()
+
+
+@app.post(
+    '/api/devices/{device_id}/apply_layout',
+    dependencies=[Depends(require_token)],
+)
+def api_apply_layout(device_id: str, body: ApplyLayoutRequest) -> dict:
+    """Pin desired_layout_id; fleet-agent applies edge-triggered via robot adapter."""
+    if get_device(device_id) is None:
+        raise HTTPException(
+            status_code=404, detail='Device not found in Tailscale inventory'
+        )
+    running = _device_has_running_job(device_id)
+    if running:
+        raise HTTPException(
+            status_code=409,
+            detail=f'Device already has a running job (deployment_id={running.id})',
+        )
+    layout_id = (body.layout_id or '').strip() or None
+    target = _upsert_target(
+        device_id,
+        desired_layout_id=layout_id,
+        set_desired_layout=True,
+    )
+    db = SessionLocal()
+    try:
+        row = Deployment(
+            device_id=device_id,
+            action='layout_apply',
+            robot_type=target.robot_type,
+            site_id=target.site_id,
+            profile_id=target.profile_id,
+            tracked_branch=target.tracked_branch,
+            release_id=target.release_id,
+            image_tag=layout_id or '(follow mode mapping)',
+            status='running',
+            requested_by='fleet-console',
+            error_message='Awaiting fleet-agent layout apply',
+            started_at=utc_now(),
+            finished_at=None,
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        path = _write_log(
+            row.id,
+            '\n'.join(
+                [
+                    f'[{_ts()}] PLAY [Cell layout apply]',
+                    f'[{_ts()}] TASK [Set desired_layout_id on Fleet Console]',
+                    f'[{_ts()}] ok: device={device_id} layout_id={layout_id or "(cleared)"}',
+                    f'[{_ts()}] ',
+                    f'[{_ts()}] TASK [Wait for fleet-agent]',
+                    f'[{_ts()}] => Agent will POST :8010/apply_cell_layout when the pin',
+                    f'[{_ts()}]    differs from its last applied desired_layout_id.',
                     f'[{_ts()}] waiting for agent report…',
                 ]
             ),
@@ -1934,25 +2024,31 @@ def api_agent_report(
             .filter(
                 Deployment.device_id == target.device_id,
                 Deployment.status == 'running',
-                Deployment.action.in_(('deploy', 'reconcile')),
+                Deployment.action.in_(('deploy', 'reconcile', 'layout_apply')),
             )
             .order_by(Deployment.started_at.desc())
             .all()
         )
 
-        # Append into the newest open deploy job (if any) for the console stream.
+        # Append into the newest open deploy/layout job for the console stream.
         open_deploy = next((j for j in open_jobs if j.action == 'deploy'), None)
-        if open_deploy is not None:
-            dep_id = open_deploy.id
+        open_layout = next(
+            (j for j in open_jobs if j.action == 'layout_apply'), None
+        )
+        for open_job in (open_deploy, open_layout):
+            if open_job is None:
+                continue
+            dep_id = open_job.id
             _write_log(
                 dep_id,
                 f'[{_ts()}] AGENT [{body.status}] release={body.applied_release_id or "-"} '
-                f'profile={body.profile_id or open_deploy.profile_id} '
+                f'layout={body.layout_id or "-"} '
+                f'profile={body.profile_id or open_job.profile_id} '
                 f'tag={image_tag or "-"} :: {msg}',
                 append=True,
             )
-            if not open_deploy.log_path:
-                open_deploy.log_path = str(log_path_for(dep_id))
+            if not open_job.log_path:
+                open_job.log_path = str(log_path_for(dep_id))
 
         if mapped_status == 'running':
             # Heartbeat: update newest open reconcile, or create one.
@@ -1983,9 +2079,11 @@ def api_agent_report(
                 )
             if open_deploy is not None:
                 open_deploy.error_message = msg
+            if open_layout is not None:
+                open_layout.error_message = msg
             db.commit()
         else:
-            # Terminal agent status: close EVERY open deploy/reconcile for this device
+            # Terminal agent status: close EVERY open deploy/reconcile/layout job
             # so the UI never stays stuck on "running" after converge.
             if open_deploy is not None:
                 if mapped_status == 'success':
@@ -2007,6 +2105,21 @@ def api_agent_report(
                         f'[{_ts()}] PLAY RECAP: agent failed :: {msg}',
                         append=True,
                     )
+            if open_layout is not None:
+                if mapped_status == 'success':
+                    _write_log(
+                        open_layout.id,
+                        f'[{_ts()}] PLAY RECAP: layout apply ok '
+                        f'layout_id={body.layout_id or "-"} '
+                        f'hash={(body.layout_hash or "")[:12] or "-"}',
+                        append=True,
+                    )
+                else:
+                    _write_log(
+                        open_layout.id,
+                        f'[{_ts()}] PLAY RECAP: layout apply {mapped_status} :: {msg}',
+                        append=True,
+                    )
 
             closed_any = False
             for job in open_jobs:
@@ -2015,8 +2128,10 @@ def api_agent_report(
                 job.error_message = msg
                 if body.applied_release_id:
                     job.release_id = body.applied_release_id
-                if image_tag:
+                if image_tag and job.action != 'layout_apply':
                     job.image_tag = image_tag
+                if body.layout_id and job.action == 'layout_apply':
+                    job.image_tag = body.layout_id
                 closed_any = True
 
             # Skip spam: identical converged with nothing open.

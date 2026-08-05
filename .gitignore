@@ -23,7 +23,8 @@ src/fleet_console/web/.vite/
 src/fleet_console/static/
 
 # IDE/editor
-.vscode/
+.vscode/*
+!.vscode/tasks.json
 .idea/
 
 # OS noise
