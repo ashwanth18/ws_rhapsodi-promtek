@@ -1,0 +1,18 @@
+# Provenance seed: layout_id and hashes are stamped by scooping_marker_server on save.
+# Dual-container scoop stroke on lightsout RS3, rotated 180 deg in XY so approach
+# is on the robot/open-face side and lift is farther out. Orientations kept
+# outward-facing (+X in base_link) with container yaw 180.
+layout_id: lightsout-single-vessel
+task_container_id: rs3
+frame_id: scooping_container_frame
+tool_id: niryo_scoop_v4
+container_spec_hash: ""
+authored_in: ""
+markers:
+  # Approach: hover just above/before contact (contact IK-ok at ~0.34,0.185).
+  # Farther/higher (0.28,0.30) stayed no_ik for tcp_link.
+  - {name: approach_marker, label: Approach, pose: {position: {x: 0.0676, y: 0.0, z: 0.155}, orientation: {x: -0.13052619222, y: 0.0, z: 0.991444861374, w: 0.0}}}
+  - {name: contact_marker, label: Contact, pose: {position: {x: 0.07, y: 0.0, z: 0.08}, orientation: {x: -0.13052619222, y: 0.0, z: 0.991444861374, w: 0.0}}}
+  - {name: scoop_marker, label: Scoop, pose: {position: {x: -0.0683, y: 0.0, z: 0.0405}, orientation: {x: -0.087155742748, y: 0.0, z: 0.996194698092, w: 0.0}}}
+  - {name: lift_marker, label: Lift, pose: {position: {x: -0.1054, y: 0.0, z: 0.1876}, orientation: {x: 0.13052619222, y: 0.0, z: 0.991444861374, w: 0.0}}}
+  - {name: transport_ready_marker, label: Transport Ready, pose: {position: {x: -0.0627, y: 0.0, z: 0.2438}, orientation: {x: 0.173648177667, y: 0.0, z: 0.984807753012, w: 0.0}}}

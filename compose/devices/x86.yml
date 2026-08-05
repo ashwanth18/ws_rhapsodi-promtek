@@ -1,0 +1,7 @@
+# STUB — amd64 workstation / Jaka host (not production).
+# Will diverge for Jaka vendor libs and workstation peripherals.
+# Placeholder includes Pi5 compose for scaffolding only — not a supported
+# deployment path. See config/device_classes.yaml (production: false).
+
+include:
+  - path: pi5.yml
