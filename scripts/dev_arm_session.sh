@@ -54,8 +54,22 @@ source /opt/ros/jazzy/setup.bash
 # shellcheck disable=SC1091
 [[ -f "$ROOT/install/setup.bash" ]] && source "$ROOT/install/setup.bash"
 set -u
-if ros2 action list 2>/dev/null | grep -qx '/move_to'; then
-  echo "Refusing arm session: /move_to is already advertised locally" >&2
+
+# ros2cli daemon caches graph state across domain peers; after stopping Pi
+# scooping_stack it can still report /move_to until flushed.
+ros2 daemon stop >/dev/null 2>&1 || true
+moved_clear=0
+for _ in $(seq 1 40); do
+  if ! ros2 action list 2>/dev/null | grep -qx '/move_to'; then
+    moved_clear=1
+    break
+  fi
+  sleep 0.25
+done
+if [[ "$moved_clear" -ne 1 ]]; then
+  echo "Refusing arm session: /move_to still visible after stopping scooping_stack." >&2
+  echo "Kill a leftover laptop authoring stack (rviz2 / ros2 launch), then retry." >&2
+  pgrep -af 'rviz2|scooping_real|scooping_marker_server|move_to_server_node' >&2 || true
   exit 1
 fi
 
