@@ -1,0 +1,87 @@
+# Declares which ROS topics belong to which phase of a run
+# (recording-profiles), so a future slicing tool can pull out "just the
+# pour segment" or "just the scoop segment" from a run's single MCAP using
+# the phase markers robot_orchestrator's PhaseMarkerNode already publishes
+# (phase strings: scoop_start/scoop_end, transport_start/transport_end,
+# pour_start/pour_end — see src/robot_orchestrator/bt_trees/scoop_weigh_pour.xml)
+# without re-scanning the whole bag.
+#
+# RecorderV2 does not do live per-phase topic gating — every topic listed
+# anywhere below is recorded for the full duration of the run, and
+# data_collection_manager's `topics` ROS param defaults to the union of
+# every profile here (see recording_profiles.py). Phase-scoping happens
+# downstream, by timestamp, using the phase markers already in the bag.
+# Topics that are naturally only published during their phase — the pour
+# control loop, or the RealSense camera while the
+# `realsense_snapshot_analyzer` lifecycle node is activated for scoop —
+# simply have no messages outside that window; there is nothing to
+# "turn off" at record time.
+#
+# Keep topic *names/types* in sync with the per-robot-type contract in
+# src/scooping_controller/config/robots.yaml (`telemetry:` blocks) — that
+# file is the source of truth for names/types across niryo/jaka; this file
+# is the source of truth for which phase each belongs to and roughly what
+# rate to expect.
+
+always_on:
+  description: >
+    Recorded for every run regardless of phase: coarse system status, the
+    structured health/fault bus, the phase markers themselves, and run
+    identity/bookkeeping needed to interpret the rest of the bag.
+  topics:
+    - /system_status
+    - /system/health_events
+    - /lightsout_training/phase
+    - /lightsout_training/run_id
+    - /lightsout_training/batch_id
+    - /lightsout_training/ingredient_id
+    - /lightsout_training/powder_id
+    - /lightsout_training/lot_code
+    - /lightsout_training/operator
+    - /lightsout_training/notes
+    - /lightsout_training/target_weight_g
+    - /lightsout_training/scooped_mass_g
+    - /lightsout_training/pour_outcome
+    - /lightsout_training/episode
+    - /lightsout_training/episodes_total
+    - /lightsout_training/mode
+    - /lightsout_training/robot_id
+    - /webhook_run/active
+    - /webhook_run/metadata
+    - /webhook_run/phase
+    - /tf_static
+
+pour:
+  description: >
+    Cyclic dosing-control-loop signal (weight + vibration/incline/valve
+    actuation + pour state machine) — the core training data for a future
+    powder-dosing controls model.
+  approx_rate_hz: [12, 20]
+  topics:
+    - /weight
+    - /vibration/intensity
+    - /incline_control
+    - /valve_control
+    - /pour_status
+
+scoop:
+  description: >
+    Depth-vision-guided manipulation signal — the core training data for a
+    future scooping model. RGB/depth only carry real frames while the
+    RealSense lifecycle node is activated for the scoop phase;
+    /joint_states is always publishing but is most relevant here for
+    scoop-phase arm pose alongside the vision stream.
+  topics:
+    - /joint_states
+    - /camera/color/image_raw/compressed
+    - /camera/depth/image_rect_raw
+    - /camera/color/camera_info
+
+transport:
+  description: >
+    No dedicated high-rate signal today beyond proprioception; declared
+    for symmetry with the scoop_start/scoop_end + pour_start/pour_end
+    phase markers so a future transport-specific topic has an obvious
+    place to be added.
+  topics:
+    - /joint_states

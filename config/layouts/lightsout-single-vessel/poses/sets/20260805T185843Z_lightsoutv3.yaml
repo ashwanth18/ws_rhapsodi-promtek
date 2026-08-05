@@ -1,0 +1,71 @@
+frame_id: scooping_container_frame
+layout_id: lightsout-single-vessel
+task_container_id: rs3
+tool_id: niryo_scoop_v4
+container_spec_hash: 6b58ecc98c303a94
+authored_in: real
+robot_key: niryo
+set_id: 20260805T185843Z_lightsoutv3
+created_at: 2026-08-05T18:58:43Z
+note: lightsoutV3
+markers:
+  - name: approach_marker
+    label: Approach
+    pose:
+      position:
+        x: 0.067599999999999993
+        y: 0
+        z: 0.13600000000000001
+      orientation:
+        x: -0.13052619222
+        y: 0
+        z: 0.99144486137400001
+        w: 0
+  - name: contact_marker
+    label: Contact
+    pose:
+      position:
+        x: 0.056047491729259491
+        y: 0
+        z: 0.030298978090286258
+      orientation:
+        x: -0.26717209815979004
+        y: 7.6279809135826326e-09
+        z: 0.96364885568618774
+        w: 1.4523954261491667e-09
+  - name: scoop_marker
+    label: Scoop
+    pose:
+      position:
+        x: -0.060095250606536865
+        y: 0
+        z: 0.018425103276967995
+      orientation:
+        x: -0.16682738065719604
+        y: 0.0023006312549114227
+        z: 0.985889732837677
+        w: -0.013595938682556152
+  - name: lift_marker
+    label: Lift
+    pose:
+      position:
+        x: -0.029739350080490112
+        y: 0
+        z: 0.16108196973800659
+      orientation:
+        x: 0.13052618503570557
+        y: 0
+        z: 0.99144488573074341
+        w: 0
+  - name: transport_ready_marker
+    label: Transport Ready
+    pose:
+      position:
+        x: 0.016585905104875565
+        y: 0
+        z: 0.1726110577583313
+      orientation:
+        x: 0.1736481785774231
+        y: 0
+        z: 0.98480772972106934
+        w: 0
