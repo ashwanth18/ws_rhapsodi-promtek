@@ -7,12 +7,15 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LAYOUT_ID="${1:-dual-container}"
 ROBOT="${2:-${ROBOT:-niryo}}"
 
-export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
+# Always isolate on domain 42 (ignore ambient ROS_DOMAIN_ID=0 from a Pi session).
+# Override with: BENCH_ROS_DOMAIN_ID=N make bench ...
+export ROS_DOMAIN_ID="${BENCH_ROS_DOMAIN_ID:-42}"
 export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-0}"
 export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
 export FASTDDS_BUILTIN_TRANSPORTS="${FASTDDS_BUILTIN_TRANSPORTS:-UDPv4}"
 export CELL_LAYOUTS_DIR="${CELL_LAYOUTS_DIR:-$ROOT/config/layouts}"
 export ROBOT_TYPE="${ROBOT_TYPE:-$ROBOT}"
+export ROBOT_PROFILES_DIR="${ROBOT_PROFILES_DIR:-$ROOT/config/robots}"
 
 # Prefer workspace overlay when built locally.
 # ROS setup.bash references optional vars (e.g. AMENT_TRACE_SETUP_FILES); with

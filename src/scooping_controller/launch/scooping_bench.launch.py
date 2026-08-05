@@ -9,6 +9,9 @@ Robot selected via robot:= / ROBOT_TYPE / device.yaml (robots.yaml mock:).
 from __future__ import annotations
 
 import os
+import sys
+
+sys.path.insert(0, os.path.dirname(__file__))
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription

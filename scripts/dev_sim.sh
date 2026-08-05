@@ -7,12 +7,15 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROBOT="${1:-niryo}"
 LAYOUT_ID="${2:-dual-container}"
 
-export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-43}"
+# Always isolate on domain 43 (ignore ambient ROS_DOMAIN_ID from shell/Pi).
+# Override with: SIM_ROS_DOMAIN_ID=N make sim ...
+export ROS_DOMAIN_ID="${SIM_ROS_DOMAIN_ID:-43}"
 export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-0}"
 export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
 export FASTDDS_BUILTIN_TRANSPORTS="${FASTDDS_BUILTIN_TRANSPORTS:-UDPv4}"
 export CELL_LAYOUTS_DIR="${CELL_LAYOUTS_DIR:-$ROOT/config/layouts}"
 export ROBOT_TYPE="${ROBOT_TYPE:-$ROBOT}"
+export ROBOT_PROFILES_DIR="${ROBOT_PROFILES_DIR:-$ROOT/config/robots}"
 
 # ROS setup.bash references optional vars (e.g. AMENT_TRACE_SETUP_FILES); with
 # `set -u` that aborts unless we temporarily allow unbound variables.
