@@ -14,7 +14,8 @@
 
     table_geometry_type: "box"
     table_mesh_resource: ""
-    table_position_xyz: [0.00, 0.00, -0.015]
+    # Top at z=-0.003 so base_link collision (floor at z=0) is not coplanar.
+    table_position_xyz: [0.00, 0.00, -0.018]
     table_orientation_xyzw: [0.0, 0.0, 0.0, 1.0]
     table_scale_xyz: [1.0, 1.0, 1.0]
     table_dimensions_xyz: [1.02, 0.61, 0.03]

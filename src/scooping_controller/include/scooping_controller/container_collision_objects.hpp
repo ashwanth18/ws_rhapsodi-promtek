@@ -147,7 +147,8 @@ inline std::vector<ContainerSceneSpec> default_container_scene_specs()
   table.mesh_resource = "";
   table.scale = {1.0, 1.0, 1.0};
   table.dimensions = {1.02, 0.61, 0.03};
-  table.pose = make_pose({0.0, 0.0, -0.015}, {0.0, 0.0, 0.0, 1.0});
+  // Top at z=-0.003 so base_link collision (floor at z=0) is not coplanar.
+  table.pose = make_pose({0.0, 0.0, -0.018}, {0.0, 0.0, 0.0, 1.0});
   table.color = {0.55F, 0.39F, 0.22F};
   specs.push_back(table);
 
