@@ -11,6 +11,8 @@ targets:
   PourDoneAtWeighingContainer: {frame_id: base_link, position: {x: -0.0103, y: -0.3904, z: 0.3107}, orientation: {x: -0.122787804, y: -0.122787804, z: -0.6963642403, w: 0.6963642403}}
   # Hover above the lights-out RS3 vessel (centerline +X). Re-author scoop poses before production.
   MoveToScoopingContainer: {frame_id: base_link, position: {x: 0.3876, y: 0.0, z: 0.28}, orientation: {x: 0, y: 0, z: 0, w: 1}}
-  # Lightsout pour start (authored 2026-08-05). Powder catalog pour_target → this name.
+  # Legacy lightsout pour start (kept for reference).
   lightsoutPourStart: {frame_id: base_link, position: {x: 0.4278, y: -0.0094, z: 0.2502}, orientation: {x: 0, y: 0, z: 0, w: 1}}
+  # Active lightsout pour start (validated 2026-08-05). Powder catalog pour_target → this name.
+  lightsoutPourStartV2: {frame_id: base_link, position: {x: 0.3756, y: -0.0094, z: 0.2502}, orientation: {x: 0, y: 0, z: 0, w: 1}}
   ReturnHome: {frame_id: base_link, position: {x: 0.4229, y: -0.0123, z: 0.2064}, orientation: {x: 0, y: 0, z: 0, w: 1}}

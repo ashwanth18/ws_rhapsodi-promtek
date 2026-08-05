@@ -6,7 +6,7 @@ powders:
   - id: alumina-5um
     name: Alumina 5 um
     container_target: boxA
-    pour_target: lightsoutPourStart
+    pour_target: lightsoutPourStartV2
     default_target_weight_g: 250
     default_tolerance_g: 5
     min_scooped_g: 20
@@ -15,7 +15,7 @@ powders:
   - id: box-a
     name: Box A (generic)
     container_target: boxA
-    pour_target: lightsoutPourStart
+    pour_target: lightsoutPourStartV2
     default_target_weight_g: 200
     default_tolerance_g: 5
     min_scooped_g: 15
