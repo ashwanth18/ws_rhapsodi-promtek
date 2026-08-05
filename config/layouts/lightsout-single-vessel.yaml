@@ -31,5 +31,5 @@ objects:
   # RS3 pose origin is mesh origin / inner floor. Measured table→floor ≈ 80 mm
   # (was 105 mm / catalog rim_height default). front world-X = pose_x - 0.140.
   - {id: rs3, enabled: true, geometry_type: mesh, mesh_resource: package://scooping_controller/models/weighing_container/meshes/rs3_container.STL, mesh_units: mm, position_xyz: [0.4076, 0.0, 0.08], orientation: {rpy_deg: [0, 0, 180]}, scale_xyz: [1, 1, 1], dimensions_xyz: [0, 0, 0], color_rgb: [0.4, 0.8, 0.4]}
-  # Table top at z=-0.003 (was flush at z=0 with base_link collision AABB).
-  - {id: table, enabled: true, geometry_type: box, position_xyz: [0, 0, -0.018], orientation: {quat_xyzw: [0, 0, 0, 1]}, scale_xyz: [1, 1, 1], dimensions_xyz: [1.02, 0.61, 0.03], color_rgb: [0.55, 0.39, 0.22]}
+  # Table top at z=-0.01 (was flush at z=0 with base_link collision AABB).
+  - {id: table, enabled: true, geometry_type: box, position_xyz: [0, 0, -0.025], orientation: {quat_xyzw: [0, 0, 0, 1]}, scale_xyz: [1, 1, 1], dimensions_xyz: [1.02, 0.61, 0.03], color_rgb: [0.55, 0.39, 0.22]}

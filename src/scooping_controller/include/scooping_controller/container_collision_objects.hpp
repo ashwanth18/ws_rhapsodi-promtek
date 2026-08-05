@@ -147,8 +147,8 @@ inline std::vector<ContainerSceneSpec> default_container_scene_specs()
   table.mesh_resource = "";
   table.scale = {1.0, 1.0, 1.0};
   table.dimensions = {1.02, 0.61, 0.03};
-  // Top at z=-0.003 so base_link collision (floor at z=0) is not coplanar.
-  table.pose = make_pose({0.0, 0.0, -0.018}, {0.0, 0.0, 0.0, 1.0});
+  // Top at z=-0.01 so base_link collision (floor at z=0) is not coplanar.
+  table.pose = make_pose({0.0, 0.0, -0.025}, {0.0, 0.0, 0.0, 1.0});
   table.color = {0.55F, 0.39F, 0.22F};
   specs.push_back(table);
 
@@ -270,6 +270,13 @@ inline std::vector<moveit_msgs::msg::CollisionObject> make_container_collision_o
     object.id = spec.id;
     object.header.frame_id = frame_id;
     object.operation = moveit_msgs::msg::CollisionObject::ADD;
+    // Jazzy MoveIt uses CollisionObject.pose as the object origin; primitive /
+    // mesh poses are relative to it. Putting the world pose only in
+    // primitive_poses leaves the table at the identity (z=0) and collides with
+    // base_link.
+    object.pose = spec.pose;
+    geometry_msgs::msg::Pose relative;
+    relative.orientation.w = 1.0;
 
     if (spec.geometry_type == "box") {
       shape_msgs::msg::SolidPrimitive primitive;
@@ -279,7 +286,7 @@ inline std::vector<moveit_msgs::msg::CollisionObject> make_container_collision_o
         spec.dimensions[1],
         spec.dimensions[2]};
       object.primitives.push_back(primitive);
-      object.primitive_poses.push_back(spec.pose);
+      object.primitive_poses.push_back(relative);
       objects.push_back(object);
       continue;
     }
@@ -297,7 +304,7 @@ inline std::vector<moveit_msgs::msg::CollisionObject> make_container_collision_o
     }
 
     object.meshes.push_back(boost::get<shape_msgs::msg::Mesh>(shape_msg));
-    object.mesh_poses.push_back(spec.pose);
+    object.mesh_poses.push_back(relative);
     objects.push_back(object);
   }
   return objects;
