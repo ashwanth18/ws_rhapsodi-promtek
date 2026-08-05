@@ -80,6 +80,7 @@ def _robot_real_setup(context, *args, **kwargs):
     )
     layout_task_container_id = "rs6"
     layout_tool_id = ""
+    seed_poses_override = LaunchConfiguration("seed_poses_yaml").perform(context).strip()
     if layout_yaml:
         try:
             with open(layout_yaml, "r", encoding="utf-8") as handle:
@@ -90,6 +91,12 @@ def _robot_real_setup(context, *args, **kwargs):
             layout_tool_id = str(layout_doc.get("tool_id") or layout_tool_id)
         except Exception:
             pass
+    # Authoring with a layout_id must seed from that layout's poses.yaml even when
+    # the launch arg seed_poses_yaml is left empty.
+    if not seed_poses_override and layout_id_value:
+        seed_poses_override = os.path.join(
+            layouts_dir_value, layout_id_value, "poses.yaml"
+        )
     drivers_list_file = LaunchConfiguration("drivers_list_file")
     whitelist_params_file = LaunchConfiguration("whitelist_params_file")
     driver_log_level = LaunchConfiguration("driver_log_level")
@@ -225,7 +232,7 @@ def _robot_real_setup(context, *args, **kwargs):
         name="move_group",
     )
 
-    scooping_task_frame = Node(
+    scooping_    task_frame = Node(
         package="scooping_controller",
         executable="scooping_task_frame_publisher",
         output="screen",
@@ -234,7 +241,7 @@ def _robot_real_setup(context, *args, **kwargs):
             {
                 "parent_frame_id": base_frame,
                 "child_frame_id": scoop_frame_id,
-                "task_container_id": "rs6",
+                "task_container_id": layout_task_container_id,
                 "use_sim_time": False,
             },
         ],
@@ -250,7 +257,7 @@ def _robot_real_setup(context, *args, **kwargs):
                 "scoop_frame_id": scoop_frame_id,
                 "goal_frame_id": base_frame,
                 "poses_yaml": poses_yaml,
-                "seed_poses_yaml": seed_poses_yaml,
+                "seed_poses_yaml": seed_poses_override or seed_poses_yaml,
                 "layouts_dir": layouts_dir,
                 "poses_env": poses_env,
                 "layout_id": layout_id_value,
@@ -314,6 +321,7 @@ def _robot_real_setup(context, *args, **kwargs):
         parameters=[
             {
                 "layouts_dir": layouts_dir,
+                "initial_layout_id": layout_id_value,
                 "robot_key": robot_key,
                 "base_frame": base_frame,
                 "use_sim_time": False,
@@ -559,8 +567,11 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "layout_id",
-                default_value="",
-                description="Optional initial layout id for authoring sessions",
+                default_value="dual-container",
+                description=(
+                    "Initial layout id for authoring (poses, editor, cell_layout_manager). "
+                    "Override: layout_id:=lightsout-single-vessel"
+                ),
             ),
             DeclareLaunchArgument(
                 "layout_edit",
