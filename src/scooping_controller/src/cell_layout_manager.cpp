@@ -298,14 +298,28 @@ private:
 
   bool plan_only_goal(const MoveTo::Goal& goal)
   {
+    // Wait on futures only — never spin this node. It is already owned by
+    // MultiThreadedExecutor; nested spin_until_future_complete raises
+    // "Node '/cell_layout_manager' has already been added to an executor".
+    // Action responses run on client_cb_group_ on another executor thread.
     auto accepted = move_to_client_->async_send_goal(goal);
-    if (rclcpp::spin_until_future_complete(get_node_base_interface(), accepted, std::chrono::seconds(10)) !=
-        rclcpp::FutureReturnCode::SUCCESS || !accepted.get()) {
+    if (accepted.wait_for(std::chrono::seconds(10)) != std::future_status::ready) {
+      RCLCPP_ERROR(get_logger(), "MoveTo plan-only goal accept timed out");
       return false;
     }
-    auto result = move_to_client_->async_get_result(accepted.get());
-    return rclcpp::spin_until_future_complete(get_node_base_interface(), result, std::chrono::seconds(30)) ==
-      rclcpp::FutureReturnCode::SUCCESS && result.get().result->success;
+    const auto goal_handle = accepted.get();
+    if (!goal_handle) {
+      RCLCPP_ERROR(get_logger(), "MoveTo plan-only goal was rejected");
+      return false;
+    }
+    auto result = move_to_client_->async_get_result(goal_handle);
+    if (result.wait_for(std::chrono::seconds(30)) != std::future_status::ready) {
+      RCLCPP_ERROR(get_logger(), "MoveTo plan-only result timed out");
+      return false;
+    }
+    const auto wrapped = result.get();
+    return wrapped.code == rclcpp_action::ResultCode::SUCCEEDED &&
+      wrapped.result && wrapped.result->success;
   }
 
   std::string run_state_{"idle"};

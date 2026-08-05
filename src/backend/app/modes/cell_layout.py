@@ -13,7 +13,24 @@ import yaml
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[4]
+    """Best-effort workspace root for laptop checkouts.
+
+    In the backend container ``__file__`` is under ``/app/app/modes`` (too shallow
+    for ``parents[4]``), so callers must prefer ``layouts_dir()`` / env paths.
+    """
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "config" / "layouts" / "schema.json").is_file():
+            return parent
+        if (parent / "config" / "profiles.yaml").is_file():
+            return parent
+    try:
+        return here.parents[4]
+    except IndexError as exc:
+        raise RuntimeError(
+            "Unable to locate workspace root from cell_layout.py; "
+            "set CELL_LAYOUTS_DIR / PROFILES_YAML"
+        ) from exc
 
 
 def _quaternion_from_rpy_deg(rpy: list[float]) -> list[float]:
@@ -25,14 +42,26 @@ def _quaternion_from_rpy_deg(rpy: list[float]) -> list[float]:
             cr * cp * sy - sr * sp * cy, cr * cp * cy + sr * sp * sy]
 
 
+def _schema_path() -> Path:
+    """Schema lives next to layout YAML (compose mounts ``/ws/config/layouts``)."""
+    candidate = layouts_dir() / "schema.json"
+    if candidate.is_file():
+        return candidate
+    fallback = _repo_root() / "config" / "layouts" / "schema.json"
+    if fallback.is_file():
+        return fallback
+    raise FileNotFoundError(
+        f"layout schema.json not found under {layouts_dir()} or repo config/layouts"
+    )
+
+
 def _validate(layout: dict[str, Any]) -> None:
     try:
         import jsonschema
     except ImportError as exc:
         raise RuntimeError(
             "jsonschema is required to validate cell layouts") from exc
-    schema_path = _repo_root() / "config/layouts/schema.json"
-    schema = json.loads(schema_path.read_text())
+    schema = json.loads(_schema_path().read_text())
     jsonschema.validate(layout, schema)
     object_ids = [obj["id"] for obj in layout["objects"]]
     if len(object_ids) != len(set(object_ids)):
