@@ -1,6 +1,6 @@
 moveit_setup_assistant_config:
   urdf:
-    package: niryo_ned_description
+    package: niryo_robot_description
     relative_path: urdf/ned3pro/niryo_ned3pro.urdf.xacro
   srdf:
     relative_path: config/niryo_ned3pro.srdf
