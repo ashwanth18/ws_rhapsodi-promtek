@@ -14,8 +14,10 @@ export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-0}"
 export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
 export FASTDDS_BUILTIN_TRANSPORTS="${FASTDDS_BUILTIN_TRANSPORTS:-UDPv4}"
 export CELL_LAYOUTS_DIR="${CELL_LAYOUTS_DIR:-$ROOT/config/layouts}"
+export CELL_MODELS_CATALOG="${CELL_MODELS_CATALOG:-$ROOT/config/models/catalog.yaml}"
 export ROBOT_TYPE="${ROBOT_TYPE:-$ROBOT}"
 export ROBOT_PROFILES_DIR="${ROBOT_PROFILES_DIR:-$ROOT/config/robots}"
+LAYOUT_EDIT="${LAYOUT_EDIT:-true}"
 
 # ROS setup.bash references optional vars (e.g. AMENT_TRACE_SETUP_FILES); with
 # `set -u` that aborts unless we temporarily allow unbound variables.
@@ -44,6 +46,7 @@ exec ros2 launch scooping_controller scooping_simulation.launch.py \
   robot:="$ROBOT" \
   layout_id:="$LAYOUT_ID" \
   layouts_dir:="$CELL_LAYOUTS_DIR" \
+  layout_edit:="$LAYOUT_EDIT" \
   use_gazebo_gui:=true \
   headless:=false \
   use_rviz:=true

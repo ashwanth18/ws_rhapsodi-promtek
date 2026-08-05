@@ -19,7 +19,7 @@ public:
   {
     this->declare_parameter<std::string>("parent_frame_id", "base_link");
     this->declare_parameter<std::string>("child_frame_id", "scooping_container_frame");
-    this->declare_parameter<std::string>("task_container_id", "scooping_container");
+    this->declare_parameter<std::string>("task_container_id", "rs6");
     scooping_controller::declare_container_scene_parameters(*this);
 
     broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);

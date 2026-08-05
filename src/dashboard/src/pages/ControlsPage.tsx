@@ -347,6 +347,25 @@ export default function ControlsPage() {
   const [recordName, setRecordName] = useState('')
   const [recordJoints, setRecordJoints] = useState(false)
   const [recordMsg, setRecordMsg] = useState('')
+  const [layoutSummary, setLayoutSummary] = useState<{
+    active_layout_id?: string | null
+    active_layout_hash?: string | null
+    preview?: boolean
+    detail?: {
+      layout_id?: string
+      tool_id?: string
+      task_container_id?: string
+      authoring?: Record<string, unknown>
+      calibration?: Record<string, unknown>
+      objects?: Array<{
+        id?: string
+        enabled?: boolean
+        position_xyz?: number[]
+        calibration?: Record<string, unknown>
+      }>
+    } | null
+    error?: string | null
+  } | null>(null)
 
   useEffect(() => setApiInput(apiBase), [apiBase])
   useEffect(() => setRosInput(rosbridgeUrl), [rosbridgeUrl])
@@ -423,6 +442,50 @@ export default function ControlsPage() {
     }
     void load()
     const id = window.setInterval(load, 4000)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
+  }, [apiBase])
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const listRes = await fetch(`${apiBase}/layouts`, { cache: 'no-store' })
+        if (!listRes.ok) throw new Error(`HTTP ${listRes.status}`)
+        const list = (await listRes.json()) as {
+          active_layout_id?: string | null
+          active_layout_hash?: string | null
+          preview?: boolean
+        }
+        let detail = null
+        if (list.active_layout_id) {
+          const detailRes = await fetch(
+            `${apiBase}/layouts/${encodeURIComponent(list.active_layout_id)}`,
+            { cache: 'no-store' },
+          )
+          if (detailRes.ok) {
+            detail = await detailRes.json()
+          }
+        }
+        if (cancelled) return
+        setLayoutSummary({
+          active_layout_id: list.active_layout_id,
+          active_layout_hash: list.active_layout_hash,
+          preview: Boolean(list.preview || detail?.preview),
+          detail,
+          error: null,
+        })
+      } catch (err) {
+        if (cancelled) return
+        setLayoutSummary({
+          error: err instanceof Error ? err.message : 'layout status failed',
+        })
+      }
+    }
+    void load()
+    const id = window.setInterval(load, 5000)
     return () => {
       cancelled = true
       window.clearInterval(id)
@@ -838,6 +901,106 @@ export default function ControlsPage() {
                 Save & reconnect
               </Button>
               <span className="ml-3 text-xs text-[var(--text-faint)]">Stored in this browser only.</span>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Cell layout status (read-only) */}
+      <section className="mt-6 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--card-surface)] p-5 shadow-card">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div>
+            <h3 className="font-display text-base font-semibold">Cell layout</h3>
+            <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+              Read-only commissioning status. Author geometry in RViz (
+              <code className="text-[var(--text-faint)]">make author</code>).
+            </p>
+          </div>
+          <StatusBadge
+            label={
+              layoutSummary?.preview
+                ? 'Preview'
+                : layoutSummary?.active_layout_id
+                  ? 'Applied'
+                  : layoutSummary?.error
+                    ? 'Unavailable'
+                    : 'None'
+            }
+            tone={
+              layoutSummary?.preview
+                ? 'warn'
+                : layoutSummary?.active_layout_id
+                  ? 'good'
+                  : layoutSummary?.error
+                    ? 'bad'
+                    : 'warn'
+            }
+          />
+        </div>
+        {layoutSummary?.preview && (
+          <div className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            Preview geometry is active — production runs are blocked until the layout
+            is saved and re-applied.
+          </div>
+        )}
+        {layoutSummary?.error ? (
+          <p className="text-xs text-[var(--status-bad-fg)]">{layoutSummary.error}</p>
+        ) : (
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between gap-4 text-xs">
+              <span className="text-[var(--text-muted)]">Active layout</span>
+              <span className="font-mono">
+                {layoutSummary?.active_layout_id || '—'}
+              </span>
+            </div>
+            <div className="flex justify-between gap-4 text-xs">
+              <span className="text-[var(--text-muted)]">Hash</span>
+              <span className="font-mono break-all">
+                {layoutSummary?.active_layout_hash || '—'}
+              </span>
+            </div>
+            {layoutSummary?.detail?.authoring &&
+              Object.keys(layoutSummary.detail.authoring).length > 0 && (
+                <div className="flex justify-between gap-4 text-xs">
+                  <span className="text-[var(--text-muted)]">Authoring</span>
+                  <span className="font-mono text-right">
+                    {String(layoutSummary.detail.authoring.method || '—')}
+                    {layoutSummary.detail.authoring.date
+                      ? ` · ${String(layoutSummary.detail.authoring.date)}`
+                      : ''}
+                  </span>
+                </div>
+              )}
+            <div className="mt-3 border-t border-[var(--border)] pt-3">
+              <p className="mb-2 text-xs font-semibold text-[var(--text-muted)]">
+                Objects
+              </p>
+              <ul className="space-y-1 text-xs">
+                {(layoutSummary?.detail?.objects || []).map((obj) => (
+                  <li
+                    key={String(obj.id)}
+                    className="flex justify-between gap-3 font-mono"
+                  >
+                    <span>
+                      {obj.id}
+                      {!obj.enabled ? ' (disabled)' : ''}
+                    </span>
+                    <span className="text-[var(--text-faint)]">
+                      {Array.isArray(obj.position_xyz)
+                        ? obj.position_xyz
+                            .map((v) => Number(v).toFixed(3))
+                            .join(', ')
+                        : '—'}
+                      {obj.calibration && Object.keys(obj.calibration).length > 0
+                        ? ` · ${String(obj.calibration.method || 'cal')}`
+                        : ''}
+                    </span>
+                  </li>
+                ))}
+                {(layoutSummary?.detail?.objects || []).length === 0 && (
+                  <li className="text-[var(--text-faint)]">No objects loaded</li>
+                )}
+              </ul>
             </div>
           </div>
         )}

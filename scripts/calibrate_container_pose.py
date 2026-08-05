@@ -3,7 +3,7 @@
 
 Example:
   scripts/calibrate_container_pose.py config/layouts/dual-container.yaml \
-    scooping_container '[0.40,-0.10,0.12]' '[0.50,-0.10,0.12]' '[0.40,0.00,0.12]' \
+    rs6 '[0.40,-0.10,0.12]' '[0.50,-0.10,0.12]' '[0.40,0.00,0.12]' \
     --operator ash
 
 The script only edits YAML. Collect touch points through an approved, supervised

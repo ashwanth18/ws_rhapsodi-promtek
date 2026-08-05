@@ -21,7 +21,7 @@ from launch.actions import (
     RegisterEventHandler,
     TimerAction,
 )
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessExit
 from launch.substitutions import (
     Command,
@@ -74,6 +74,15 @@ def _robot_bench_setup(context, *args, **kwargs):
     scoop_frame_id = LaunchConfiguration("scoop_frame_id")
     layout_id = LaunchConfiguration("layout_id")
     layouts_dir = LaunchConfiguration("layouts_dir")
+    layout_edit = LaunchConfiguration("layout_edit")
+    layouts_dir_value = layouts_dir.perform(context)
+    catalog_yaml = os.environ.get(
+        "CELL_MODELS_CATALOG",
+        os.path.abspath(os.path.join(layouts_dir_value, "..", "models", "catalog.yaml")),
+    )
+    layout_yaml = os.path.join(
+        layouts_dir_value, f"{layout_id.perform(context)}.yaml"
+    )
 
     legacy_targets = PathJoinSubstitution(
         [FindPackageShare("robot_moveit"), "targets.yaml"]
@@ -215,7 +224,7 @@ def _robot_bench_setup(context, *args, **kwargs):
             {
                 "parent_frame_id": base_frame,
                 "child_frame_id": scoop_frame_id,
-                "task_container_id": "scooping_container",
+                "task_container_id": "rs6",
                 "use_sim_time": False,
             },
         ],
@@ -252,6 +261,28 @@ def _robot_bench_setup(context, *args, **kwargs):
             container_scene_yaml,
             {"frame_id": base_frame, "use_sim_time": False},
         ],
+        condition=UnlessCondition(layout_edit),
+    )
+
+    cell_layout_editor = Node(
+        package="scooping_controller",
+        executable="cell_layout_editor",
+        output="screen",
+        parameters=[
+            {
+                "frame_id": base_frame,
+                "layouts_dir": layouts_dir,
+                "catalog_yaml": catalog_yaml,
+                "layout_yaml": layout_yaml,
+                "layout_id": layout_id,
+                "robot_key": robot_key,
+                "base_frame": base_frame,
+                "tcp_frame": eef_link,
+                "planar_mode": True,
+                "use_sim_time": False,
+            }
+        ],
+        condition=IfCondition(layout_edit),
     )
 
     planning_scene_collisions = Node(
@@ -371,7 +402,7 @@ def _robot_bench_setup(context, *args, **kwargs):
         ),
         TimerAction(
             period=float(timing.get("container_delay", 1.7)),
-            actions=[container_marker, planning_scene_collisions],
+            actions=[container_marker, cell_layout_editor, planning_scene_collisions],
         ),
         TimerAction(
             period=float(timing.get("move_to_delay", 2.0)),
@@ -451,6 +482,14 @@ def generate_launch_description():
                 "scoop_frame_id", default_value="scooping_container_frame"
             ),
             DeclareLaunchArgument("layout_id", default_value="dual-container"),
+            DeclareLaunchArgument(
+                "layout_edit",
+                default_value="true",
+                description=(
+                    "When true, launch cell_layout_editor (interactive containers) "
+                    "instead of display-only container_marker_publisher."
+                ),
+            ),
             OpaqueFunction(function=_robot_bench_setup),
         ]
     )

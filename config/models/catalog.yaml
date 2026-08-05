@@ -1,0 +1,62 @@
+# Selectable CAD / primitive objects for cell-layout authoring.
+# mesh_resource paths use the package:// form consumed by RViz and MoveIt.
+#
+# Naming:
+#   rs3 — smaller weighing-scale vessel (former weighing_container / rs3_container.STL)
+#   rs6 — larger scooping vessel (former scooping_container.STL)
+schema_version: 1
+models:
+  - model_id: rs6
+    display_name: RS6 scooping container
+    category: rs6
+    geometry_type: mesh
+    mesh_resource: package://scooping_controller/models/scooping_container/meshes/rs6_container.STL
+    mesh_units: mm
+    default_scale_xyz: [1.0, 1.0, 1.0]
+    default_dimensions_xyz: [0.0, 0.0, 0.0]
+    default_color_rgb: [0.7, 0.7, 0.7]
+    rim_height_m: 0.0
+
+  - model_id: rs3
+    display_name: RS3 weighing-scale container
+    category: rs3
+    geometry_type: mesh
+    mesh_resource: package://scooping_controller/models/weighing_container/meshes/rs3_container.STL
+    mesh_units: mm
+    default_scale_xyz: [1.0, 1.0, 1.0]
+    default_dimensions_xyz: [0.0, 0.0, 0.0]
+    default_color_rgb: [0.4, 0.8, 0.4]
+    rim_height_m: 0.105
+
+  - model_id: rs6_legacy
+    display_name: RS6 (legacy container.STL)
+    category: rs6
+    geometry_type: mesh
+    mesh_resource: package://scooping_controller/models/scooping_container/meshes/container.STL
+    mesh_units: mm
+    default_scale_xyz: [1.0, 1.0, 1.0]
+    default_dimensions_xyz: [0.0, 0.0, 0.0]
+    default_color_rgb: [0.7, 0.7, 0.7]
+    rim_height_m: 0.0
+
+  - model_id: rs3_legacy
+    display_name: RS3 (legacy weighing container.STL)
+    category: rs3
+    geometry_type: mesh
+    mesh_resource: package://scooping_controller/models/weighing_container/meshes/container.STL
+    mesh_units: mm
+    default_scale_xyz: [1.0, 1.0, 1.0]
+    default_dimensions_xyz: [0.0, 0.0, 0.0]
+    default_color_rgb: [0.4, 0.8, 0.4]
+    rim_height_m: 0.105
+
+  - model_id: table
+    display_name: Table (box)
+    category: fixture
+    geometry_type: box
+    mesh_resource: ""
+    mesh_units: m
+    default_scale_xyz: [1.0, 1.0, 1.0]
+    default_dimensions_xyz: [1.02, 0.61, 0.03]
+    default_color_rgb: [0.55, 0.39, 0.22]
+    rim_height_m: 0.0

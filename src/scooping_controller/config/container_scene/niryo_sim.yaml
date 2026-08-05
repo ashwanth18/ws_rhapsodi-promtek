@@ -1,16 +1,16 @@
 /**:
   ros__parameters:
-    scooping_container_mesh_resource: "package://scooping_controller/models/scooping_container/meshes/scooping_container.STL"
-    scooping_container_position_xyz: [0.460, -0.119, 0.00]
-    scooping_container_orientation_xyzw: [0.0, 0.0, 1.0, 0.0]
-    scooping_container_scale_xyz: [0.001, 0.001, 0.001]
-    scooping_container_color_rgb: [0.7, 0.7, 0.7]
+    rs6_mesh_resource: "package://scooping_controller/models/scooping_container/meshes/rs6_container.STL"
+    rs6_position_xyz: [0.460, -0.119, 0.00]
+    rs6_orientation_xyzw: [0.0, 0.0, 1.0, 0.0]
+    rs6_scale_xyz: [0.001, 0.001, 0.001]
+    rs6_color_rgb: [0.7, 0.7, 0.7]
 
-    weighing_container_mesh_resource: "package://scooping_controller/models/weighing_container/meshes/rs3_container.STL"
-    weighing_container_position_xyz: [0.00, -0.4218, 0.07]
-    weighing_container_orientation_xyzw: [0.0, 0.0, 0.70710678, 0.70710678]
-    weighing_container_scale_xyz: [0.001, 0.001, 0.001]
-    weighing_container_color_rgb: [0.4, 0.8, 0.4]
+    rs3_mesh_resource: "package://scooping_controller/models/weighing_container/meshes/rs3_container.STL"
+    rs3_position_xyz: [0.00, -0.4218, 0.07]
+    rs3_orientation_xyzw: [0.0, 0.0, 0.70710678, 0.70710678]
+    rs3_scale_xyz: [0.001, 0.001, 0.001]
+    rs3_color_rgb: [0.4, 0.8, 0.4]
 
     table_geometry_type: "box"
     table_mesh_resource: ""

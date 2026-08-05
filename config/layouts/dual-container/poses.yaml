@@ -1,6 +1,6 @@
 # Provenance seed: layout_id and hashes are stamped by scooping_marker_server on save.
 layout_id: dual-container
-task_container_id: scooping_container
+task_container_id: rs6
 frame_id: scooping_container_frame
 tool_id: niryo_scoop_v4
 container_spec_hash: ""

@@ -9,5 +9,6 @@ targets:
   RecoverFromPourAtWeighingContainer: {frame_id: base_link, position: {x: -0.0103, y: -0.3471, z: 0.3185}, orientation: {x: 0.0922959556, y: 0.0922959556, z: -0.701057385, w: 0.701057385}}
   PostPourTiltbackAtWeighingContainer: {frame_id: base_link, position: {x: -0.0103, y: -0.3471, z: 0.2685}, orientation: {x: -0.122787804, y: -0.122787804, z: -0.6963642403, w: 0.6963642403}}
   PourDoneAtWeighingContainer: {frame_id: base_link, position: {x: -0.0103, y: -0.3904, z: 0.3107}, orientation: {x: -0.122787804, y: -0.122787804, z: -0.6963642403, w: 0.6963642403}}
-  MoveToScoopingContainer: {frame_id: base_link, position: {x: 0.0, y: -0.3471, z: 0.24}, orientation: {x: 0, y: 0, z: 0, w: 1}}
+  # Hover above the lights-out RS3 vessel (centerline +X). Re-author scoop poses before production.
+  MoveToScoopingContainer: {frame_id: base_link, position: {x: 0.3876, y: 0.0, z: 0.28}, orientation: {x: 0, y: 0, z: 0, w: 1}}
   ReturnHome: {frame_id: base_link, position: {x: 0.4229, y: -0.0123, z: 0.2064}, orientation: {x: 0, y: 0, z: 0, w: 1}}

@@ -15,7 +15,7 @@ from launch.actions import (
     OpaqueFunction,
     TimerAction,
 )
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import (
     Command,
@@ -63,7 +63,19 @@ def _robot_real_setup(context, *args, **kwargs):
     )
     container_scene_yaml = LaunchConfiguration("container_scene_yaml")
     layouts_dir = LaunchConfiguration("layouts_dir")
+    layout_edit = LaunchConfiguration("layout_edit")
     poses_env = LaunchConfiguration("poses_env")
+    layouts_dir_value = layouts_dir.perform(context)
+    catalog_yaml = os.environ.get(
+        "CELL_MODELS_CATALOG",
+        os.path.abspath(os.path.join(layouts_dir_value, "..", "models", "catalog.yaml")),
+    )
+    layout_id_value = LaunchConfiguration("layout_id").perform(context).strip()
+    layout_yaml = (
+        os.path.join(layouts_dir_value, f"{layout_id_value}.yaml")
+        if layout_id_value
+        else ""
+    )
     drivers_list_file = LaunchConfiguration("drivers_list_file")
     whitelist_params_file = LaunchConfiguration("whitelist_params_file")
     driver_log_level = LaunchConfiguration("driver_log_level")
@@ -208,7 +220,7 @@ def _robot_real_setup(context, *args, **kwargs):
             {
                 "parent_frame_id": base_frame,
                 "child_frame_id": scoop_frame_id,
-                "task_container_id": "scooping_container",
+                "task_container_id": "rs6",
                 "use_sim_time": False,
             },
         ],
@@ -244,6 +256,28 @@ def _robot_real_setup(context, *args, **kwargs):
             container_scene_yaml,
             {"frame_id": base_frame, "use_sim_time": False},
         ],
+        condition=UnlessCondition(layout_edit),
+    )
+
+    cell_layout_editor = Node(
+        package="scooping_controller",
+        executable="cell_layout_editor",
+        output="screen",
+        parameters=[
+            {
+                "frame_id": base_frame,
+                "layouts_dir": layouts_dir,
+                "catalog_yaml": catalog_yaml,
+                "layout_yaml": layout_yaml,
+                "layout_id": layout_id_value,
+                "robot_key": robot_key,
+                "base_frame": base_frame,
+                "tcp_frame": eef_link,
+                "planar_mode": True,
+                "use_sim_time": False,
+            }
+        ],
+        condition=IfCondition(layout_edit),
     )
 
     planning_scene_collisions = Node(
@@ -381,7 +415,7 @@ def _robot_real_setup(context, *args, **kwargs):
             ),
             TimerAction(
                 period=float(timing.get("container_delay", 5.5)),
-                actions=[container_marker],
+                actions=[container_marker, cell_layout_editor],
             ),
             TimerAction(
                 period=float(timing.get("collisions_delay", 5.7)),
@@ -505,6 +539,19 @@ def generate_launch_description():
                 "layouts_dir",
                 default_value="/ws/config/layouts",
                 description="Directory containing versioned cell-layout YAML files",
+            ),
+            DeclareLaunchArgument(
+                "layout_id",
+                default_value="",
+                description="Optional initial layout id for authoring sessions",
+            ),
+            DeclareLaunchArgument(
+                "layout_edit",
+                default_value="false",
+                description=(
+                    "When true, launch cell_layout_editor (authoring). "
+                    "Production Pi compose should leave this false."
+                ),
             ),
             DeclareLaunchArgument(
                 "drivers_list_file",

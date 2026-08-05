@@ -12,6 +12,7 @@
 #include <robot_common_msgs/action/move_to.hpp>
 #include <robot_common_msgs/msg/cell_layout_active.hpp>
 #include <robot_common_msgs/srv/apply_cell_layout.hpp>
+#include <robot_common_msgs/srv/preview_cell_layout.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/trigger.hpp>
 #include <yaml-cpp/yaml.h>
@@ -20,6 +21,7 @@ class CellLayoutManager : public rclcpp::Node
 {
 public:
   using Apply = robot_common_msgs::srv::ApplyCellLayout;
+  using Preview = robot_common_msgs::srv::PreviewCellLayout;
   using MoveTo = robot_common_msgs::action::MoveTo;
 
   CellLayoutManager() : Node("cell_layout_manager")
@@ -38,6 +40,9 @@ public:
       [this](const geometry_msgs::msg::PoseArray::SharedPtr poses) { scoop_poses_ = *poses; });
     apply_srv_ = create_service<Apply>("/cell_layout/apply",
       std::bind(&CellLayoutManager::apply, this, std::placeholders::_1, std::placeholders::_2));
+    preview_srv_ = create_service<Preview>(
+      "/cell_layout/preview_objects",
+      std::bind(&CellLayoutManager::preview, this, std::placeholders::_1, std::placeholders::_2));
     move_to_client_ = rclcpp_action::create_client<MoveTo>(this, "/move_to");
     marker_params_ = std::make_shared<rclcpp::AsyncParametersClient>(this, "scooping_marker_server");
     move_params_ = std::make_shared<rclcpp::AsyncParametersClient>(this, "move_to_server");
@@ -73,6 +78,54 @@ private:
     response->message = result.message;
     response->layout_hash = result.hash;
     response->preflight_ok = result.preflight_ok;
+  }
+
+  void preview(
+    const std::shared_ptr<Preview::Request> request,
+    std::shared_ptr<Preview::Response> response)
+  {
+    if (run_state_ != "idle" && !run_state_.empty()) {
+      response->success = false;
+      response->message =
+        "Refusing layout preview while orchestrator is " + run_state_;
+      return;
+    }
+    if (!has_active_layout_) {
+      response->success = false;
+      response->message =
+        "No active layout to preview against; apply a layout first";
+      return;
+    }
+    if (request->scene_yaml_path.empty()) {
+      response->success = false;
+      response->message = "scene_yaml_path is required";
+      return;
+    }
+    if (!std::filesystem::exists(request->scene_yaml_path)) {
+      response->success = false;
+      response->message = "preview scene YAML does not exist: " + request->scene_yaml_path;
+      return;
+    }
+    try {
+      // Validate the scratch YAML has an objects list before publishing.
+      const auto root = YAML::LoadFile(request->scene_yaml_path);
+      if (!root["objects"] || !root["objects"].IsSequence() || root["objects"].size() == 0U) {
+        response->success = false;
+        response->message = "preview scene YAML must contain a non-empty objects list";
+        return;
+      }
+      robot_common_msgs::msg::CellLayoutActive active = last_active_;
+      active.scene_yaml_path = request->scene_yaml_path;
+      active.layout_hash = "preview";
+      active.preview = true;
+      active_pub_->publish(active);
+      last_active_ = active;
+      response->success = true;
+      response->message = "Previewing unsaved geometry for " + active.layout_id;
+    } catch (const std::exception& ex) {
+      response->success = false;
+      response->message = ex.what();
+    }
   }
 
   struct Result { bool success{false}; bool preflight_ok{false}; std::string message; std::string hash; };
@@ -171,7 +224,10 @@ private:
         root["scoop_cartesian_avoid_collisions"] ?
         root["scoop_cartesian_avoid_collisions"].as<bool>() : false;
       active.authored_in_required = true;
+      active.preview = false;
       active_pub_->publish(active);
+      last_active_ = active;
+      has_active_layout_ = true;
       move_params_->set_parameters({
         rclcpp::Parameter("targets_yaml", targets),
         rclcpp::Parameter("cartesian_avoid_collisions",
@@ -240,11 +296,14 @@ private:
   }
 
   std::string run_state_{"idle"};
+  bool has_active_layout_{false};
+  robot_common_msgs::msg::CellLayoutActive last_active_;
   rclcpp::Publisher<robot_common_msgs::msg::CellLayoutActive>::SharedPtr active_pub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr run_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseArray>::SharedPtr scoop_pose_sub_;
   geometry_msgs::msg::PoseArray scoop_poses_;
   rclcpp::Service<Apply>::SharedPtr apply_srv_;
+  rclcpp::Service<Preview>::SharedPtr preview_srv_;
   rclcpp_action::Client<MoveTo>::SharedPtr move_to_client_;
   rclcpp::AsyncParametersClient::SharedPtr marker_params_, move_params_;
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr load_poses_client_;

@@ -4,97 +4,156 @@
     {
       "id": "layout",
       "type": "pickString",
-      "options": ["dual-container", "lightsout-single-vessel"],
+      "options": [
+        "dual-container",
+        "lightsout-single-vessel"
+      ],
       "default": "dual-container",
       "description": "Cell layout"
     },
     {
       "id": "robot",
       "type": "pickString",
-      "options": ["niryo", "jaka"],
+      "options": [
+        "jaka",
+        "niryo"
+      ],
       "default": "niryo",
       "description": "Robot arm"
     }
   ],
   "tasks": [
     {
+      "label": "Author (bench + layout editor)",
+      "type": "shell",
+      "command": "make author LAYOUT=${input:layout} ROBOT=${input:robot}",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Dev status",
+      "type": "shell",
+      "command": "make status",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "Bench (mock arm)",
       "type": "shell",
       "command": "make bench LAYOUT=${input:layout} ROBOT=${input:robot}",
-      "options": { "cwd": "${workspaceFolder}" },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "problemMatcher": [],
-      "presentation": { "reveal": "always", "panel": "dedicated" }
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
     },
     {
       "label": "Sim (Gazebo + layout)",
       "type": "shell",
       "command": "make sim ROBOT=${input:robot} LAYOUT=${input:layout}",
-      "options": { "cwd": "${workspaceFolder}" },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "problemMatcher": [],
-      "presentation": { "reveal": "always", "panel": "dedicated" }
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
     },
     {
       "label": "Arm session (real robot handoff)",
       "type": "shell",
       "command": "make arm-session",
-      "options": { "cwd": "${workspaceFolder}" },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "problemMatcher": [],
-      "presentation": { "reveal": "always", "panel": "dedicated" }
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
     },
     {
       "label": "Export scoop poses to layout tree",
       "type": "shell",
       "command": "make export-poses",
-      "options": { "cwd": "${workspaceFolder}" },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "problemMatcher": []
     },
     {
       "label": "Validate cell layouts",
       "type": "shell",
       "command": "make validate-layouts",
-      "options": { "cwd": "${workspaceFolder}" },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "problemMatcher": []
     },
     {
       "label": "Layout sim/real parity",
       "type": "shell",
       "command": "make layout-parity",
-      "options": { "cwd": "${workspaceFolder}" },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "problemMatcher": []
     },
     {
       "label": "Push layout (dev fast-path)",
       "type": "shell",
       "command": "make push-layout LAYOUT=${input:layout}",
-      "options": { "cwd": "${workspaceFolder}" },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "problemMatcher": []
     },
     {
       "label": "Backend unit tests",
       "type": "shell",
       "command": "make test-backend",
-      "options": { "cwd": "${workspaceFolder}" },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "problemMatcher": []
     },
     {
       "label": "Deploy Fleet Console (Jetson)",
       "type": "shell",
       "command": "make deploy-jetson",
-      "options": { "cwd": "${workspaceFolder}" },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "problemMatcher": []
     },
     {
       "label": "API sandbox up",
       "type": "shell",
       "command": "make api-sandbox-up",
-      "options": { "cwd": "${workspaceFolder}" },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "problemMatcher": []
     },
     {
       "label": "API sandbox down",
       "type": "shell",
       "command": "make api-sandbox-down",
-      "options": { "cwd": "${workspaceFolder}" },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "problemMatcher": []
     }
   ]

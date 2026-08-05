@@ -1,12 +1,6 @@
 Panels:
   - Class: rviz_common/Displays
     Name: Displays
-  - Class: rviz_common/Selection
-    Name: Selection
-  - Class: rviz_common/Tool Properties
-    Name: Tool Properties
-  - Class: rviz_common/Views
-    Name: Views
   - Class: scooping_controller/ScoopingPanel
     Name: Scooping Controls
 Visualization Manager:
@@ -67,6 +61,10 @@ Visualization Manager:
       Enabled: true
       Name: Move Goal Marker
       Update Topic: /move_goal_marker/update
+    - Class: rviz_default_plugins/InteractiveMarkers
+      Enabled: true
+      Name: Cell Layout Markers
+      Update Topic: /cell_layout_markers/update
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
       Name: Scoop Legend
@@ -105,7 +103,7 @@ Visualization Manager:
         Value: /manual_scoop_preview
   Enabled: true
   Global Options:
-    Fixed Frame: world
+    Fixed Frame: base_link
   Name: root
   Tools:
     - Class: rviz_default_plugins/Interact

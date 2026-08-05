@@ -57,6 +57,7 @@ from .modes.mock_local import (
 from .modes.batch_ids import prefix_for_mode, suggest_next_batch_id
 from .modes.cell_layout import (
     configured_layout_id,
+    layout_hash as compute_layout_hash,
     layout_path,
     layout_provenance,
     list_layouts,
@@ -181,6 +182,14 @@ def require_layout_for_run(current: dict[str, str]) -> dict[str, Any]:
         raise HTTPException(
             status_code=409,
             detail='No cell layout has been successfully applied for this runtime mode',
+        )
+    if state.get('preview') or state.get('layout_hash') == 'preview':
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                'Refusing run while cell layout is in preview (unsaved authoring). '
+                'Save the layout and re-apply before starting a production run.'
+            ),
         )
     try:
         expected_layout_id = configured_layout_id(current['mode'])
@@ -533,6 +542,51 @@ def get_layouts() -> dict:
         'layouts': layouts,
         'active_layout_id': active_id,
         'active_layout_hash': active.get('layout_hash'),
+        'preview': bool(active.get('preview')) or active.get('layout_hash') == 'preview',
+    }
+
+
+@app.get('/layouts/{layout_id}')
+def get_layout_detail(layout_id: str) -> dict:
+    """Return a parsed layout including objects and authoring/calibration provenance."""
+    try:
+        path = layout_path(layout_id)
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail=f'layout not found: {layout_id}')
+        layout = load_layout(path)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    active = get_active_cell_layout() or {}
+    objects = []
+    for obj in layout.get('objects') or []:
+        objects.append(
+            {
+                'id': obj.get('id'),
+                'enabled': bool(obj.get('enabled', True)),
+                'geometry_type': obj.get('geometry_type'),
+                'mesh_resource': obj.get('mesh_resource') or '',
+                'position_xyz': obj.get('position_xyz'),
+                'orientation': obj.get('orientation'),
+                'calibration': obj.get('calibration') or {},
+            }
+        )
+    return {
+        'layout_id': layout.get('layout_id'),
+        'layout_hash': compute_layout_hash(layout),
+        'tool_id': layout.get('tool_id'),
+        'task_container_id': layout.get('task_container_id'),
+        'commissioned_robots': sorted((layout.get('targets_by_robot') or {}).keys()),
+        'calibration': layout.get('calibration') or {},
+        'authoring': layout.get('authoring') or {},
+        'objects': objects,
+        'active': active.get('layout_id') == layout.get('layout_id'),
+        'preview': bool(active.get('preview'))
+        or active.get('layout_hash') == 'preview',
     }
 
 

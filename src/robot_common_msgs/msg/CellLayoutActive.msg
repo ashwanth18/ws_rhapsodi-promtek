@@ -7,3 +7,6 @@ string task_container_id
 string tool_id
 bool scoop_cartesian_avoid_collisions
 bool authored_in_required
+# True while an authoring session is previewing unsaved geometry.
+# Production run gates must refuse when preview is set.
+bool preview

@@ -14,7 +14,7 @@ from launch.actions import (
     SetEnvironmentVariable,
     TimerAction,
 )
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import (
@@ -125,6 +125,12 @@ def _robot_sim_setup(context):
     layouts_dir_value = LaunchConfiguration("layouts_dir").perform(context).strip()
     if not layouts_dir_value:
         layouts_dir_value = _default_layouts_dir()
+    layout_edit = LaunchConfiguration("layout_edit")
+    catalog_yaml = os.environ.get(
+        "CELL_MODELS_CATALOG",
+        os.path.abspath(os.path.join(layouts_dir_value, "..", "models", "catalog.yaml")),
+    )
+    layout_yaml = os.path.join(layouts_dir_value, f"{layout_id}.yaml")
 
     use_sim_time = LaunchConfiguration("use_sim_time")
     use_rviz = LaunchConfiguration("use_rviz")
@@ -345,7 +351,7 @@ def _robot_sim_setup(context):
             {
                 "parent_frame_id": base_frame,
                 "child_frame_id": scoop_frame_id,
-                "task_container_id": "scooping_container",
+                "task_container_id": "rs6",
                 "use_sim_time": use_sim_time,
             },
         ],
@@ -402,6 +408,28 @@ def _robot_sim_setup(context):
                 "use_sim_time": use_sim_time,
             },
         ],
+        condition=UnlessCondition(layout_edit),
+    )
+
+    cell_layout_editor = Node(
+        package="scooping_controller",
+        executable="cell_layout_editor",
+        output="screen",
+        parameters=[
+            {
+                "frame_id": base_frame,
+                "layouts_dir": layouts_dir_value,
+                "catalog_yaml": catalog_yaml,
+                "layout_yaml": layout_yaml,
+                "layout_id": layout_id,
+                "robot_key": robot,
+                "base_frame": base_frame,
+                "tcp_frame": cfg["eef_link"],
+                "planar_mode": True,
+                "use_sim_time": use_sim_time,
+            }
+        ],
+        condition=IfCondition(layout_edit),
     )
 
     planning_scene_collisions = Node(
@@ -526,7 +554,7 @@ def _robot_sim_setup(context):
             TimerAction(period=4.2, actions=[target_recorder]),
             TimerAction(period=4.8, actions=[scooping_task_frame]),
             TimerAction(period=5.0, actions=[marker_server]),
-            TimerAction(period=5.5, actions=[container_marker]),
+            TimerAction(period=5.5, actions=[container_marker, cell_layout_editor]),
             TimerAction(period=5.7, actions=[planning_scene_collisions]),
             TimerAction(period=5.9, actions=[cell_layout_manager]),
             TimerAction(period=6.0, actions=[scooping_mtc]),
@@ -627,6 +655,14 @@ def generate_launch_description():
         "layout_id",
         default_value="dual-container",
         description="Cell layout id under layouts_dir (drives Gazebo world + /cell_layout/active).",
+    )
+    declare_layout_edit = DeclareLaunchArgument(
+        "layout_edit",
+        default_value="true",
+        description=(
+            "When true, launch cell_layout_editor instead of "
+            "display-only container_marker_publisher."
+        ),
     )
 
     declare_use_sim_time = DeclareLaunchArgument(
@@ -772,6 +808,7 @@ def generate_launch_description():
         [
             declare_robot,
             declare_layout_id,
+            declare_layout_edit,
             declare_use_sim_time,
             declare_use_gazebo_gui,
             declare_headless,

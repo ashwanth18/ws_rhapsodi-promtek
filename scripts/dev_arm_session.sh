@@ -48,6 +48,8 @@ if ros2 action list 2>/dev/null | rg -qx '/move_to'; then
 fi
 
 echo "Launching authoring stack only; no motion is commanded by this script."
+export CELL_MODELS_CATALOG="${CELL_MODELS_CATALOG:-$ROOT/config/models/catalog.yaml}"
 ros2 launch scooping_controller scooping_real.launch.py \
   use_rviz:=true \
+  layout_edit:=true \
   layouts_dir:="${CELL_LAYOUTS_DIR:-$ROOT/config/layouts}"

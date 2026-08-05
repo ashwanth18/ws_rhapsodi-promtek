@@ -12,6 +12,7 @@
 #   config/profiles.yaml
 #   config/profiles/** (pose/scene layout overrides)
 #   config/layouts/** (versioned cell layouts)
+#   config/models/** (CAD / primitive catalog for layout authoring)
 #   config/robots/** (per-robot profiles split from robots.yaml)
 #   monitoring/exporters/docker-compose.exporters.yml
 #   monitoring/exporters/promtail-config.yml
@@ -130,6 +131,12 @@ if [[ ! -d "${ROOT_DIR}/config/layouts" ]]; then
   exit 1
 fi
 cp -a "${ROOT_DIR}/config/layouts" config/
+# Model catalog for layout authoring / validation (read-only on device).
+if [[ ! -d "${ROOT_DIR}/config/models" ]]; then
+  echo "Missing required directory: config/models" >&2
+  exit 1
+fi
+cp -a "${ROOT_DIR}/config/models" config/
 # Per-robot profiles: split the image robots.yaml so each Pi only needs its OEM.
 ROBOTS_SRC="${ROOT_DIR}/src/scooping_controller/config/robots.yaml"
 if [[ ! -f "${ROBOTS_SRC}" ]]; then

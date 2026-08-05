@@ -15,7 +15,7 @@ mode_to_layout_id = MODULE.mode_to_layout_id
 
 def test_dual_container_normalizes_mm_mesh_and_rpy():
     layout = load_layout(ROOT / "config/layouts/dual-container.yaml")
-    vessel = next(obj for obj in layout["objects"] if obj["id"] == "scooping_container")
+    vessel = next(obj for obj in layout["objects"] if obj["id"] == "rs6")
     assert vessel["resolved_scale_xyz"] == [0.001, 0.001, 0.001]
     assert vessel["quat_xyzw"][2] == 1.0
     assert len(layout_hash(layout)) == 64

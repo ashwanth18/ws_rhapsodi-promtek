@@ -56,6 +56,12 @@ jobs:
       - name: Sim/real layout parity
         run: python3 scripts/test_layout_sim_parity.py
 
+      - name: Touch-off C++/Python parity
+        run: python3 scripts/test_touch_off_parity.py
+
+      - name: VS Code task picker freshness
+        run: python3 scripts/gen_vscode_tasks.py --check
+
   build-push-bundle:
     needs: [validate-layouts]
     if: github.event_name != 'pull_request'
