@@ -1,0 +1,12 @@
+# Copy to powders.yaml (or edit powders.yaml in place) and mount via ./config.
+# See docs/MODES.md and docs/DATA_ARCHITECTURE.md.
+powders:
+  - id: alumina-5um
+    name: Alumina 5 um
+    container_target: boxA              # MoveTo scoop pose
+    pour_target: PourStartAtBoxA        # pour-back pose over same container
+    default_target_weight_g: 250
+    default_tolerance_g: 5
+    min_scooped_g: 20
+    density_g_per_ml: 3.95
+    notes: ""
