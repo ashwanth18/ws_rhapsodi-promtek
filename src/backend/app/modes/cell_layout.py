@@ -41,6 +41,14 @@ def _validate(layout: dict[str, Any]) -> None:
         raise ValueError("task_container_id is not an object in this layout")
 
 
+def _resolve_rel(source: Path, value: str) -> str:
+    candidate = Path(value)
+    return str(
+        candidate if candidate.is_absolute()
+        else (source.parent / candidate).resolve()
+    )
+
+
 def load_layout(path: str | Path) -> dict[str, Any]:
     """Load and validate a layout, expanding asset paths and orientations."""
     source = Path(path).resolve()
@@ -51,12 +59,11 @@ def load_layout(path: str | Path) -> dict[str, Any]:
     _validate(layout)
     normalized = deepcopy(layout)
     normalized["_source_path"] = str(source)
-    for key in ("targets_yaml", "poses_yaml"):
-        candidate = Path(normalized[key])
-        normalized[key] = str(
-            candidate if candidate.is_absolute()
-            else (source.parent / candidate).resolve()
-        )
+    normalized["poses_yaml"] = _resolve_rel(source, normalized["poses_yaml"])
+    resolved_targets: dict[str, str] = {}
+    for robot_key, rel in (normalized.get("targets_by_robot") or {}).items():
+        resolved_targets[str(robot_key)] = _resolve_rel(source, str(rel))
+    normalized["targets_by_robot"] = resolved_targets
     for obj in normalized["objects"]:
         orientation = obj["orientation"]
         obj["quat_xyzw"] = (
@@ -68,6 +75,18 @@ def load_layout(path: str | Path) -> dict[str, Any]:
             unit_scale * value for value in obj["scale_xyz"]
         ]
     return normalized
+
+
+def targets_for_robot(layout: dict[str, Any], robot_key: str) -> str:
+    """Return absolute targets YAML path for robot_key or raise KeyError."""
+    mapping = layout.get("targets_by_robot") or {}
+    if robot_key not in mapping:
+        commissioned = ", ".join(sorted(mapping)) or "(none)"
+        raise KeyError(
+            f"layout '{layout.get('layout_id')}' is not commissioned for "
+            f"robot '{robot_key}' (commissioned: {commissioned})"
+        )
+    return str(mapping[robot_key])
 
 
 def layout_hash(layout: dict[str, Any]) -> str:
@@ -153,20 +172,28 @@ def list_layouts() -> list[dict[str, Any]]:
                 "layout_hash": layout_hash(layout),
                 "tool_id": str(layout.get("tool_id") or ""),
                 "task_container_id": str(layout.get("task_container_id") or ""),
+                "commissioned_robots": sorted(
+                    (layout.get("targets_by_robot") or {}).keys()
+                ),
             }
         )
     return items
 
 
-def layout_provenance(layout: dict[str, Any]) -> dict[str, Any]:
+def layout_provenance(
+    layout: dict[str, Any], *, robot_key: str = ""
+) -> dict[str, Any]:
     """Return the layout metadata stored with a run."""
     poses = yaml.safe_load(Path(layout["poses_yaml"]).read_text()) or {}
     authored_in = str(poses.get("authored_in") or "")
+    poses_robot_key = str(poses.get("robot_key") or "")
     poses_provenance_ok = (
         poses.get("layout_id") == layout["layout_id"]
         and poses.get("tool_id") == layout.get("tool_id")
         and bool(authored_in)
     )
+    if robot_key and poses_robot_key and poses_robot_key != robot_key:
+        poses_provenance_ok = False
     return {
         "layout_id": str(layout["layout_id"]),
         "layout_hash": layout_hash(layout),
@@ -175,7 +202,11 @@ def layout_provenance(layout: dict[str, Any]) -> dict[str, Any]:
         ).hexdigest(),
         "tool_id": str(layout.get("tool_id") or ""),
         "authored_in": authored_in,
+        "robot_key": robot_key or poses_robot_key,
         "poses_provenance_ok": poses_provenance_ok,
+        "commissioned_robots": sorted(
+            (layout.get("targets_by_robot") or {}).keys()
+        ),
     }
 
 

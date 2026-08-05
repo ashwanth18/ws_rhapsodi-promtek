@@ -192,3 +192,29 @@ robots:
         collisions_delay: 8.7
         mtc_delay: 9.0
         rviz_delay: 10.0
+    # Laptop-only authoring loop (mock_components via use_rviz_sim:=true).
+    mock:
+      scene:
+        package: scooping_controller
+        path: config/container_scene/jaka_real.yaml
+      moveit_package: jaka_zu5_moveit_config
+      urdf:
+        package: jaka_zu5_moveit_config
+        path: config/jaka_zu5.urdf.xacro
+        xacro_args: ["use_rviz_sim:=true", "use_gazebo:=false"]
+      controllers:
+        package: scooping_controller
+        path: config/ros2_controllers_mock_jaka.yaml
+      move_group_controller_params:
+        package: scooping_controller
+        path: config/move_group_controller_params.yaml
+      timing:
+        move_group_delay: 1.0
+        move_to_delay: 2.0
+        target_recorder_delay: 2.2
+        task_frame_delay: 1.5
+        marker_delay: 1.5
+        container_delay: 1.7
+        collisions_delay: 1.8
+        mtc_delay: 2.0
+        rviz_delay: 2.5

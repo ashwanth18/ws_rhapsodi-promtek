@@ -26,6 +26,8 @@ public:
   {
     declare_parameter<std::string>("layouts_dir", "/ws/config/layouts");
     declare_parameter<std::string>("initial_layout_id", "");
+    declare_parameter<std::string>("robot_key", "");
+    declare_parameter<std::string>("base_frame", "base_link");
     active_pub_ = create_publisher<robot_common_msgs::msg::CellLayoutActive>(
       "/cell_layout/active", rclcpp::QoS(1).transient_local().reliable());
     run_sub_ = create_subscription<std_msgs::msg::String>(
@@ -75,19 +77,88 @@ private:
 
   struct Result { bool success{false}; bool preflight_ok{false}; std::string message; std::string hash; };
 
+  static std::string resolve_targets_path(
+    const std::filesystem::path& layout_path,
+    const YAML::Node& root,
+    const std::string& robot_key)
+  {
+    if (root["targets_by_robot"] && root["targets_by_robot"].IsMap()) {
+      if (robot_key.empty()) {
+        throw std::runtime_error(
+          "layout uses targets_by_robot but cell_layout_manager has empty robot_key");
+      }
+      if (!root["targets_by_robot"][robot_key]) {
+        throw std::runtime_error(
+          "layout is not commissioned for robot '" + robot_key + "'");
+      }
+      return (layout_path.parent_path() /
+        root["targets_by_robot"][robot_key].as<std::string>()).lexically_normal().string();
+    }
+    // Legacy schema_version 1 fallback (targets_yaml string).
+    if (root["targets_yaml"]) {
+      return (layout_path.parent_path() /
+        root["targets_yaml"].as<std::string>()).lexically_normal().string();
+    }
+    throw std::runtime_error("layout is missing targets_by_robot (or legacy targets_yaml)");
+  }
+
+  bool validate_targets_frame(const std::string& targets_path, std::string& message) const
+  {
+    const auto expected = get_parameter("base_frame").as_string();
+    if (expected.empty()) {
+      return true;
+    }
+    try {
+      const auto root = YAML::LoadFile(targets_path);
+      if (!root["targets"] || !root["targets"].IsMap()) {
+        message = "targets file missing top-level 'targets' map: " + targets_path;
+        return false;
+      }
+      for (const auto& entry : root["targets"]) {
+        const auto frame = entry.second["frame_id"] ?
+          entry.second["frame_id"].as<std::string>() : std::string();
+        if (frame.empty()) {
+          message = "target '" + entry.first.as<std::string>() +
+            "' missing frame_id in " + targets_path;
+          return false;
+        }
+        if (frame != expected) {
+          message =
+            "Refusing targets for robot base_frame mismatch: expected '" + expected +
+            "' but target '" + entry.first.as<std::string>() + "' has frame_id '" +
+            frame + "' in " + targets_path;
+          return false;
+        }
+      }
+    } catch (const std::exception& ex) {
+      message = std::string("Failed to validate targets frame_id: ") + ex.what();
+      return false;
+    }
+    return true;
+  }
+
   Result apply_layout(const std::string& layout_id, bool preflight)
   {
     Result result;
     try {
-      const auto path = std::filesystem::path(get_parameter("layouts_dir").as_string()) / (layout_id + ".yaml");
+      const auto path = std::filesystem::path(get_parameter("layouts_dir").as_string()) /
+        (layout_id + ".yaml");
       const auto root = YAML::LoadFile(path.string());
-      if (!root["objects"] || !root["targets_yaml"] || !root["poses_yaml"] ||
+      if (!root["objects"] || !root["poses_yaml"] ||
           !root["task_container_id"] || !root["tool_id"]) {
         throw std::runtime_error("layout is missing required activation fields");
       }
+      const auto robot_key = get_parameter("robot_key").as_string();
       const auto hash = digest(YAML::Dump(root));
-      const auto targets = (path.parent_path() / root["targets_yaml"].as<std::string>()).lexically_normal().string();
-      const auto poses = (path.parent_path() / root["poses_yaml"].as<std::string>()).lexically_normal().string();
+      const auto targets = resolve_targets_path(path, root, robot_key);
+      std::string frame_message;
+      if (!validate_targets_frame(targets, frame_message)) {
+        result.message = frame_message;
+        RCLCPP_ERROR(get_logger(), "%s", frame_message.c_str());
+        return result;
+      }
+      const auto poses = (path.parent_path() / root["poses_yaml"].as<std::string>())
+        .lexically_normal().string();
       robot_common_msgs::msg::CellLayoutActive active;
       active.layout_id = layout_id;
       active.layout_hash = hash;
@@ -104,8 +175,11 @@ private:
       move_params_->set_parameters({
         rclcpp::Parameter("targets_yaml", targets),
         rclcpp::Parameter("cartesian_avoid_collisions",
-          root["scoop_cartesian_avoid_collisions"] ? root["scoop_cartesian_avoid_collisions"].as<bool>() : false)});
-      marker_params_->set_parameters({rclcpp::Parameter("poses_yaml", poses)});
+          root["scoop_cartesian_avoid_collisions"] ?
+            root["scoop_cartesian_avoid_collisions"].as<bool>() : false)});
+      marker_params_->set_parameters({
+        rclcpp::Parameter("poses_yaml", poses),
+        rclcpp::Parameter("robot_key", robot_key)});
       if (load_poses_client_->wait_for_service(std::chrono::seconds(2))) {
         load_poses_client_->async_send_request(std::make_shared<std_srvs::srv::Trigger::Request>());
       }

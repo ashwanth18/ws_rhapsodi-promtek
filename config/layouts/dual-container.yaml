@@ -1,8 +1,9 @@
-schema_version: 1
+schema_version: 2
 layout_id: dual-container
 task_container_id: scooping_container
 tool_id: niryo_scoop_v4
-targets_yaml: dual-container/targets.yaml
+targets_by_robot:
+  niryo: dual-container/robots/niryo/targets.yaml
 poses_yaml: dual-container/poses.yaml
 # Cartesian planning remains permissive unless a layout explicitly requires collision checking.
 scoop_cartesian_avoid_collisions: false

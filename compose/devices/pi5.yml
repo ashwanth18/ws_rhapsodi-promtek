@@ -16,6 +16,9 @@ x-ros-robot-service: &ros-robot-service
     # Single source of truth for this Pi's identity — see config/device.yaml
     # and src/rhapsodi_common/rhapsodi_common/device_config.py.
     RHAPSODI_DEVICE_CONFIG: ${RHAPSODI_DEVICE_CONFIG:-/ws/config/device.yaml}
+    ROBOT_PROFILES_DIR: ${ROBOT_PROFILES_DIR:-/ws/config/robots}
+    ROBOT_TYPE: ${ROBOT_TYPE:-}
+    PROFILE_ID: ${PROFILE_ID:-}
   volumes:
     - ./data:/data
     - ./data/ros_home:/root/.ros
@@ -186,6 +189,7 @@ services:
     command: >
       ros2 launch scooping_controller scooping_real.launch.py
       use_rviz:=false
+      robot:=${ROBOT_TYPE:-}
       poses_yaml:=${POSES_YAML:-}
       poses_env:=${POSES_ENV:-real}
       targets_yaml:=${TARGETS_YAML:-/ws/install/share/robot_moveit/targets.yaml}

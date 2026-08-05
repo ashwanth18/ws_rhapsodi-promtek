@@ -20,14 +20,20 @@ required_targets = {
 for path in sorted((root / "config/layouts").glob("*.yaml")):
     layout = yaml.safe_load(path.read_text())
     poses = yaml.safe_load((path.parent / layout["poses_yaml"]).read_text()) or {}
-    targets = yaml.safe_load((path.parent / layout["targets_yaml"]).read_text()) or {}
     marker_names = {marker["name"] for marker in poses.get("markers", [])}
     missing = required_markers - marker_names
     if missing:
         raise SystemExit(f"{path}: missing pose markers {sorted(missing)}")
-    missing = required_targets - set(targets.get("targets", {}))
-    if missing:
-        raise SystemExit(f"{path}: missing targets {sorted(missing)}")
+    by_robot = layout.get("targets_by_robot") or {}
+    if not by_robot:
+        raise SystemExit(f"{path}: missing targets_by_robot")
+    for robot_key, rel in by_robot.items():
+        targets = yaml.safe_load((path.parent / rel).read_text()) or {}
+        missing = required_targets - set(targets.get("targets", {}))
+        if missing:
+            raise SystemExit(
+                f"{path}: robot '{robot_key}' missing targets {sorted(missing)}"
+            )
     envelope = layout["scoop_envelope"]
     for marker in poses["markers"]:
         position = marker["pose"]["position"]

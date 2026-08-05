@@ -1,8 +1,9 @@
-schema_version: 1
+schema_version: 2
 layout_id: lightsout-single-vessel
 task_container_id: scooping_container
 tool_id: niryo_scoop_v4
-targets_yaml: lightsout-single-vessel/targets.yaml
+targets_by_robot:
+  niryo: lightsout-single-vessel/robots/niryo/targets.yaml
 poses_yaml: lightsout-single-vessel/poses.yaml
 scoop_cartesian_avoid_collisions: false
 safe_retreat_target: ReturnHome

@@ -7,13 +7,28 @@
       "options": ["dual-container", "lightsout-single-vessel"],
       "default": "dual-container",
       "description": "Cell layout"
+    },
+    {
+      "id": "robot",
+      "type": "pickString",
+      "options": ["niryo", "jaka"],
+      "default": "niryo",
+      "description": "Robot arm"
     }
   ],
   "tasks": [
     {
       "label": "Bench (mock arm)",
       "type": "shell",
-      "command": "make bench LAYOUT=${input:layout}",
+      "command": "make bench LAYOUT=${input:layout} ROBOT=${input:robot}",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "Sim (Gazebo + layout)",
+      "type": "shell",
+      "command": "make sim ROBOT=${input:robot} LAYOUT=${input:layout}",
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": [],
       "presentation": { "reveal": "always", "panel": "dedicated" }
@@ -65,6 +80,20 @@
       "label": "Deploy Fleet Console (Jetson)",
       "type": "shell",
       "command": "make deploy-jetson",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "API sandbox up",
+      "type": "shell",
+      "command": "make api-sandbox-up",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "API sandbox down",
+      "type": "shell",
+      "command": "make api-sandbox-down",
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": []
     }

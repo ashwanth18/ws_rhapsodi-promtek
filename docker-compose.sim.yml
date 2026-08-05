@@ -1,16 +1,20 @@
-# Laptop-only sim stack — same mode APIs with environment=sim + null MES sink.
+# Laptop-only mode/API sandbox — backend + Postgres with environment=sim +
+# null MES sink. This is NOT Gazebo / ROS. For the robot sim loop use:
+#   make sim ROBOT=niryo LAYOUT=dual-container
+#
 # Do NOT use on a Pi5 cell (compose/devices/pi5.yml forces SIM_ALLOWED=0 and
 # DEVICE_CLASS=pi5; ModeManager also refuses sim when device class is pi5).
 #
 # Usage (workspace root):
-#   docker compose -f docker-compose.sim.yml up -d --build
+#   make api-sandbox-up
+#   # or: docker compose -f docker-compose.sim.yml up -d --build
 # Then:
 #   curl -s localhost:8000/runtime/capabilities
 #   curl -s -X PUT localhost:8000/runtime/mode \
 #     -H 'content-type: application/json' \
 #     -d '{"mode":"mock-local","environment":"sim"}'
 #
-# Sim pairs with mock-local / lightsout (modes that list SIM in
+# Pairs with mock-local / lightsout (modes that list SIM in
 # allowed_environments). Outbound MES is always NullMesClient when
 # environment=sim. Recorder root defaults to /tmp/rhapsodi-sim/runs.
 #

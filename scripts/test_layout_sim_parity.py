@@ -1,20 +1,42 @@
 #!/usr/bin/env python3
-"""CI guard that keeps the deprecated handwritten world aligned to dual-container."""
-from pathlib import Path
-import re
+"""CI guard: every layout composes a Gazebo world containing all enabled objects."""
+from __future__ import annotations
+
+import importlib.util
 import sys
+from pathlib import Path
+
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-layout = yaml.safe_load((ROOT / "config/layouts/dual-container.yaml").read_text())
-world = (ROOT / "src/scooping_controller/worlds/scooping_container_world.sdf").read_text()
+TEMPLATE = (
+    ROOT / "src/scooping_controller/worlds/scooping_container_world.sdf"
+)
+GEN_SPEC = importlib.util.spec_from_file_location(
+    "generate_layout_world", ROOT / "scripts/generate_layout_world.py"
+)
+assert GEN_SPEC and GEN_SPEC.loader
+GEN = importlib.util.module_from_spec(GEN_SPEC)
+sys.modules[GEN_SPEC.name] = GEN
+GEN_SPEC.loader.exec_module(GEN)
 
-for obj in layout["objects"]:
-    if not obj["enabled"] or obj["geometry_type"] != "mesh":
-        continue
-    match = re.search(rf'<include>\s*<uri>model://{re.escape(obj["id"])}</uri>.*?<pose>([^<]+)</pose>', world, re.S)
-    if not match:
-        raise AssertionError(f"{obj['id']} missing from handwritten world")
-    values = [float(value) for value in match.group(1).split()[:3]]
-    assert values == obj["position_xyz"], f"{obj['id']} pose differs: {values}"
-print("dual-container layout and handwritten world placements agree")
+
+def main() -> int:
+    if not TEMPLATE.is_file():
+        print(f"missing world template: {TEMPLATE}", file=sys.stderr)
+        return 1
+    template = TEMPLATE.read_text()
+    layouts = sorted((ROOT / "config/layouts").glob("*.yaml"))
+    if not layouts:
+        print("no layouts found", file=sys.stderr)
+        return 1
+    for path in layouts:
+        layout = yaml.safe_load(path.read_text())
+        world = GEN.compose_world(template, layout)
+        GEN.assert_world_contains_layout(world, layout)
+        print(f"parity ok: {path.relative_to(ROOT)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -256,6 +256,7 @@ public:
     this->declare_parameter<std::string>("layout_id", "");
     this->declare_parameter<std::string>("tool_id", "");
     this->declare_parameter<std::string>("authored_in", "");
+    this->declare_parameter<std::string>("robot_key", "");
     this->declare_parameter<bool>("poses_provenance_ok", false);
     this->declare_parameter<std::string>("layouts_dir", "");
     this->declare_parameter<std::string>("poses_env", "real");
@@ -794,6 +795,7 @@ private:
       root["tool_id"] = this->get_parameter("tool_id").as_string();
       root["container_spec_hash"] = active_layout_hash_;
       root["authored_in"] = this->get_parameter("authored_in").as_string();
+      root["robot_key"] = this->get_parameter("robot_key").as_string();
       YAML::Node markers(YAML::NodeType::Sequence);
       for (std::size_t i = 0; i < seeds_.size(); ++i) {
         YAML::Node entry;
@@ -881,6 +883,14 @@ private:
                                 "container_spec_hash", "authored_in"}) {
         if (!root[field]) {
           return fail_provenance(std::string("missing ") + field);
+        }
+      }
+      const auto expected_robot = this->get_parameter("robot_key").as_string();
+      if (!expected_robot.empty() && root["robot_key"]) {
+        const auto file_robot = root["robot_key"].as<std::string>();
+        if (!file_robot.empty() && file_robot != expected_robot) {
+          return fail_provenance(
+            "robot_key mismatch (file=" + file_robot + ", expected=" + expected_robot + ")");
         }
       }
       const auto expected_layout = this->get_parameter("layout_id").as_string();

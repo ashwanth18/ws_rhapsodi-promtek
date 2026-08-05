@@ -149,7 +149,8 @@ def apply_mode_layout(mode: str) -> dict[str, Any]:
     """Apply the layout selected for mode and persist only ROS-confirmed state."""
     layout_id = configured_layout_id(mode)
     layout = load_layout(layout_path(layout_id))
-    provenance = layout_provenance(layout)
+    robot_key = str(_load_device_identity().get('robot_type') or '')
+    provenance = layout_provenance(layout, robot_key=robot_key)
     response = post_json(
         ROBOT_LAYOUT_ADAPTER_URL,
         {'layout_id': layout_id},
@@ -159,6 +160,7 @@ def apply_mode_layout(mode: str) -> dict[str, Any]:
     result = {
         'layout_id': layout_id,
         'layout_hash': response.get('layout_hash') or provenance['layout_hash'],
+        'robot_key': robot_key,
         'applied': applied,
         'message': str(response.get('message') or ''),
         'preflight_ok': bool(response.get('preflight_ok')),
@@ -167,6 +169,7 @@ def apply_mode_layout(mode: str) -> dict[str, Any]:
         save_active_cell_layout({
             **provenance,
             'layout_hash': result['layout_hash'],
+            'robot_key': robot_key,
             'applied_at': utc_now(),
         })
     return result
@@ -305,6 +308,7 @@ def ensure_run_columns() -> None:
         'ALTER TABLE runs ADD COLUMN IF NOT EXISTS poses_hash VARCHAR',
         'ALTER TABLE runs ADD COLUMN IF NOT EXISTS tool_id VARCHAR',
         'ALTER TABLE runs ADD COLUMN IF NOT EXISTS authored_in VARCHAR',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS robot_key VARCHAR',
     ]
     with engine.begin() as conn:
         for statement in statements:
@@ -335,6 +339,7 @@ def ensure_lightsout_processed_label_columns() -> None:
         'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS poses_hash VARCHAR',
         'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS tool_id VARCHAR',
         'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS authored_in VARCHAR',
+        'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS robot_key VARCHAR',
     ]
     with engine.begin() as conn:
         for statement in statements:
@@ -446,6 +451,8 @@ def get_runtime_mode() -> dict:
             'active_run': active_payload,
             'layout_id': (active_layout or {}).get('layout_id'),
             'layout_hash': (active_layout or {}).get('layout_hash'),
+            'robot_key': (active_layout or {}).get('robot_key')
+            or _load_device_identity().get('robot_type'),
             'layout_applied': active_layout is not None,
         }
     finally:

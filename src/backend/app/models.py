@@ -52,6 +52,7 @@ class Run(Base):
     poses_hash = Column(String, nullable=True)
     tool_id = Column(String, nullable=True)
     authored_in = Column(String, nullable=True)
+    robot_key = Column(String, nullable=True)
 
     artifacts = relationship(
         'Artifact', back_populates='run', cascade='all, delete-orphan'
@@ -116,6 +117,7 @@ class LightsOutProcessed(Base):
     poses_hash = Column(String, nullable=True)
     tool_id = Column(String, nullable=True)
     authored_in = Column(String, nullable=True)
+    robot_key = Column(String, nullable=True)
 
     run = relationship('Run')
 

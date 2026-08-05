@@ -217,6 +217,8 @@ def _serialize_export_row(
         'poses_hash': processed_row.poses_hash or run_row.poses_hash,
         'tool_id': processed_row.tool_id or run_row.tool_id,
         'authored_in': processed_row.authored_in or run_row.authored_in,
+        'robot_key': getattr(processed_row, 'robot_key', None)
+        or getattr(run_row, 'robot_key', None),
         'powder_id': processed_row.powder_id,
         'powder_name': processed_row.powder_name,
         'lot_code': processed_row.lot_code,
@@ -313,6 +315,7 @@ RUNS_CSV_FIELDS = [
     'poses_hash',
     'tool_id',
     'authored_in',
+    'robot_key',
     'batch_id',
     'episode_index',
     'powder_id',

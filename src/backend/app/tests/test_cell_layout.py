@@ -19,6 +19,11 @@ def test_dual_container_normalizes_mm_mesh_and_rpy():
     assert vessel["resolved_scale_xyz"] == [0.001, 0.001, 0.001]
     assert vessel["quat_xyzw"][2] == 1.0
     assert len(layout_hash(layout)) == 64
+    assert layout["schema_version"] == 2
+    assert "niryo" in layout["targets_by_robot"]
+    assert layout["targets_by_robot"]["niryo"].endswith(
+        "robots/niryo/targets.yaml"
+    )
 
 
 def test_mode_layout_mapping():
@@ -34,3 +39,4 @@ def test_list_layouts_enumerates_repo_layouts(monkeypatch):
     for item in items:
         assert item.get("layout_hash")
         assert len(item["layout_hash"]) == 64
+        assert "niryo" in item.get("commissioned_robots", [])

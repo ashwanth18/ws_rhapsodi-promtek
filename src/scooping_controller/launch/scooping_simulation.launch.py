@@ -24,6 +24,7 @@ from launch.substitutions import (
     PathJoinSubstitution,
     PythonExpression,
 )
+from ament_index_python.packages import get_package_share_directory
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
@@ -31,9 +32,57 @@ from moveit_configs_utils import MoveItConfigsBuilder
 from robot_profiles import (
     default_targets_path,
     package_path,
+    resolve_robot,
     robot_profile,
     xacro_command_args,
 )
+
+
+def _default_layouts_dir() -> str:
+    return os.environ.get(
+        "CELL_LAYOUTS_DIR",
+        os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__), "..", "..", "..", "config", "layouts"
+            )
+        ),
+    )
+
+
+def _compose_layout_world(layouts_dir: str, layout_id: str) -> str:
+    """Write a layout-composed Gazebo world and return its absolute path."""
+    import importlib.util
+    from pathlib import Path
+
+    import yaml
+
+    root = Path(__file__).resolve().parents[3]
+    gen_path = root / "scripts" / "generate_layout_world.py"
+    # Fallback when running from an installed share (no repo scripts/).
+    if not gen_path.is_file():
+        gen_path = Path("/ws/scripts/generate_layout_world.py")
+    spec = importlib.util.spec_from_file_location("generate_layout_world", gen_path)
+    if not spec or not spec.loader:
+        raise RuntimeError(f"cannot load generate_layout_world from {gen_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    layout_path = Path(layouts_dir) / f"{layout_id}.yaml"
+    template_path = Path(
+        get_package_share_directory("scooping_controller")
+    ) / "worlds" / "scooping_container_world.sdf"
+    if not layout_path.is_file():
+        raise RuntimeError(f"layout not found: {layout_path}")
+    if not template_path.is_file():
+        raise RuntimeError(f"world template not found: {template_path}")
+
+    layout = yaml.safe_load(layout_path.read_text())
+    world_text = module.compose_world(template_path.read_text(), layout)
+    out_dir = Path(os.path.expanduser("~/.ros/scooping_controller/worlds"))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{layout_id}_world.sdf"
+    out_path.write_text(world_text)
+    return str(out_path)
 
 
 def _gz_clock_bridge(context):
@@ -67,9 +116,14 @@ def _gz_clock_bridge(context):
 def _robot_sim_setup(context):
     """Build niryo Ned3 vs JAKA ZU5 gz-sim bringup (exclusive robot stacks)."""
     robot_lc = LaunchConfiguration("robot")
-    robot = robot_lc.perform(context).strip().lower()
+    explicit = robot_lc.perform(context).strip()
+    robot = resolve_robot(explicit or None)
     profile = robot_profile(robot)
     sim_profile = profile["sim"]
+    layout_id = LaunchConfiguration("layout_id").perform(context).strip()
+    layouts_dir_value = LaunchConfiguration("layouts_dir").perform(context).strip()
+    if not layouts_dir_value:
+        layouts_dir_value = _default_layouts_dir()
 
     use_sim_time = LaunchConfiguration("use_sim_time")
     rviz_config = LaunchConfiguration("rviz_config")
@@ -310,11 +364,28 @@ def _robot_sim_setup(context):
                 "seed_poses_yaml": seed_poses_yaml,
                 "layouts_dir": layouts_dir,
                 "poses_env": poses_env,
+                "layout_id": layout_id,
                 "authored_in": "sim",
+                "robot_key": robot,
                 "tool_mesh_resource": cfg["tool_mesh_resource"],
                 "tcp_visual_offset_xyz": cfg["tcp_visual_offset_xyz"],
                 "use_sim_time": use_sim_time,
             },
+        ],
+    )
+
+    cell_layout_manager = Node(
+        package="scooping_controller",
+        executable="cell_layout_manager",
+        output="screen",
+        parameters=[
+            {
+                "layouts_dir": layouts_dir_value,
+                "initial_layout_id": layout_id,
+                "robot_key": robot,
+                "base_frame": base_frame,
+                "use_sim_time": use_sim_time,
+            }
         ],
     )
 
@@ -454,6 +525,7 @@ def _robot_sim_setup(context):
             TimerAction(period=5.0, actions=[marker_server]),
             TimerAction(period=5.5, actions=[container_marker]),
             TimerAction(period=5.7, actions=[planning_scene_collisions]),
+            TimerAction(period=5.9, actions=[cell_layout_manager]),
             TimerAction(period=6.0, actions=[scooping_mtc]),
             TimerAction(period=7.0, actions=[scooping_rviz]),
         ]
@@ -475,15 +547,81 @@ def _robot_sim_setup(context):
     ]
 
 
-def generate_launch_description():
+def _gazebo_with_layout_world(context):
+    """Compose the Gazebo world from the active layout, then start gz_sim."""
     use_gazebo_gui = LaunchConfiguration("use_gazebo_gui")
     headless = LaunchConfiguration("headless")
-    world = LaunchConfiguration("world")
+    layout_id = LaunchConfiguration("layout_id").perform(context).strip() or "dual-container"
+    layouts_dir = LaunchConfiguration("layouts_dir").perform(context).strip()
+    if not layouts_dir:
+        layouts_dir = _default_layouts_dir()
+    world_override = LaunchConfiguration("world").perform(context).strip()
+    # Empty / default package world → generate from layout. Explicit path wins.
+    default_world = PathJoinSubstitution(
+        [
+            FindPackageShare("scooping_controller"),
+            "worlds",
+            "scooping_container_world.sdf",
+        ]
+    ).perform(context)
+    if not world_override or world_override == default_world:
+        world_path = _compose_layout_world(layouts_dir, layout_id)
+    else:
+        world_path = world_override
 
+    gazebo_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [
+                PathJoinSubstitution(
+                    [
+                        FindPackageShare("ros_gz_sim"),
+                        "launch",
+                        "gz_sim.launch.py",
+                    ]
+                )
+            ]
+        ),
+        launch_arguments=[
+            (
+                "gz_args",
+                [
+                    PythonExpression(
+                        [
+                            "' -r -v 4 -s ' if '",
+                            headless,
+                            "' == 'true' else ' -r -v 4 '",
+                        ]
+                    ),
+                    world_path,
+                ],
+            ),
+            (
+                "gui",
+                PythonExpression(
+                    [
+                        "'false' if '",
+                        headless,
+                        "' == 'true' else '",
+                        use_gazebo_gui,
+                        "'",
+                    ]
+                ),
+            ),
+        ],
+    )
+    return [gazebo_launch]
+
+
+def generate_launch_description():
     declare_robot = DeclareLaunchArgument(
         "robot",
         default_value="niryo",
         description="Robot arm for sim: 'niryo' (NED3 Pro) or 'jaka' (ZU5 + MoveIt config in this workspace).",
+    )
+    declare_layout_id = DeclareLaunchArgument(
+        "layout_id",
+        default_value="dual-container",
+        description="Cell layout id under layouts_dir (drives Gazebo world + /cell_layout/active).",
     )
 
     declare_use_sim_time = DeclareLaunchArgument(
@@ -530,14 +668,7 @@ def generate_launch_description():
     )
     declare_layouts_dir = DeclareLaunchArgument(
         "layouts_dir",
-        default_value=os.environ.get(
-            "CELL_LAYOUTS_DIR",
-            os.path.abspath(
-                os.path.join(
-                    os.path.dirname(__file__), "..", "..", "..", "config", "layouts"
-                )
-            ),
-        ),
+        default_value=_default_layouts_dir(),
         description="Directory containing versioned cell-layout YAML files",
     )
     declare_poses_env = DeclareLaunchArgument(
@@ -600,14 +731,11 @@ def generate_launch_description():
     )
     declare_world = DeclareLaunchArgument(
         "world",
-        default_value=PathJoinSubstitution(
-            [
-                FindPackageShare("scooping_controller"),
-                "worlds",
-                "scooping_container_world.sdf",
-            ]
+        default_value="",
+        description=(
+            "Optional Gazebo world override. Empty composes "
+            "scooping_container_world.sdf template + layout objects at launch."
         ),
-        description="Gazebo world file for the scooping workflow",
     )
 
     declare_gz_world_name = DeclareLaunchArgument(
@@ -630,50 +758,10 @@ def generate_launch_description():
         ],
     )
 
-    gazebo_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            [
-                PathJoinSubstitution(
-                    [
-                        FindPackageShare("ros_gz_sim"),
-                        "launch",
-                        "gz_sim.launch.py",
-                    ]
-                )
-            ]
-        ),
-        launch_arguments=[
-            (
-                "gz_args",
-                [
-                    PythonExpression(
-                        [
-                            "' -r -v 4 -s ' if '",
-                            headless,
-                            "' == 'true' else ' -r -v 4 '",
-                        ]
-                    ),
-                    world,
-                ],
-            ),
-            (
-                "gui",
-                PythonExpression(
-                    [
-                        "'false' if '",
-                        headless,
-                        "' == 'true' else '",
-                        use_gazebo_gui,
-                        "'",
-                    ]
-                ),
-            ),
-        ],
-    )
-
     return LaunchDescription(
         [
             declare_robot,
+            declare_layout_id,
             declare_use_sim_time,
             declare_use_gazebo_gui,
             declare_headless,
@@ -693,7 +781,7 @@ def generate_launch_description():
             declare_world,
             declare_gz_world_name,
             gazebo_resource_path,
-            gazebo_launch,
+            OpaqueFunction(function=_gazebo_with_layout_world),
             OpaqueFunction(function=_gz_clock_bridge),
             OpaqueFunction(function=_robot_sim_setup),
         ]

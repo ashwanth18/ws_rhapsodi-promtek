@@ -102,6 +102,7 @@ class ProcessedRequest(BaseModel):
     poses_hash: Optional[str] = None
     tool_id: Optional[str] = None
     authored_in: Optional[str] = None
+    robot_key: Optional[str] = None
 
 
 class ProcessedResponse(BaseModel):

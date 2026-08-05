@@ -12,6 +12,7 @@
 #   config/profiles.yaml
 #   config/profiles/** (pose/scene layout overrides)
 #   config/layouts/** (versioned cell layouts)
+#   config/robots/** (per-robot profiles split from robots.yaml)
 #   monitoring/exporters/docker-compose.exporters.yml
 #   monitoring/exporters/promtail-config.yml
 #
@@ -129,6 +130,27 @@ if [[ ! -d "${ROOT_DIR}/config/layouts" ]]; then
   exit 1
 fi
 cp -a "${ROOT_DIR}/config/layouts" config/
+# Per-robot profiles: split the image robots.yaml so each Pi only needs its OEM.
+ROBOTS_SRC="${ROOT_DIR}/src/scooping_controller/config/robots.yaml"
+if [[ ! -f "${ROBOTS_SRC}" ]]; then
+  echo "Missing required file: ${ROBOTS_SRC}" >&2
+  exit 1
+fi
+mkdir -p config/robots
+python3 - "${ROBOTS_SRC}" config/robots <<'PY'
+import sys
+from pathlib import Path
+import yaml
+
+src = Path(sys.argv[1])
+out_dir = Path(sys.argv[2])
+robots = yaml.safe_load(src.read_text(encoding="utf-8"))["robots"]
+for key, profile in robots.items():
+    (out_dir / f"{key}.yaml").write_text(
+        yaml.safe_dump(profile, sort_keys=False), encoding="utf-8"
+    )
+print(f"emitted {len(robots)} robot profile(s) into {out_dir}")
+PY
 # Hardware compose files
 cp -a "${ROOT_DIR}/compose/devices/." compose/devices/
 

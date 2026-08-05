@@ -111,6 +111,8 @@ def store_processed_run(
         'tool_id': payload.get('tool_id') or _metadata_field(payload, 'tool_id'),
         'authored_in': payload.get('authored_in')
         or _metadata_field(payload, 'authored_in'),
+        'robot_key': payload.get('robot_key')
+        or _metadata_field(payload, 'robot_key'),
     }
     if not run:
         run = Run(

@@ -1,245 +1,151 @@
 # Robot Integration Guide
 
-This document records the robot abstraction refactor and the steps for adding another robot to the scooping stack.
+This document records the robot abstraction and the steps for adding another
+robot to the scooping stack.
 
-## What Changed
+## Architecture
 
-Robot-specific details now live in declarative profiles instead of being scattered through launch files and C++ defaults.
+Robot-specific details live in declarative profiles. Runtime C++ receives them
+as parameters; it must not assume Niryo or Jaka frame names.
 
 Main files:
 
-- `src/scooping_controller/config/robots.yaml`: robot profiles for Niryo and Jaka.
-- `src/scooping_controller/launch/robot_profiles.py`: shared launch helper that loads profiles.
-- `src/scooping_controller/launch/scooping_simulation.launch.py`: simulation launch now consumes profiles.
-- `src/scooping_controller/launch/scooping_real.launch.py`: real/hardware launch now consumes profiles.
-- `src/scoop_description/urdf/scoop_tool.xacro`: shared scoop tool macro.
-- `src/scooping_controller/config/container_scene/`: per-robot scene calibration files.
-- `src/robot_moveit/config/targets/`: per-robot target files.
+- `src/scooping_controller/config/robots.yaml` — full multi-robot catalog (laptop / image)
+- `config/robots/<type>.yaml` — per-robot split emitted into the deploy bundle
+- `src/scooping_controller/launch/robot_profiles.py` — `robot_profile()` + `resolve_robot()`
+- `scooping_simulation.launch.py`, `scooping_bench.launch.py`, `scooping_real.launch.py` — all profile-driven
+- `src/scoop_description/urdf/scoop_tool.xacro` — shared scoop tool macro
+- `config/layouts/<id>/robots/<robot_key>/targets.yaml` — per-robot named targets
+- `config/layouts/<id>/poses.yaml` — scoop strokes in `scooping_container_frame` (shared)
 
-Runtime nodes now receive robot-specific values from launch parameters:
+## Robot resolution
 
-- `move_to_server`: planning group, end-effector link, controller action, planner, and position-only behavior.
-- `target_recorder`: records target poses in the profile's base frame instead of always `base_link`.
-- `scooping_marker_server`: gets the tool mesh and TCP visual offset from the profile.
-- `scooping_mtc_node`: gets group, IK frame, planning scene frame, controller, and action from the profile.
-- scene and marker publishers: use the profile base frame.
+```text
+explicit robot:=  >  ROBOT_TYPE env  >  device.yaml robot_type  >  niryo fallback
+```
+
+`resolve_robot()` prefers `$ROBOT_PROFILES_DIR` / `/ws/config/robots/<type>.yaml`
+(single-robot on the Pi) and falls back to the image `robots.yaml` on a laptop.
+It refuses to start when `PROFILE_ID`'s `robot_type` disagrees with
+`device.yaml`.
 
 ## Current Robot Profiles
 
-The active profiles are in `src/scooping_controller/config/robots.yaml`.
+Niryo (`niryo` / `niryo_ned3pro`):
 
-Niryo:
-
-- Alias: `niryo`
-- Canonical name: `niryo_ned3pro`
 - Base frame: `base_link`
-- Flange link: `hand_link`
-- TCP link: `tcp_link`
+- Flange: `hand_link`, TCP: `tcp_link`
 - Default planner: `stomp`
+- Has `sim:`, `real:`, and `mock:` blocks
 
-Jaka:
+Jaka / Schneider (`jaka` / `jaka_zu5`):
 
-- Alias: `jaka`
-- Canonical name: `jaka_zu5`
 - Base frame: `link0`
-- Flange link: `Link6`
-- TCP link: `tcp_link`
+- Flange: `Link6`, TCP: `tcp_link`
 - Default planner: `ompl`
+- Has `sim:`, `real:`, and `mock:` blocks
 
-Launch commands stay stable:
+Launch commands:
 
 ```bash
-ros2 launch scooping_controller scooping_simulation.launch.py robot:=niryo
-ros2 launch scooping_controller scooping_simulation.launch.py robot:=jaka
+ros2 launch scooping_controller scooping_simulation.launch.py robot:=niryo layout_id:=dual-container
+ros2 launch scooping_controller scooping_simulation.launch.py robot:=jaka layout_id:=dual-container
+ros2 launch scooping_controller scooping_bench.launch.py robot:=niryo layout_id:=dual-container
+ros2 launch scooping_controller scooping_bench.launch.py robot:=jaka layout_id:=dual-container
 ros2 launch scooping_controller scooping_real.launch.py robot:=niryo
 ros2 launch scooping_controller scooping_real.launch.py robot:=jaka
+# On a provisioned Pi, omit robot:= — it resolves from device.yaml.
 ```
+
+Make wrappers:
+
+```bash
+make bench ROBOT=niryo LAYOUT=dual-container
+make sim ROBOT=jaka LAYOUT=lightsout-single-vessel
+```
+
+## Single-robot Pi deploy contract
+
+Each Pi is connected to one arm. Ansible / provision writes
+`config/device.yaml` with `robot_type`. `scripts/publish_deploy_bundle.sh`
+splits `robots.yaml` into `config/robots/<type>.yaml` in the slim deploy
+branch. Compose mounts `./config` at `/ws/config` and sets
+`ROBOT_PROFILES_DIR=/ws/config/robots`. The Pi therefore has an effective
+single-robot config even though the `ros-prod` image remains one multi-arch
+build (per-robot images are a future option).
+
+Laptop and Fleet Console keep the full catalog so you can author layouts for
+any arm and ship only the matching profile + layout to a given device.
 
 ## Adding A New Robot
 
-The new robot must already have a valid ROS 2 description, MoveIt config, and controller setup. The abstraction makes integration configuration-driven, but it does not generate a MoveIt package or ros2_control driver automatically.
+The new robot must already have a valid ROS 2 description, MoveIt config, and
+controller setup. The abstraction is configuration-driven; it does not generate
+a MoveIt package or ros2_control driver automatically.
 
-1. Add or import the robot packages.
+1. **Import packages** — URDF/xacro, MoveIt config (SRDF, kinematics, joint
+   limits, controllers), sim controller YAML, real driver launch.
 
-   Required pieces:
+2. **Attach the scoop tool** via `scoop_description/urdf/scoop_tool.xacro` on
+   the flange; tip link must be `tcp_link` in the planning group.
 
-   - URDF/xacro package.
-   - MoveIt config package with SRDF, kinematics, joint limits, and controllers.
-   - ros2_control controller YAML for simulation if using Gazebo.
-   - real driver launch file if using hardware.
+3. **Add a profile** in `robots.yaml` with `sim:`, `real:`, and `mock:` blocks
+   (see existing `niryo` / `jaka` entries). Regenerate `config/robots/` by
+   re-running the split in `publish_deploy_bundle.sh` (or the same Python
+   snippet locally).
 
-2. Attach the scoop tool.
+4. **Commission each layout** — add
+   `config/layouts/<id>/robots/<new_robot>/targets.yaml` with every named
+   target using the new robot's `base_frame`, then list it under
+   `targets_by_robot` in the layout YAML. Do not reuse another robot's
+   targets. Scoop poses in `poses.yaml` stay in `scooping_container_frame`
+   and usually transfer; re-author if the tool TCP differs.
 
-   Include the shared macro in the robot's MoveIt xacro:
+5. **Scene calibration** — `config/container_scene/<robot>_sim.yaml` and
+   `_real.yaml` (or rely on the cell layout objects once those fully replace
+   the legacy scene files).
 
-   ```xml
-   <xacro:include filename="$(find scoop_description)/urdf/scoop_tool.xacro" />
-   ```
+6. **Dependencies** — `exec_depend` in `scooping_controller/package.xml` when
+   the launch includes the new driver/MoveIt package directly. Optional OEM
+   packages that are arch-limited (like Jaka on arm64) should stay optional.
 
-   Then instantiate it from the robot flange:
-
-   ```xml
-   <xacro:scoop_tool
-       parent_link="ROBOT_FLANGE_LINK"
-       mount_joint_name="robot_scoop_mount_joint"
-       tcp_joint_name="robot_scoop_tcp_joint"
-       mesh_resource="file://$(find niryo_robot_description)/meshes/ned3pro/stl/niryo_scoop_v4-ros.STL"
-       mount_xyz="0 0 0"
-       mount_rpy="0 0 0"
-       tcp_xyz="0.15825 0 -0.09356" />
-   ```
-
-   Replace `ROBOT_FLANGE_LINK`, `mount_xyz`, `mount_rpy`, and `tcp_xyz` with the real adapter calibration.
-
-3. Update the SRDF.
-
-   The MoveIt planning group should include the fixed tool joints and `tcp_link`, and the end-effector tip used by the stack should be `tcp_link`.
-
-   Check adjacent collisions around the flange/tool/scoop. Disable only the collisions that are genuinely adjacent or always in contact.
-
-4. Add a robot profile in `robots.yaml`.
-
-   Example skeleton:
-
-   ```yaml
-   new_robot:
-     canonical_name: new_robot_model
-     aliases: [new_robot, new_robot_model]
-     moveit_robot_name: new_robot_model
-     planning_group: arm
-     eef_link: tcp_link
-     base_frame: base_link
-     flange_link: tool0
-     follow_joint_trajectory_controller: arm_controller
-     planning_pipeline: ompl
-     position_only_goal: false
-     targets:
-       package: robot_moveit
-       path: targets/new_robot_model.yaml
-     tool:
-       mesh_resource: package://niryo_robot_description/meshes/ned3pro/stl/niryo_scoop_v4-ros.STL
-       tcp_visual_offset_xyz: [0.15825, 0.0, -0.09356]
-     sim:
-       scene:
-         package: scooping_controller
-         path: config/container_scene/new_robot_sim.yaml
-       moveit_package: new_robot_moveit_config
-       urdf:
-         package: new_robot_moveit_config
-         path: config/new_robot.urdf.xacro
-         xacro_args: ["use_gazebo:=true"]
-       controllers:
-         package: new_robot_moveit_config
-         path: config/ros2_controllers.yaml
-       spawn_model_name: new_robot
-       publish_world_to_base_tf: false
-       planning_pipelines: [ompl]
-     real:
-       scene:
-         package: scooping_controller
-         path: config/container_scene/new_robot_real.yaml
-       moveit_package: new_robot_moveit_config
-       urdf:
-         package: new_robot_moveit_config
-         path: config/new_robot.urdf.xacro
-         xacro_args: []
-       controllers:
-         package: new_robot_moveit_config
-         path: config/ros2_controllers.yaml
-       driver:
-         package: new_robot_driver
-         path: launch/robot_start.launch.py
-       timing:
-         move_group_delay: 5.0
-         move_to_delay: 7.0
-         target_recorder_delay: 7.2
-         task_frame_delay: 7.8
-         marker_delay: 8.0
-         container_delay: 8.5
-         collisions_delay: 8.7
-         mtc_delay: 9.0
-         rviz_delay: 10.0
-   ```
-
-5. Add target files.
-
-   Create `src/robot_moveit/config/targets/new_robot_model.yaml`:
-
-   ```yaml
-   targets:
-     home:
-       frame_id: base_link
-       position: {x: 0.3, y: 0.0, z: 0.3}
-       orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
-   ```
-
-   The `frame_id` must match the new robot profile's `base_frame`.
-
-6. Add scene calibration files.
-
-   Create:
-
-   - `src/scooping_controller/config/container_scene/new_robot_sim.yaml`
-   - `src/scooping_controller/config/container_scene/new_robot_real.yaml`
-
-   Start from the Niryo or Jaka scene files, then calibrate container and table positions for the new robot base frame.
-
-7. Add package dependencies.
-
-   If the new robot xacro includes the scoop macro, its MoveIt config package should depend on `scoop_description`.
-
-   If `scooping_controller` launches the new robot driver or MoveIt config directly, add the needed `exec_depend` entries to `src/scooping_controller/package.xml`.
+7. **Fleet profile** — add a `profiles:` entry in `config/profiles.yaml` with
+   `robot_type: <new>` and the correct `device_classes`.
 
 ## Validation Checklist
-
-Run these before calling the robot integrated:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 colcon build --packages-select scoop_description scooping_controller robot_moveit NEW_ROBOT_MOVEIT_CONFIG --symlink-install
 source install/setup.bash
-```
-
-Check xacro:
-
-```bash
-xacro $(ros2 pkg prefix NEW_ROBOT_MOVEIT_CONFIG)/share/NEW_ROBOT_MOVEIT_CONFIG/config/new_robot.urdf.xacro > /tmp/new_robot.urdf
-```
-
-Confirm the generated URDF contains:
-
-- the profile `base_frame`
-- the robot flange link
-- `tool_link`
-- `tcp_link`
-- the scoop mount joint
-- the scoop TCP joint
-
-Check launch files load:
-
-```bash
-ros2 launch scooping_controller scooping_simulation.launch.py robot:=new_robot --show-args
+make validate-layouts
+make layout-parity
+ros2 launch scooping_controller scooping_bench.launch.py robot:=new_robot --show-args
+ros2 launch scooping_controller scooping_simulation.launch.py robot:=new_robot layout_id:=dual-container --show-args
 ros2 launch scooping_controller scooping_real.launch.py robot:=new_robot --show-args
 ```
 
-Check simulation:
+Confirm:
 
-- Gazebo starts without duplicate robot nodes.
-- `/clock` has one publisher.
-- TF contains `base_frame -> ... -> tool_link -> tcp_link`.
-- RViz marker pose matches the real `tcp_link` pose.
-- `MoveTo` succeeds for a recorded target.
-- MTC scooping task plans with the selected scene file.
+- Generated URDF contains `base_frame`, flange, `tool_link`, `tcp_link`
+- Bench and sim start without duplicate robot nodes
+- TF contains `base_frame -> ... -> tcp_link`
+- Layout apply refuses targets whose `frame_id` ≠ `base_frame`
+- MoveTo plan-only succeeds for commissioned targets
+- MTC scooping task plans with the layout scene
 
 ## Common Failure Points
 
-- Wrong `base_frame`: targets, scene objects, markers, and target recording will appear shifted or rejected.
-- Wrong `eef_link`: MoveIt may plan to the flange instead of the scoop tip.
-- Missing `tcp_link` in SRDF group: planning to the scoop tip may fail.
-- Incorrect controller name: `MoveTo` will plan but execution will not reach the joint trajectory action.
-- Bad mount transform: marker pose and scoop pose will look consistently offset.
-- Reusing another robot's target file: poses may be in the wrong frame.
+- Wrong `base_frame`: targets, scene objects, markers appear shifted
+- Loading another robot's targets: hard-refused by `cell_layout_manager`
+- Missing `tcp_link` in SRDF group
+- Incorrect controller name: plan succeeds, execution never reaches the action
+- Bad mount transform: marker pose and scoop tip consistently offset
+- Profile / device `robot_type` mismatch: launch refuses to start
 
 ## Rule Of Thumb
 
-If a value differs by robot, put it in `robots.yaml` or a per-robot data file. Runtime C++ should receive it as a parameter, not assume Niryo or Jaka frame names.
+If a value differs by robot, put it in `robots.yaml` or
+`config/layouts/<id>/robots/<robot_key>/`. Runtime C++ receives it as a
+parameter. Cell geometry and scoop strokes in the container frame stay
+robot-agnostic; approach targets do not.

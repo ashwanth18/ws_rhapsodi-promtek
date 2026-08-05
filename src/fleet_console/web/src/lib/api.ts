@@ -137,6 +137,7 @@ export type AvailableLayout = {
   layout_hash?: string | null
   tool_id?: string
   task_container_id?: string
+  commissioned_robots?: string[]
   active?: boolean
   error?: string
 }
