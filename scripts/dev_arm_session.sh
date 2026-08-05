@@ -3,9 +3,17 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PI_HOST="${ROBOT_HOST:-niryo-rhapsodi}"
+PI_HOST="${ROBOT_HOST:-rhapsodi-pi5}"
 PI_SSH="${ROBOT_SSH:-admin@${PI_HOST}}"
 PI_HTTP="${ROBOT_HTTP_URL:-http://${PI_HOST}:8000}"
+DEST="${ROBOT_WORKSPACE:-/opt/rhapsodi/ws_rhapsodi-promtek}"
+
+# Match ansible/fleet-agent: env-file supplies COMPOSE_FILE=compose/devices/pi5.yml.
+pi_compose() {
+  # shellcheck disable=SC2029
+  ssh "$PI_SSH" \
+    "cd '$DEST' && docker compose --project-directory '$DEST' --env-file robot-prod.env $*"
+}
 
 active="$(curl --fail --silent --show-error "${PI_HTTP}/runtime/mode")"
 if [[ "$active" != *'"active_run":null'* ]]; then
@@ -13,17 +21,14 @@ if [[ "$active" != *'"active_run":null'* ]]; then
   exit 1
 fi
 
-ssh "$PI_SSH" \
-  "cd /opt/rhapsodi/ws_rhapsodi-promtek && docker compose --project-directory /opt/rhapsodi/ws_rhapsodi-promtek stop scooping_stack"
-if ssh "$PI_SSH" \
-  "cd /opt/rhapsodi/ws_rhapsodi-promtek && docker compose --project-directory /opt/rhapsodi/ws_rhapsodi-promtek ps --status running -q scooping_stack" | rg -q .; then
+pi_compose stop scooping_stack
+if pi_compose ps --status running -q scooping_stack | rg -q .; then
   echo "Refusing arm session: scooping_stack is still running" >&2
   exit 1
 fi
 
 cleanup() {
-  ssh "$PI_SSH" \
-    "cd /opt/rhapsodi/ws_rhapsodi-promtek && docker compose --project-directory /opt/rhapsodi/ws_rhapsodi-promtek up -d scooping_stack" || true
+  pi_compose up -d scooping_stack || true
 }
 trap cleanup EXIT INT TERM
 

@@ -186,11 +186,13 @@ services:
 
   scooping_stack:
     <<: *ros-robot-service
+    # Do not pass poses_yaml:= / robot:= when empty — ros2 launch treats
+    # `name:=` as malformed. Empty POSES_YAML → marker server derives
+    # ~/.ros/scooping_controller/poses_real_<layout_id>.yaml. ROBOT_TYPE is
+    # already in the service environment; launch resolves robot from device.yaml.
     command: >
       ros2 launch scooping_controller scooping_real.launch.py
       use_rviz:=false
-      robot:=${ROBOT_TYPE:-}
-      poses_yaml:=${POSES_YAML:-}
       poses_env:=${POSES_ENV:-real}
       targets_yaml:=${TARGETS_YAML:-/ws/install/share/robot_moveit/targets.yaml}
       layouts_dir:=${CELL_LAYOUTS_DIR:-/ws/config/layouts}

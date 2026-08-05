@@ -4,6 +4,8 @@ task_container_id: rs6
 tool_id: niryo_scoop_v4
 targets_by_robot:
   niryo: dual-container/robots/niryo/targets.yaml
+# Legacy field required by ros-prod images before targets_by_robot (e.g. b0fff56).
+targets_yaml: dual-container/robots/niryo/targets.yaml
 poses_yaml: dual-container/poses.yaml
 # Cartesian planning remains permissive unless a layout explicitly requires collision checking.
 scoop_cartesian_avoid_collisions: false

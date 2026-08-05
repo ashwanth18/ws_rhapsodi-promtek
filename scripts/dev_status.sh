@@ -4,7 +4,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PI_HTTP="${ROBOT_HTTP_URL:-http://${ROBOT_HOST:-niryo-rhapsodi}:8000}"
+PI_HTTP="${ROBOT_HTTP_URL:-http://${ROBOT_HOST:-rhapsodi-pi5}:8000}"
 LAYOUTS_DIR="${CELL_LAYOUTS_DIR:-$ROOT/config/layouts}"
 
 section() { printf '\n\033[1m%s\033[0m\n' "$1"; }

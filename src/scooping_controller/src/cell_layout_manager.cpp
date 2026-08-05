@@ -30,6 +30,10 @@ public:
     declare_parameter<std::string>("initial_layout_id", "");
     declare_parameter<std::string>("robot_key", "");
     declare_parameter<std::string>("base_frame", "base_link");
+    // Apply/preflight waits on MoveTo futures; those callbacks must run on a
+    // different group under MultiThreadedExecutor (never nest spin on this node).
+    service_cb_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    client_cb_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
     active_pub_ = create_publisher<robot_common_msgs::msg::CellLayoutActive>(
       "/cell_layout/active", rclcpp::QoS(1).transient_local().reliable());
     run_sub_ = create_subscription<std_msgs::msg::String>(
@@ -38,15 +42,24 @@ public:
     scoop_pose_sub_ = create_subscription<geometry_msgs::msg::PoseArray>(
       "/scoop_poses", rclcpp::QoS(1).transient_local(),
       [this](const geometry_msgs::msg::PoseArray::SharedPtr poses) { scoop_poses_ = *poses; });
-    apply_srv_ = create_service<Apply>("/cell_layout/apply",
-      std::bind(&CellLayoutManager::apply, this, std::placeholders::_1, std::placeholders::_2));
+    apply_srv_ = create_service<Apply>(
+      "/cell_layout/apply",
+      std::bind(&CellLayoutManager::apply, this, std::placeholders::_1, std::placeholders::_2),
+      rmw_qos_profile_services_default,
+      service_cb_group_);
     preview_srv_ = create_service<Preview>(
       "/cell_layout/preview_objects",
-      std::bind(&CellLayoutManager::preview, this, std::placeholders::_1, std::placeholders::_2));
-    move_to_client_ = rclcpp_action::create_client<MoveTo>(this, "/move_to");
-    marker_params_ = std::make_shared<rclcpp::AsyncParametersClient>(this, "scooping_marker_server");
-    move_params_ = std::make_shared<rclcpp::AsyncParametersClient>(this, "move_to_server");
-    load_poses_client_ = create_client<std_srvs::srv::Trigger>("/load_scoop_poses");
+      std::bind(&CellLayoutManager::preview, this, std::placeholders::_1, std::placeholders::_2),
+      rmw_qos_profile_services_default,
+      service_cb_group_);
+    move_to_client_ = rclcpp_action::create_client<MoveTo>(
+      this, "/move_to", client_cb_group_);
+    marker_params_ = std::make_shared<rclcpp::AsyncParametersClient>(
+      this, "scooping_marker_server", rmw_qos_profile_parameters, client_cb_group_);
+    move_params_ = std::make_shared<rclcpp::AsyncParametersClient>(
+      this, "move_to_server", rmw_qos_profile_parameters, client_cb_group_);
+    load_poses_client_ = create_client<std_srvs::srv::Trigger>(
+      "/load_scoop_poses", rmw_qos_profile_services_default, client_cb_group_);
     const auto initial = get_parameter("initial_layout_id").as_string();
     if (!initial.empty()) {
       apply_layout(initial, false);
@@ -298,6 +311,8 @@ private:
   std::string run_state_{"idle"};
   bool has_active_layout_{false};
   robot_common_msgs::msg::CellLayoutActive last_active_;
+  rclcpp::CallbackGroup::SharedPtr service_cb_group_;
+  rclcpp::CallbackGroup::SharedPtr client_cb_group_;
   rclcpp::Publisher<robot_common_msgs::msg::CellLayoutActive>::SharedPtr active_pub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr run_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseArray>::SharedPtr scoop_pose_sub_;
@@ -312,7 +327,10 @@ private:
 int main(int argc, char** argv)
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<CellLayoutManager>());
+  auto node = std::make_shared<CellLayoutManager>();
+  rclcpp::executors::MultiThreadedExecutor executor;
+  executor.add_node(node);
+  executor.spin();
   rclcpp::shutdown();
   return 0;
 }

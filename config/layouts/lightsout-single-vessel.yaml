@@ -5,6 +5,8 @@ task_container_id: rs3
 tool_id: niryo_scoop_v4
 targets_by_robot:
   niryo: lightsout-single-vessel/robots/niryo/targets.yaml
+# Legacy field required by ros-prod images before targets_by_robot (e.g. b0fff56).
+targets_yaml: lightsout-single-vessel/robots/niryo/targets.yaml
 poses_yaml: lightsout-single-vessel/poses.yaml
 scoop_cartesian_avoid_collisions: false
 safe_retreat_target: ReturnHome
