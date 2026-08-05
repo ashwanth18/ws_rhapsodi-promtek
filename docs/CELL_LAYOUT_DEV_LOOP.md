@@ -46,9 +46,9 @@ runs refuse unsaved geometry. Saves only write into the git tree
 1. **Author / Bench (domain 42):** `make author LAYOUT=<id> ROBOT=<niryo|jaka>`
    (or `make bench`). Mock hardware via `robots.yaml` `mock:` profiles, isolated
    from a Pi ROS graph. Drag containers + scoop markers; Save Layout from the
-   panel. Save Pose Set writes `poses/sets/<UTC>_<note>.yaml` without changing
-   the default `poses.yaml` (or `make export-poses`). Load Pose Set → `default`
-   restores the seed.
+   panel. Motion Tuning XYZ/sweep/pitch/lift moves scoop markers live. **Save New
+   Set** writes `poses/sets/<UTC>_<note>.yaml`; **Update Selected** overwrites an
+   existing set (not the seed). Load Pose Set → `default` restores the seed.
 2. **Sim (domain 43):** `make sim ROBOT=<id> LAYOUT=<id>`. Gazebo with a world
    composed at launch from the layout YAML (template + generated objects).
    `cell_layout_manager` publishes `/cell_layout/active` so layout-scoped poses
@@ -99,8 +99,9 @@ authored in `real`. Poses stamp `robot_key` alongside `layout_id` /
 `authored_in`. On layout apply, the marker server prefers the layout-scoped
 device-local cache; on mismatch it reseeds from the versioned default
 `config/layouts/<id>/poses.yaml`. Labeled history lives in
-`config/layouts/<id>/poses/sets/` (Save Pose Set / `make export-poses`); Load
-Pose Set with `default` restores the seed without promoting any set over it.
+`config/layouts/<id>/poses/sets/` (Save New Set / Update Selected /
+`make export-poses`); Load Pose Set with `default` restores the seed without
+promoting any set over it.
 Targets whose `frame_id` does not match the active robot `base_frame` are
 hard-refused (prevents Niryo `base_link` targets silently loading on Jaka
 `link0`).

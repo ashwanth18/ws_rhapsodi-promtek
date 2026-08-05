@@ -860,7 +860,8 @@ private:
     RCLCPP_INFO(this->get_logger(), "[pose_set] /save_scoop_poses → save_pose_set");
     std::string set_id;
     std::string path;
-    response->success = save_pose_set(/*note=*/"", response->message, set_id, path);
+    response->success = save_pose_set(
+      /*note=*/"", /*overwrite_set_id=*/"", response->message, set_id, path);
     if (response->success) {
       RCLCPP_INFO(this->get_logger(), "[pose_set] %s", response->message.c_str());
     } else {
@@ -931,7 +932,8 @@ private:
     RCLCPP_INFO(this->get_logger(), "[pose_set] /export_scoop_poses → save_pose_set(note=export)");
     std::string set_id;
     std::string path;
-    response->success = save_pose_set(/*note=*/"export", response->message, set_id, path);
+    response->success = save_pose_set(
+      /*note=*/"export", /*overwrite_set_id=*/"", response->message, set_id, path);
     if (response->success) {
       RCLCPP_INFO(this->get_logger(), "[pose_set] %s", response->message.c_str());
     } else {
@@ -949,10 +951,15 @@ private:
   {
     RCLCPP_INFO(
       this->get_logger(),
-      "[pose_set] SaveScoopPoseSet request note='%s'",
-      request->note.c_str());
+      "[pose_set] SaveScoopPoseSet request note='%s' set_id='%s'",
+      request->note.c_str(),
+      request->set_id.c_str());
     response->success = save_pose_set(
-      request->note, response->message, response->set_id, response->path);
+      request->note,
+      request->set_id,
+      response->message,
+      response->set_id,
+      response->path);
     if (response->success) {
       RCLCPP_INFO(
         this->get_logger(),
@@ -1151,6 +1158,7 @@ private:
 
   bool save_pose_set(
     const std::string& note,
+    const std::string& overwrite_set_id,
     std::string& message,
     std::string& set_id,
     std::string& path)
@@ -1175,9 +1183,6 @@ private:
       return false;
     }
 
-    const auto stamp = utc_timestamp_compact();
-    const auto sanitized = sanitize_pose_set_note(note);
-    set_id = sanitized.empty() ? stamp : (stamp + "_" + sanitized);
     const auto sets_dir = pose_sets_dir();
     std::error_code ec;
     std::filesystem::create_directories(sets_dir, ec);
@@ -1186,15 +1191,58 @@ private:
       RCLCPP_ERROR(this->get_logger(), "[pose_set] %s", message.c_str());
       return false;
     }
-    path = (sets_dir / (set_id + ".yaml")).string();
-    const auto created_at = utc_iso8601();
+
+    std::string created_at = utc_iso8601();
+    std::string note_to_write = note;
+    const bool overwrite = !overwrite_set_id.empty();
+    if (overwrite) {
+      if (overwrite_set_id == kDefaultPoseSetId) {
+        message = "Refusing to overwrite the layout default poses.yaml via pose-set update";
+        RCLCPP_ERROR(this->get_logger(), "[pose_set] %s", message.c_str());
+        return false;
+      }
+      if (!is_safe_pose_set_id(overwrite_set_id)) {
+        message = "Invalid pose set id for update: " + overwrite_set_id;
+        RCLCPP_ERROR(this->get_logger(), "[pose_set] %s", message.c_str());
+        return false;
+      }
+      set_id = overwrite_set_id;
+      path = (sets_dir / (set_id + ".yaml")).string();
+      if (!std::filesystem::exists(path)) {
+        message = "Pose set does not exist to update: " + set_id;
+        RCLCPP_ERROR(this->get_logger(), "[pose_set] %s", message.c_str());
+        return false;
+      }
+      try {
+        const YAML::Node existing = YAML::LoadFile(path);
+        if (existing["created_at"] && existing["created_at"].IsScalar()) {
+          created_at = existing["created_at"].as<std::string>();
+        }
+        if (note_to_write.empty() && existing["note"] && existing["note"].IsScalar()) {
+          note_to_write = existing["note"].as<std::string>();
+        }
+      } catch (const std::exception& ex) {
+        RCLCPP_WARN(
+          this->get_logger(),
+          "[pose_set] could not read existing metadata for %s (%s); rewriting with new created_at",
+          set_id.c_str(),
+          ex.what());
+      }
+    } else {
+      const auto stamp = utc_timestamp_compact();
+      const auto sanitized = sanitize_pose_set_note(note);
+      set_id = sanitized.empty() ? stamp : (stamp + "_" + sanitized);
+      path = (sets_dir / (set_id + ".yaml")).string();
+    }
+
     RCLCPP_INFO(
       this->get_logger(),
-      "[pose_set] writing set_id=%s created_at=%s path=%s",
+      "[pose_set] %s set_id=%s created_at=%s path=%s",
+      overwrite ? "updating" : "writing",
       set_id.c_str(),
       created_at.c_str(),
       path.c_str());
-    if (!save_poses_to_yaml(path, message, set_id, created_at, note)) {
+    if (!save_poses_to_yaml(path, message, set_id, created_at, note_to_write)) {
       RCLCPP_ERROR(this->get_logger(), "[pose_set] write failed — %s", message.c_str());
       return false;
     }
@@ -1212,7 +1260,7 @@ private:
         "[pose_set] refreshed device cache %s (default poses.yaml untouched)",
         poses_yaml_path_.c_str());
     }
-    message = "Saved pose set '" + set_id + "' to " + path +
+    message = (overwrite ? "Updated pose set '" : "Saved pose set '") + set_id + "' to " + path +
       " (default poses.yaml unchanged)";
     return true;
   }

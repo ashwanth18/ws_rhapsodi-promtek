@@ -74,9 +74,11 @@ private Q_SLOTS:
   void onCheckReachabilityClicked();
   void onExportPosesClicked();
   void onSavePoseSetClicked();
+  void onUpdatePoseSetClicked();
   void onLoadPoseSetClicked();
   void onRefreshPoseSetsClicked();
   void onPlanarModeToggled(bool checked);
+  void onContainerAlphaChanged();
   void onLayoutObjectSelected(const QString& object_id);
   void onRosTimer();
 
@@ -106,6 +108,7 @@ private:
   void updateScoopEditorsFromSelection();
   void focusSelectedScoopMarker();
   void showAllScoopMarkers();
+  void sendSelectedScoopMarkerGoal(bool plan_only);
   void applyMotionTuning();
   void adjustPatternOffset(double delta);
   void previewParameterizedTemplate();
@@ -183,11 +186,22 @@ private:
   void sendLayoutTrigger(
     const QString& action_name,
     const rclcpp::Client<Trigger>::SharedPtr& client);
+  void applyContainerVisualAlpha(double alpha);
   void refreshPoseSetList();
   void updatePoseSetStatus(const QString& text, const QString& color = "#e5e7eb");
   void resetMotionTuningGeometry();
+  bool readMotionTuningGeometry(
+    double& offset_x,
+    double& offset_y,
+    double& offset_z,
+    double& sweep_scale,
+    double& pitch_offset_deg,
+    double& lift_offset_z);
+  void captureBaseScoopPosesFromLatest();
+  void adoptScoopPosesFromMarkerServer(const std::vector<geometry_msgs::msg::Pose>& poses);
+  void syncScoopMarkersToMotionTuning();
   bool bakeMotionTuningIntoScoopMarkers(QString& detail);
-  void sendSavePoseSetRequest(const QString& bake_detail);
+  void sendSavePoseSetRequest(const QString& bake_detail, const QString& overwrite_set_id);
 
   QLabel* service_state_label_;
   QLabel* status_label_;
@@ -200,6 +214,10 @@ private:
   QComboBox* catalog_model_combo_;
   QCheckBox* planar_mode_checkbox_;
   QLineEdit* layout_object_id_edit_;
+  QLineEdit* container_alpha_edit_;
+  QSlider* container_alpha_slider_;
+  QPushButton* container_alpha_ghost_button_;
+  QPushButton* container_alpha_opaque_button_;
   QPushButton* save_layout_button_;
   QPushButton* reload_layout_button_;
   QPushButton* add_layout_object_button_;
@@ -211,6 +229,7 @@ private:
   QLineEdit* pose_set_note_edit_;
   QComboBox* pose_set_combo_;
   QPushButton* save_pose_set_button_;
+  QPushButton* update_pose_set_button_;
   QPushButton* load_pose_set_button_;
   QPushButton* refresh_pose_sets_button_;
   QLabel* pose_set_status_label_;
@@ -283,6 +302,8 @@ private:
   QPushButton* apply_typed_pose_button_;
   QPushButton* apply_scoop_pose_button_;
   QPushButton* focus_selected_scoop_button_;
+  QPushButton* plan_selected_scoop_button_;
+  QPushButton* move_selected_scoop_button_;
   QPushButton* show_all_scoops_button_;
   QPushButton* record_target_button_;
   QPushButton* refresh_targets_button_;
@@ -322,6 +343,7 @@ private:
   rclcpp::AsyncParametersClient::SharedPtr move_to_params_client_;
   rclcpp::AsyncParametersClient::SharedPtr record_target_params_client_;
   rclcpp::AsyncParametersClient::SharedPtr layout_editor_params_client_;
+  rclcpp::AsyncParametersClient::SharedPtr container_marker_params_client_;
   rclcpp_action::Client<MoveTo>::SharedPtr move_to_client_;
   rclcpp::Subscription<geometry_msgs::msg::PoseArray>::SharedPtr scoop_poses_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr target_goal_sub_;
@@ -339,14 +361,18 @@ private:
   rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr scoop_marker_focus_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr target_goal_cmd_pub_;
   std::vector<geometry_msgs::msg::Pose> latest_scoop_poses_;
+  std::vector<geometry_msgs::msg::Pose> base_scoop_poses_;
   std::map<std::string, geometry_msgs::msg::PoseStamped> named_targets_;
   std::string latest_scoop_frame_id_;
   std::string targets_yaml_path_;
   std::string active_layout_scene_yaml_;
   std::string catalog_yaml_path_;
+  QString loaded_pose_set_id_;
   geometry_msgs::msg::PoseStamped latest_target_goal_pose_;
   robot_common_msgs::msg::PourStatus latest_pour_status_;
   bool has_scoop_poses_;
+  bool has_base_scoop_poses_;
+  bool ignore_scoop_pose_echo_;
   bool has_target_goal_pose_;
   bool has_pour_status_;
   bool layout_preview_active_;

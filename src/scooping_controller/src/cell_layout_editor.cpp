@@ -1,6 +1,7 @@
 #include "scooping_controller/container_collision_objects.hpp"
 #include "scooping_controller/touch_off.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -131,6 +132,8 @@ public:
     declare_parameter<bool>("planar_mode", true);
     declare_parameter<std::string>("selected_object_id", "");
     declare_parameter<double>("table_top_z", 0.0);
+    // Authoring-friendly default: see scoop markers through the mesh.
+    declare_parameter<double>("visual_alpha", 0.35);
 
     frame_id_ = get_parameter("frame_id").as_string();
     layouts_dir_ = expand_user_path(get_parameter("layouts_dir").as_string());
@@ -148,6 +151,7 @@ public:
     planar_mode_ = get_parameter("planar_mode").as_bool();
     selected_object_id_ = get_parameter("selected_object_id").as_string();
     table_top_z_ = get_parameter("table_top_z").as_double();
+    visual_alpha_ = clamp_alpha(get_parameter("visual_alpha").as_double());
 
     load_catalog();
 
@@ -190,20 +194,27 @@ public:
       [this](const std::shared_ptr<Trigger::Request> req,
              std::shared_ptr<Trigger::Response> res) { handle_fit(req, res); });
 
-    // Parameter callback for panel-driven planar toggle / selected object.
+    // Parameter callback for panel-driven planar toggle / selected object / alpha.
     param_cb_ = add_on_set_parameters_callback(
       [this](const std::vector<rclcpp::Parameter>& params) {
         rcl_interfaces::msg::SetParametersResult result;
         result.successful = true;
+        bool rebuild = false;
         for (const auto& param : params) {
           if (param.get_name() == "planar_mode") {
             planar_mode_ = param.as_bool();
-            rebuild_markers();
+            rebuild = true;
           } else if (param.get_name() == "selected_object_id") {
             selected_object_id_ = param.as_string();
           } else if (param.get_name() == "operator_name") {
             operator_name_ = param.as_string();
+          } else if (param.get_name() == "visual_alpha") {
+            visual_alpha_ = clamp_alpha(param.as_double());
+            rebuild = true;
           }
+        }
+        if (rebuild) {
+          rebuild_markers();
         }
         return result;
       });
@@ -401,7 +412,7 @@ private:
       marker.color.r = spec.color[0];
       marker.color.g = spec.color[1];
       marker.color.b = spec.color[2];
-      marker.color.a = 1.0F;
+      marker.color.a = static_cast<float>(visual_alpha_);
       marker_pub_->publish(marker);
     }
   }
@@ -427,8 +438,20 @@ private:
     marker.color.r = spec.color[0];
     marker.color.g = spec.color[1];
     marker.color.b = spec.color[2];
-    marker.color.a = 0.85F;
+    // Keep grab mesh at least faintly visible even when display alpha is 0.
+    marker.color.a = static_cast<float>(std::max(0.12, visual_alpha_));
     return marker;
+  }
+
+  static double clamp_alpha(double alpha)
+  {
+    if (alpha < 0.0) {
+      return 0.0;
+    }
+    if (alpha > 1.0) {
+      return 1.0;
+    }
+    return alpha;
   }
 
   static InteractiveMarkerControl make_axis_control(
@@ -485,7 +508,7 @@ private:
     footprint.color.r = spec.color[0];
     footprint.color.g = spec.color[1];
     footprint.color.b = spec.color[2];
-    footprint.color.a = 0.7F;
+    footprint.color.a = static_cast<float>(std::max(0.15, visual_alpha_ * 0.8));
     grab.markers.push_back(footprint);
     grab.markers.push_back(make_visual(spec));
     Marker label;
@@ -943,6 +966,7 @@ private:
   bool planar_mode_{true};
   bool dirty_{false};
   double table_top_z_{0.0};
+  double visual_alpha_{0.35};
 
   std::unordered_map<std::string, CatalogModel> catalog_;
   std::unordered_map<std::string, double> rim_by_mesh_;

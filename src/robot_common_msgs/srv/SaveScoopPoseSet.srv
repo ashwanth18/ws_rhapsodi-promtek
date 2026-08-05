@@ -1,6 +1,9 @@
-# Save a timestamped scoop pose set under layouts/<layout>/poses/sets/.
+# Save a scoop pose set under layouts/<layout>/poses/sets/.
 # Does not overwrite the layout default poses.yaml.
+# If set_id is empty, create a new timestamped set (optional note suffix).
+# If set_id is set (not "default"), overwrite that existing set file.
 string note
+string set_id
 ---
 bool success
 string message

@@ -125,7 +125,7 @@ Visualization Manager:
       Robot Description: robot_description
       Scene:
         Attached Body Color: 150; 50; 150
-        Scene Alpha: 0.9
+        Scene Alpha: 0.25
         Scene Color: 50; 230; 50
         Value: true
         Voxel Coloring: Z-Axis

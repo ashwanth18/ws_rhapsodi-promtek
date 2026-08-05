@@ -186,21 +186,20 @@ services:
 
   scooping_stack:
     <<: *ros-robot-service
-    # Do not pass poses_yaml:= / robot:= when empty — ros2 launch treats
-    # `name:=` as malformed. Empty POSES_YAML → marker server derives
+    # Do not pass poses_yaml:= / robot:= / layout_id:= when empty — ros2 launch
+    # treats `name:=` as malformed. Empty POSES_YAML → marker server derives
     # ~/.ros/scooping_controller/poses_real_<layout_id>.yaml. ROBOT_TYPE is
     # already in the service environment; launch resolves robot from device.yaml.
-    command: >
-      ros2 launch scooping_controller scooping_real.launch.py
-      use_rviz:=false
-      poses_env:=${POSES_ENV:-real}
-      targets_yaml:=${TARGETS_YAML:-/ws/install/share/robot_moveit/targets.yaml}
-      layouts_dir:=${CELL_LAYOUTS_DIR:-/ws/config/layouts}
-      container_scene_yaml:=${CONTAINER_SCENE_YAML:-/ws/install/share/scooping_controller/config/container_scene_real.yaml}
-      post_lift_vibration_enabled:=${POST_LIFT_VIBRATION_ENABLED:-true}
-      post_lift_vibration_duration_s:=${POST_LIFT_VIBRATION_DURATION_S:-5.0}
-      post_lift_vibration_intensity:=${POST_LIFT_VIBRATION_INTENSITY:-0.75}
-      post_lift_vibration_publish_rate_hz:=${POST_LIFT_VIBRATION_PUBLISH_RATE_HZ:-10.0}
+    # DEFAULT_LAYOUT_ID is compose-substituted from robot-prod.env into `lid`
+    # below (not a container env). When set, layout_id seeds
+    # cell_layout_manager without plan-only preflight (works around apply
+    # nested-spin failure on current ros-prod images).
+    command:
+      [
+        "bash",
+        "-lc",
+        "lid='${DEFAULT_LAYOUT_ID:-}'; extra=''; if [ -n \"$$lid\" ]; then extra=\"layout_id:=$$lid\"; fi; exec ros2 launch scooping_controller scooping_real.launch.py use_rviz:=false poses_env:=${POSES_ENV:-real} targets_yaml:=${TARGETS_YAML:-/ws/install/share/robot_moveit/targets.yaml} layouts_dir:=${CELL_LAYOUTS_DIR:-/ws/config/layouts} container_scene_yaml:=${CONTAINER_SCENE_YAML:-/ws/install/share/scooping_controller/config/container_scene_real.yaml} post_lift_vibration_enabled:=${POST_LIFT_VIBRATION_ENABLED:-true} post_lift_vibration_duration_s:=${POST_LIFT_VIBRATION_DURATION_S:-5.0} post_lift_vibration_intensity:=${POST_LIFT_VIBRATION_INTENSITY:-0.75} post_lift_vibration_publish_rate_hz:=${POST_LIFT_VIBRATION_PUBLISH_RATE_HZ:-10.0} $$extra",
+      ]
 
   scale_launcher:
     <<: *ros-robot-service

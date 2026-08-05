@@ -192,6 +192,76 @@ std::vector<geometry_msgs::msg::Pose> apply_manual_pose_adjustments(
 
   return poses;
 }
+
+std::vector<geometry_msgs::msg::Pose> reverse_manual_pose_adjustments(
+  const std::vector<geometry_msgs::msg::Pose>& input_poses,
+  double offset_x,
+  double offset_y,
+  double offset_z,
+  double sweep_scale,
+  double pitch_offset_rad,
+  double lift_offset_z)
+{
+  auto poses = input_poses;
+  if (poses.size() < 5U) {
+    return poses;
+  }
+
+  if (pitch_offset_rad != 0.0) {
+    tf2::Quaternion q_offset;
+    q_offset.setRPY(0.0, pitch_offset_rad, 0.0);
+    q_offset.normalize();
+    const tf2::Quaternion q_inv = q_offset.inverse();
+    for (auto& pose : poses) {
+      tf2::Quaternion q_current;
+      q_current.setX(pose.orientation.x);
+      q_current.setY(pose.orientation.y);
+      q_current.setZ(pose.orientation.z);
+      q_current.setW(pose.orientation.w);
+      tf2::Quaternion q_base = q_current * q_inv;
+      q_base.normalize();
+      pose.orientation.x = q_base.x();
+      pose.orientation.y = q_base.y();
+      pose.orientation.z = q_base.z();
+      pose.orientation.w = q_base.w();
+    }
+  }
+
+  poses[3].position.z -= lift_offset_z;
+  poses[4].position.z -= lift_offset_z;
+
+  const double safe_sweep = std::abs(sweep_scale) < 1e-9 ? 1.0 : sweep_scale;
+  const auto contact_pose = poses[1];
+  for (std::size_t i = 2; i < poses.size(); ++i) {
+    poses[i].position.x =
+      contact_pose.position.x + (poses[i].position.x - contact_pose.position.x) / safe_sweep;
+    poses[i].position.y =
+      contact_pose.position.y + (poses[i].position.y - contact_pose.position.y) / safe_sweep;
+    poses[i].position.z =
+      contact_pose.position.z + (poses[i].position.z - contact_pose.position.z) / safe_sweep;
+  }
+
+  for (auto& pose : poses) {
+    pose.position.x -= offset_x;
+    pose.position.y -= offset_y;
+    pose.position.z -= offset_z;
+  }
+
+  return poses;
+}
+
+bool geometry_tuning_is_identity(
+  double offset_x,
+  double offset_y,
+  double offset_z,
+  double sweep_scale,
+  double pitch_offset_deg,
+  double lift_offset_z)
+{
+  return std::abs(offset_x) < 1e-9 && std::abs(offset_y) < 1e-9 && std::abs(offset_z) < 1e-9 &&
+    std::abs(sweep_scale - 1.0) < 1e-9 && std::abs(pitch_offset_deg) < 1e-9 &&
+    std::abs(lift_offset_z) < 1e-9;
+}
 }  // namespace
 
 ScoopingPanel::ScoopingPanel(QWidget* parent)
@@ -207,6 +277,10 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
 , catalog_model_combo_(new QComboBox(this))
 , planar_mode_checkbox_(new QCheckBox("Planar mode (XY + yaw)", this))
 , layout_object_id_edit_(new QLineEdit(this))
+, container_alpha_edit_(new QLineEdit(this))
+, container_alpha_slider_(make_slider(this, 0, 100, 35))
+, container_alpha_ghost_button_(new QPushButton("Ghost", this))
+, container_alpha_opaque_button_(new QPushButton("Opaque", this))
 , save_layout_button_(new QPushButton("Save Layout", this))
 , reload_layout_button_(new QPushButton("Reload", this))
 , add_layout_object_button_(new QPushButton("Add Object", this))
@@ -217,7 +291,8 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
 , export_poses_button_(new QPushButton("Save Pose Set", this))
 , pose_set_note_edit_(new QLineEdit(this))
 , pose_set_combo_(new QComboBox(this))
-, save_pose_set_button_(new QPushButton("Save Pose Set", this))
+, save_pose_set_button_(new QPushButton("Save New Set", this))
+, update_pose_set_button_(new QPushButton("Update Selected", this))
 , load_pose_set_button_(new QPushButton("Load Pose Set", this))
 , refresh_pose_sets_button_(new QPushButton("Refresh Sets", this))
 , pose_set_status_label_(new QLabel(this))
@@ -290,6 +365,8 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
 , apply_typed_pose_button_(new QPushButton("Apply Typed Pose", this))
 , apply_scoop_pose_button_(new QPushButton("Apply To Selected Scoop Marker", this))
 , focus_selected_scoop_button_(new QPushButton("Focus Selected Marker", this))
+, plan_selected_scoop_button_(new QPushButton("Plan To Selected", this))
+, move_selected_scoop_button_(new QPushButton("Move To Selected", this))
 , show_all_scoops_button_(new QPushButton("Show All Scoop Markers", this))
 , record_target_button_(new QPushButton("Save Target To YAML", this))
 , refresh_targets_button_(new QPushButton("Refresh Targets", this))
@@ -304,6 +381,8 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
 , zero_offset_button_(new QPushButton("Zero Offset", this))
 , ros_timer_(new QTimer(this))
 , has_scoop_poses_(false)
+, has_base_scoop_poses_(false)
+, ignore_scoop_pose_echo_(false)
 , has_target_goal_pose_(false)
 , has_pour_status_(false)
 , layout_preview_active_(false)
@@ -517,20 +596,29 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   auto* scoop_pose_grid = new QGridLayout();
   scoop_pose_grid->addWidget(new QLabel("Marker", this), 0, 0);
   scoop_pose_grid->addWidget(scoop_marker_combo_, 0, 1, 1, 2);
-  scoop_pose_grid->addWidget(focus_selected_scoop_button_, 0, 3, 1, 2);
-  scoop_pose_grid->addWidget(show_all_scoops_button_, 0, 5);
-  scoop_pose_grid->addWidget(new QLabel("X (m)", this), 1, 0);
-  scoop_pose_grid->addWidget(scoop_x_edit_, 1, 1);
-  scoop_pose_grid->addWidget(new QLabel("Y (m)", this), 1, 2);
-  scoop_pose_grid->addWidget(scoop_y_edit_, 1, 3);
-  scoop_pose_grid->addWidget(new QLabel("Z (m)", this), 1, 4);
-  scoop_pose_grid->addWidget(scoop_z_edit_, 1, 5);
-  scoop_pose_grid->addWidget(new QLabel("Roll (deg)", this), 2, 0);
-  scoop_pose_grid->addWidget(scoop_roll_edit_, 2, 1);
-  scoop_pose_grid->addWidget(new QLabel("Pitch (deg)", this), 2, 2);
-  scoop_pose_grid->addWidget(scoop_pitch_edit_, 2, 3);
-  scoop_pose_grid->addWidget(new QLabel("Yaw (deg)", this), 2, 4);
-  scoop_pose_grid->addWidget(scoop_yaw_edit_, 2, 5);
+  scoop_pose_grid->addWidget(focus_selected_scoop_button_, 0, 3);
+  scoop_pose_grid->addWidget(show_all_scoops_button_, 0, 4, 1, 2);
+  scoop_pose_grid->addWidget(plan_selected_scoop_button_, 1, 3);
+  scoop_pose_grid->addWidget(move_selected_scoop_button_, 1, 4, 1, 2);
+  scoop_pose_grid->addWidget(new QLabel("X (m)", this), 2, 0);
+  scoop_pose_grid->addWidget(scoop_x_edit_, 2, 1);
+  scoop_pose_grid->addWidget(new QLabel("Y (m)", this), 2, 2);
+  scoop_pose_grid->addWidget(scoop_y_edit_, 2, 3);
+  scoop_pose_grid->addWidget(new QLabel("Z (m)", this), 2, 4);
+  scoop_pose_grid->addWidget(scoop_z_edit_, 2, 5);
+  scoop_pose_grid->addWidget(new QLabel("Roll (deg)", this), 3, 0);
+  scoop_pose_grid->addWidget(scoop_roll_edit_, 3, 1);
+  scoop_pose_grid->addWidget(new QLabel("Pitch (deg)", this), 3, 2);
+  scoop_pose_grid->addWidget(scoop_pitch_edit_, 3, 3);
+  scoop_pose_grid->addWidget(new QLabel("Yaw (deg)", this), 3, 4);
+  scoop_pose_grid->addWidget(scoop_yaw_edit_, 3, 5);
+  focus_selected_scoop_button_->setToolTip(
+    "Hide other scoop markers and keep only the selected one visible.");
+  plan_selected_scoop_button_->setToolTip(
+    "Plan a MoveTo to the selected scoop marker pose (preview only, no motion).");
+  move_selected_scoop_button_->setToolTip(
+    "Execute MoveTo to the selected scoop marker pose using Motion Tuning velocity/accel "
+    "and the Targets planner dropdown.");
 
   auto* motion_grid = new QGridLayout();
   motion_grid->setHorizontalSpacing(10);
@@ -615,6 +703,15 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
 
   auto* motion_box = make_group_box("Motion Tuning");
   auto* motion_layout = new QVBoxLayout(motion_box);
+  auto* motion_hint = new QLabel(
+    "Offset / sweep / pitch / lift move the interactive scoop markers live "
+    "(relative to the loaded pose set). Apply Motion Settings pushes velocity/"
+    "accel/shake-off to the planner; geometry stays on the markers so Plan "
+    "matches what you see. Zero Offset restores the loaded base poses.",
+    this);
+  motion_hint->setWordWrap(true);
+  motion_hint->setStyleSheet("color: #9ca3af;");
+  motion_layout->addWidget(motion_hint);
   motion_layout->addLayout(motion_grid);
   motion_layout->addSpacing(8);
   motion_layout->addLayout(motion_actions_row);
@@ -687,7 +784,11 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   pose_set_combo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
   export_poses_button_->setToolTip(
     "Save a timestamped pose set under layouts/<id>/poses/sets/. Does not change default poses.yaml.");
-  save_pose_set_button_->setToolTip(export_poses_button_->toolTip());
+  save_pose_set_button_->setToolTip(
+    "Create a new timestamped pose set. Bakes Motion Tuning geometry into markers first. "
+    "Does not change default poses.yaml.");
+  update_pose_set_button_->setToolTip(
+    "Overwrite the set selected in the combo (not default). Bakes Motion Tuning first.");
   load_pose_set_button_->setToolTip(
     "Load default (poses.yaml) or a saved set into markers. Does not modify the default seed.");
   check_reachability_button_->setToolTip(
@@ -695,9 +796,9 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   pose_set_status_label_->setWordWrap(true);
   pose_set_status_label_->setText("Pose sets: waiting for marker server…");
   auto* pose_sets_hint = new QLabel(
-    "default = git seed poses.yaml. Save Pose Set bakes Motion Tuning offsets into markers "
-    "(then zeroes offsets). Load Pose Set restores markers and clears Motion Tuning geometry. "
-    "Sets never overwrite the seed.",
+    "default = git seed poses.yaml. Motion Tuning XYZ/sweep/pitch/lift moves the scoop markers "
+    "live (relative to the loaded base). Save New Set creates a timestamped file; "
+    "Update Selected overwrites the combo set. Neither touches the seed.",
     this);
   pose_sets_hint->setWordWrap(true);
   pose_sets_hint->setStyleSheet("color: #9ca3af;");
@@ -713,6 +814,7 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   auto* pose_set_buttons = new QHBoxLayout();
   pose_set_buttons->addWidget(load_pose_set_button_, 1);
   pose_set_buttons->addWidget(save_pose_set_button_, 1);
+  pose_set_buttons->addWidget(update_pose_set_button_, 1);
   pose_set_buttons->addWidget(check_reachability_button_, 1);
   pose_sets_layout->addWidget(pose_sets_hint);
   pose_sets_layout->addLayout(pose_set_combo_row);
@@ -757,12 +859,28 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   tabs->addTab(motion_tab, "Motion Tuning");
   tabs->addTab(targets_tab, "Targets and Pour");
 
+  container_alpha_edit_->setPlaceholderText("0-1");
+  container_alpha_edit_->setText("0.35");
+  container_alpha_edit_->setMaximumWidth(64);
+  container_alpha_slider_->setToolTip(
+    "Container mesh opacity in RViz (0 = invisible, 1 = solid). "
+    "Lower this to see scoop markers inside the vessel.");
+  container_alpha_ghost_button_->setToolTip("Set container opacity to 0.20 (see-through)");
+  container_alpha_opaque_button_->setToolTip("Set container opacity to 1.0 (solid)");
+  auto* container_alpha_row = new QHBoxLayout();
+  container_alpha_row->addWidget(new QLabel("Container opacity", this));
+  container_alpha_row->addWidget(container_alpha_slider_, 1);
+  container_alpha_row->addWidget(container_alpha_edit_);
+  container_alpha_row->addWidget(container_alpha_ghost_button_);
+  container_alpha_row->addWidget(container_alpha_opaque_button_);
+
   auto* content_widget = new QWidget(this);
   auto* content_layout = new QVBoxLayout(content_widget);
   content_layout->setContentsMargins(8, 8, 8, 8);
   content_layout->setSpacing(10);
   content_layout->addWidget(title);
   content_layout->addWidget(hint);
+  content_layout->addLayout(container_alpha_row);
   content_layout->addWidget(tabs, 1);
   content_layout->addWidget(status_label_);
 
@@ -824,6 +942,12 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   connect(apply_typed_pose_button_, &QPushButton::clicked, this, [this]() { applyTypedPose(); });
   connect(apply_scoop_pose_button_, &QPushButton::clicked, this, [this]() { applyTypedScoopPose(); });
   connect(focus_selected_scoop_button_, &QPushButton::clicked, this, [this]() { focusSelectedScoopMarker(); });
+  connect(plan_selected_scoop_button_, &QPushButton::clicked, this, [this]() {
+    sendSelectedScoopMarkerGoal(true);
+  });
+  connect(move_selected_scoop_button_, &QPushButton::clicked, this, [this]() {
+    sendSelectedScoopMarkerGoal(false);
+  });
   connect(show_all_scoops_button_, &QPushButton::clicked, this, [this]() { showAllScoopMarkers(); });
   connect(record_target_button_, &QPushButton::clicked, this, [this]() { sendRecordTarget(); });
   connect(refresh_targets_button_, &QPushButton::clicked, this, &ScoopingPanel::onRefreshTargetsClicked);
@@ -854,6 +978,7 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   connect(check_reachability_button_, &QPushButton::clicked, this, &ScoopingPanel::onCheckReachabilityClicked);
   connect(export_poses_button_, &QPushButton::clicked, this, &ScoopingPanel::onExportPosesClicked);
   connect(save_pose_set_button_, &QPushButton::clicked, this, &ScoopingPanel::onSavePoseSetClicked);
+  connect(update_pose_set_button_, &QPushButton::clicked, this, &ScoopingPanel::onUpdatePoseSetClicked);
   connect(load_pose_set_button_, &QPushButton::clicked, this, &ScoopingPanel::onLoadPoseSetClicked);
   connect(refresh_pose_sets_button_, &QPushButton::clicked, this, &ScoopingPanel::onRefreshPoseSetsClicked);
   connect(planar_mode_checkbox_, &QCheckBox::toggled, this, &ScoopingPanel::onPlanarModeToggled);
@@ -862,8 +987,29 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
     &QComboBox::currentTextChanged,
     this,
     &ScoopingPanel::onLayoutObjectSelected);
+  bind_slider_and_edit(
+    container_alpha_slider_,
+    container_alpha_edit_,
+    2,
+    [](int raw) { return static_cast<double>(raw) / 100.0; },
+    [](double value) { return static_cast<int>(std::round(value * 100.0)); },
+    [this]() { onContainerAlphaChanged(); });
+  connect(container_alpha_ghost_button_, &QPushButton::clicked, this, [this]() {
+    setLineEditValue(container_alpha_edit_, 0.20, 2);
+    onContainerAlphaChanged();
+  });
+  connect(container_alpha_opaque_button_, &QPushButton::clicked, this, [this]() {
+    setLineEditValue(container_alpha_edit_, 1.0, 2);
+    onContainerAlphaChanged();
+  });
 
   auto preview_manual_tuning = [this]() {
+    if (has_scoop_poses_) {
+      syncScoopMarkersToMotionTuning();
+      publishManualScoopPreviewMarkers();
+    }
+  };
+  auto preview_speed_only = [this]() {
     if (has_scoop_poses_) {
       publishManualScoopPreviewMarkers();
     }
@@ -874,14 +1020,14 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
     2,
     [](int raw) { return static_cast<double>(raw) / 100.0; },
     [](double value) { return static_cast<int>(std::round(value * 100.0)); },
-    preview_manual_tuning);
+    preview_speed_only);
   bind_slider_and_edit(
     acceleration_scale_slider_,
     acceleration_scale_edit_,
     2,
     [](int raw) { return static_cast<double>(raw) / 100.0; },
     [](double value) { return static_cast<int>(std::round(value * 100.0)); },
-    preview_manual_tuning);
+    preview_speed_only);
   bind_slider_and_edit(
     pattern_offset_x_slider_,
     pattern_offset_x_edit_,
@@ -954,6 +1100,8 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   apply_typed_pose_button_->setEnabled(false);
   apply_scoop_pose_button_->setEnabled(false);
   focus_selected_scoop_button_->setEnabled(false);
+  plan_selected_scoop_button_->setEnabled(false);
+  move_selected_scoop_button_->setEnabled(false);
   show_all_scoops_button_->setEnabled(false);
   record_target_button_->setEnabled(false);
   refresh_targets_button_->setEnabled(false);
@@ -966,6 +1114,10 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   shift_offset_positive_button_->setEnabled(false);
   shift_offset_negative_button_->setEnabled(false);
   zero_offset_button_->setEnabled(false);
+  save_pose_set_button_->setEnabled(false);
+  update_pose_set_button_->setEnabled(false);
+  load_pose_set_button_->setEnabled(false);
+  refresh_pose_sets_button_->setEnabled(false);
 }
 
 ScoopingPanel::~ScoopingPanel() = default;
@@ -998,6 +1150,8 @@ void ScoopingPanel::onInitialize()
   record_target_params_client_ = std::make_shared<rclcpp::AsyncParametersClient>(node_, "/target_recorder");
   layout_editor_params_client_ =
     std::make_shared<rclcpp::AsyncParametersClient>(node_, "/cell_layout_editor");
+  container_marker_params_client_ =
+    std::make_shared<rclcpp::AsyncParametersClient>(node_, "/container_marker_publisher");
   move_to_client_ = rclcpp_action::create_client<MoveTo>(node_, "/move_to");
   scoop_poses_cmd_pub_ = node_->create_publisher<geometry_msgs::msg::PoseArray>(
     "/scoop_poses_cmd",
@@ -1021,9 +1175,15 @@ void ScoopingPanel::onInitialize()
     "/scoop_poses",
     rclcpp::QoS(1).transient_local(),
     [this](const geometry_msgs::msg::PoseArray::SharedPtr msg) {
-      latest_scoop_poses_ = msg->poses;
       latest_scoop_frame_id_ = msg->header.frame_id;
-      has_scoop_poses_ = latest_scoop_poses_.size() >= 5;
+      has_scoop_poses_ = msg->poses.size() >= 5;
+      if (ignore_scoop_pose_echo_) {
+        ignore_scoop_pose_echo_ = false;
+        latest_scoop_poses_ = msg->poses;
+        updateScoopEditorsFromSelection();
+        return;
+      }
+      adoptScoopPosesFromMarkerServer(msg->poses);
       updateScoopEditorsFromSelection();
     });
   target_goal_sub_ = node_->create_subscription<geometry_msgs::msg::PoseStamped>(
@@ -1452,10 +1612,12 @@ void ScoopingPanel::applyTypedScoopPose()
   }
 
   latest_scoop_poses_[static_cast<std::size_t>(index)] = pose;
+  adoptScoopPosesFromMarkerServer(latest_scoop_poses_);
   geometry_msgs::msg::PoseArray msg;
   msg.header.frame_id = latest_scoop_frame_id_.empty() ? kScoopTaskFrame : latest_scoop_frame_id_;
   msg.header.stamp = node_ ? node_->now() : rclcpp::Time(0, 0, RCL_ROS_TIME);
   msg.poses = latest_scoop_poses_;
+  ignore_scoop_pose_echo_ = true;
   scoop_poses_cmd_pub_->publish(msg);
   updateStatus(
     QString("Applied typed pose to scoop marker '%1'.").arg(scoop_marker_combo_->currentText()),
@@ -1514,6 +1676,91 @@ void ScoopingPanel::focusSelectedScoopMarker()
 void ScoopingPanel::showAllScoopMarkers()
 {
   publishScoopMarkerFocus(-1);
+}
+
+void ScoopingPanel::sendSelectedScoopMarkerGoal(bool plan_only)
+{
+  if (!move_to_client_ || !move_to_client_->wait_for_action_server(std::chrono::seconds(1))) {
+    updateStatus("MoveTo action server is not available.", "#fca5a5");
+    refreshServiceState();
+    return;
+  }
+  if (!has_scoop_poses_ || latest_scoop_poses_.size() < 5) {
+    updateStatus("Scoop poses are not available yet.", "#fca5a5");
+    return;
+  }
+
+  const int index = selectedScoopMarkerIndex();
+  if (index < 0 || index >= static_cast<int>(latest_scoop_poses_.size())) {
+    updateStatus("Selected scoop marker index is out of range.", "#fca5a5");
+    return;
+  }
+
+  const QString marker_name = scoop_marker_combo_->currentText();
+  MoveTo::Goal goal;
+  goal.target_pose.header.stamp = node_ ? node_->now() : rclcpp::Time(0, 0, RCL_ROS_TIME);
+  goal.target_pose.header.frame_id =
+    latest_scoop_frame_id_.empty() ? kScoopTaskFrame : latest_scoop_frame_id_;
+  goal.target_pose.pose = latest_scoop_poses_[static_cast<std::size_t>(index)];
+  goal.plan_only = plan_only;
+  const PlannerSelection planner_selection =
+    planner_selection_for_index(planner_combo_->currentIndex());
+  goal.use_cartesian = planner_selection.use_cartesian;
+  goal.planning_pipeline = planner_selection.pipeline;
+  goal.planner_id = planner_selection.planner_id;
+  double velocity_scale = 0.2;
+  double acceleration_scale = 0.2;
+  (void)readDoubleField(velocity_scale_edit_, "Velocity scale", velocity_scale);
+  (void)readDoubleField(acceleration_scale_edit_, "Acceleration scale", acceleration_scale);
+  goal.velocity_scaling = static_cast<float>(velocity_scale);
+  goal.acceleration_scaling = static_cast<float>(acceleration_scale);
+
+  updateStatus(
+    QString("%1 scoop marker '%2' with %3...")
+      .arg(plan_only ? "Planning" : "Moving to")
+      .arg(marker_name, planner_selection.status_label),
+    "#93c5fd");
+  rclcpp_action::Client<MoveTo>::SendGoalOptions options;
+  options.goal_response_callback =
+    [this, plan_only, marker_name](
+      const rclcpp_action::ClientGoalHandle<MoveTo>::SharedPtr& goal_handle) {
+      if (!goal_handle) {
+        updateStatus(
+          QString("%1 '%2' was rejected.")
+            .arg(plan_only ? "Plan to" : "Move to", marker_name),
+          "#fca5a5");
+      } else {
+        updateStatus(
+          QString("%1 '%2' accepted.")
+            .arg(plan_only ? "Plan to" : "Move to", marker_name),
+          "#93c5fd");
+      }
+    };
+  options.result_callback =
+    [this, plan_only, marker_name](
+      const rclcpp_action::ClientGoalHandle<MoveTo>::WrappedResult& result) {
+      if (result.code == rclcpp_action::ResultCode::SUCCEEDED && result.result &&
+          result.result->success)
+      {
+        updateStatus(
+          QString::fromStdString(
+            result.result->message.empty() ?
+              (plan_only ?
+                 ("Plan to '" + marker_name.toStdString() + "' ready.") :
+                 ("Moved to '" + marker_name.toStdString() + "'.")) :
+              result.result->message),
+          "#86efac");
+      } else {
+        const std::string message =
+          (result.result && !result.result->message.empty()) ?
+            result.result->message :
+            (plan_only ? "Plan to selected scoop marker failed." :
+                         "Move to selected scoop marker failed.");
+        updateStatus(QString::fromStdString(message), "#fca5a5");
+      }
+      refreshServiceState();
+    };
+  move_to_client_->async_send_goal(goal, options);
 }
 
 void ScoopingPanel::applyMotionTuning()
@@ -1581,6 +1828,10 @@ void ScoopingPanel::applyMotionTuning()
   setLineEditValue(lift_offset_z_edit_, lift_offset_z, 3);
   setLineEditValue(post_lift_vibration_duration_edit_, post_lift_vibration_duration, 2);
   setLineEditValue(post_lift_vibration_intensity_edit_, post_lift_vibration_intensity, 2);
+  // Geometry lives on the interactive markers; keep MTC pattern offsets at identity
+  // so Plan/Execute do not double-apply Motion Tuning.
+  (void)pitch_offset_rad;
+  syncScoopMarkersToMotionTuning();
   publishManualScoopPreviewMarkers();
 
   auto pending = std::make_shared<int>(2);
@@ -1609,7 +1860,8 @@ void ScoopingPanel::applyMotionTuning()
     if (*all_ok) {
       updateStatus(
         QString(
-          "Applied v=%1 a=%2 offsets=(%3, %4, %5) m sweep=%6 pitch=%7 deg lift_z=%8 m shake_off=%9 dur=%10 s intensity=%11")
+          "Applied v=%1 a=%2 · markers carry offsets=(%3, %4, %5) m sweep=%6 pitch=%7 deg "
+          "lift_z=%8 m · shake_off=%9 dur=%10 s intensity=%11")
           .arg(velocity_scale, 0, 'f', 2)
           .arg(acceleration_scale, 0, 'f', 2)
           .arg(pattern_offset_x, 0, 'f', 3)
@@ -1636,12 +1888,12 @@ void ScoopingPanel::applyMotionTuning()
       rclcpp::Parameter("acceleration_scaling", acceleration_scale),
       rclcpp::Parameter("cartesian_velocity_scaling", velocity_scale),
       rclcpp::Parameter("cartesian_acceleration_scaling", acceleration_scale),
-      rclcpp::Parameter("pattern_offset_x", pattern_offset_x),
-      rclcpp::Parameter("pattern_offset_y", pattern_offset_y),
-      rclcpp::Parameter("pattern_offset_z", pattern_offset_z),
-      rclcpp::Parameter("manual_sweep_scale", sweep_scale),
-      rclcpp::Parameter("manual_pitch_offset_rad", pitch_offset_rad),
-      rclcpp::Parameter("manual_lift_offset_z", lift_offset_z),
+      rclcpp::Parameter("pattern_offset_x", 0.0),
+      rclcpp::Parameter("pattern_offset_y", 0.0),
+      rclcpp::Parameter("pattern_offset_z", 0.0),
+      rclcpp::Parameter("manual_sweep_scale", 1.0),
+      rclcpp::Parameter("manual_pitch_offset_rad", 0.0),
+      rclcpp::Parameter("manual_lift_offset_z", 0.0),
       rclcpp::Parameter("post_lift_vibration_enabled", post_lift_vibration_enabled),
       rclcpp::Parameter("post_lift_vibration_duration_s", post_lift_vibration_duration),
       rclcpp::Parameter("post_lift_vibration_intensity", post_lift_vibration_intensity),
@@ -2009,25 +2261,8 @@ void ScoopingPanel::publishManualScoopPreviewMarkers()
 
   const auto stamp = node_->now();
   const std::string frame_id = latest_scoop_frame_id_.empty() ? kScoopTaskFrame : latest_scoop_frame_id_;
-  auto parse_or_default = [](QLineEdit* edit, double fallback) {
-    bool ok = false;
-    const double value = edit->text().trimmed().toDouble(&ok);
-    return ok ? value : fallback;
-  };
-  const double pattern_offset_x = parse_or_default(pattern_offset_x_edit_, 0.0);
-  const double pattern_offset_y = parse_or_default(pattern_offset_y_edit_, 0.0);
-  const double pattern_offset_z = parse_or_default(pattern_offset_z_edit_, 0.0);
-  const double sweep_scale = parse_or_default(sweep_scale_edit_, 1.0);
-  const double pitch_offset_deg = parse_or_default(pitch_offset_edit_, 0.0);
-  const double lift_offset_z = parse_or_default(lift_offset_z_edit_, 0.0);
-  const auto preview_poses = apply_manual_pose_adjustments(
-    latest_scoop_poses_,
-    pattern_offset_x,
-    pattern_offset_y,
-    pattern_offset_z,
-    sweep_scale,
-    degrees_to_radians(pitch_offset_deg),
-    lift_offset_z);
+  // Markers already carry Motion Tuning; preview line follows the live markers.
+  const auto& preview_poses = latest_scoop_poses_;
   auto make_color = [](float r, float g, float b, float a) {
     std_msgs::msg::ColorRGBA color;
     color.r = r;
@@ -2837,6 +3072,9 @@ void ScoopingPanel::refreshServiceState()
   apply_scoop_pose_button_->setEnabled(scoop_edit_ready);
   focus_selected_scoop_button_->setEnabled(scoop_edit_ready);
   show_all_scoops_button_->setEnabled(scoop_edit_ready);
+  const bool move_selected_ready = scoop_edit_ready && move_ready;
+  plan_selected_scoop_button_->setEnabled(move_selected_ready);
+  move_selected_scoop_button_->setEnabled(move_selected_ready);
   record_target_button_->setEnabled(targets_ready);
   refresh_targets_button_->setEnabled(targets_ready);
   load_selected_target_button_->setEnabled(targets_ready && target_selector_combo_->count() > 0);
@@ -2873,6 +3111,9 @@ void ScoopingPanel::refreshServiceState()
     load_pose_set_client_ && load_pose_set_client_->service_is_ready();
   export_poses_button_->setEnabled(pose_set_save_ready);
   save_pose_set_button_->setEnabled(pose_set_save_ready);
+  const auto selected_set_id = pose_set_combo_->currentData().toString();
+  update_pose_set_button_->setEnabled(
+    pose_set_save_ready && !selected_set_id.isEmpty() && selected_set_id != "default");
   load_pose_set_button_->setEnabled(pose_set_load_ready && pose_set_combo_->count() > 0);
   refresh_pose_sets_button_->setEnabled(pose_set_list_ready);
   if (pose_set_list_ready && pose_set_combo_->count() == 0) {
@@ -3001,6 +3242,127 @@ void ScoopingPanel::resetMotionTuningGeometry()
   setLineEditValue(lift_offset_z_edit_, 0.0, 3);
 }
 
+bool ScoopingPanel::readMotionTuningGeometry(
+  double& offset_x,
+  double& offset_y,
+  double& offset_z,
+  double& sweep_scale,
+  double& pitch_offset_deg,
+  double& lift_offset_z)
+{
+  return readDoubleField(pattern_offset_x_edit_, "Pattern offset X", offset_x) &&
+    readDoubleField(pattern_offset_y_edit_, "Pattern offset Y", offset_y) &&
+    readDoubleField(pattern_offset_z_edit_, "Pattern offset Z", offset_z) &&
+    readDoubleField(sweep_scale_edit_, "Sweep scale", sweep_scale) &&
+    readDoubleField(pitch_offset_edit_, "Pitch offset", pitch_offset_deg) &&
+    readDoubleField(lift_offset_z_edit_, "Lift offset Z", lift_offset_z);
+}
+
+void ScoopingPanel::captureBaseScoopPosesFromLatest()
+{
+  if (!has_scoop_poses_ || latest_scoop_poses_.size() < 5) {
+    has_base_scoop_poses_ = false;
+    base_scoop_poses_.clear();
+    return;
+  }
+  base_scoop_poses_ = latest_scoop_poses_;
+  has_base_scoop_poses_ = true;
+}
+
+void ScoopingPanel::adoptScoopPosesFromMarkerServer(
+  const std::vector<geometry_msgs::msg::Pose>& poses)
+{
+  latest_scoop_poses_ = poses;
+  has_scoop_poses_ = latest_scoop_poses_.size() >= 5;
+  if (!has_scoop_poses_) {
+    has_base_scoop_poses_ = false;
+    base_scoop_poses_.clear();
+    return;
+  }
+
+  double offset_x = 0.0;
+  double offset_y = 0.0;
+  double offset_z = 0.0;
+  double sweep_scale = 1.0;
+  double pitch_offset_deg = 0.0;
+  double lift_offset_z = 0.0;
+  if (!readMotionTuningGeometry(
+        offset_x, offset_y, offset_z, sweep_scale, pitch_offset_deg, lift_offset_z) ||
+      geometry_tuning_is_identity(
+        offset_x, offset_y, offset_z, sweep_scale, pitch_offset_deg, lift_offset_z))
+  {
+    captureBaseScoopPosesFromLatest();
+    return;
+  }
+
+  // Markers show base+tuning; recover base so further slider edits stay relative.
+  base_scoop_poses_ = reverse_manual_pose_adjustments(
+    latest_scoop_poses_,
+    offset_x,
+    offset_y,
+    offset_z,
+    sweep_scale,
+    degrees_to_radians(pitch_offset_deg),
+    lift_offset_z);
+  has_base_scoop_poses_ = base_scoop_poses_.size() >= 5;
+}
+
+void ScoopingPanel::syncScoopMarkersToMotionTuning()
+{
+  if (!scoop_poses_cmd_pub_ || !has_scoop_poses_ || latest_scoop_poses_.size() < 5) {
+    return;
+  }
+  if (!has_base_scoop_poses_ || base_scoop_poses_.size() < 5) {
+    captureBaseScoopPosesFromLatest();
+  }
+  if (!has_base_scoop_poses_) {
+    return;
+  }
+
+  double offset_x = 0.0;
+  double offset_y = 0.0;
+  double offset_z = 0.0;
+  double sweep_scale = 1.0;
+  double pitch_offset_deg = 0.0;
+  double lift_offset_z = 0.0;
+  if (!readMotionTuningGeometry(
+        offset_x, offset_y, offset_z, sweep_scale, pitch_offset_deg, lift_offset_z))
+  {
+    return;
+  }
+
+  const auto display = apply_manual_pose_adjustments(
+    base_scoop_poses_,
+    offset_x,
+    offset_y,
+    offset_z,
+    sweep_scale,
+    degrees_to_radians(pitch_offset_deg),
+    lift_offset_z);
+  latest_scoop_poses_ = display;
+  geometry_msgs::msg::PoseArray msg;
+  msg.header.stamp = node_ ? node_->now() : rclcpp::Time(0, 0, RCL_ROS_TIME);
+  msg.header.frame_id =
+    latest_scoop_frame_id_.empty() ? kScoopTaskFrame : latest_scoop_frame_id_;
+  msg.poses = display;
+  ignore_scoop_pose_echo_ = true;
+  scoop_poses_cmd_pub_->publish(msg);
+  updateScoopEditorsFromSelection();
+
+  // Keep planner geometry at identity so Plan/Execute match the markers.
+  if (scooping_params_client_ && scooping_params_client_->service_is_ready()) {
+    scooping_params_client_->set_parameters(
+      {
+        rclcpp::Parameter("pattern_offset_x", 0.0),
+        rclcpp::Parameter("pattern_offset_y", 0.0),
+        rclcpp::Parameter("pattern_offset_z", 0.0),
+        rclcpp::Parameter("manual_sweep_scale", 1.0),
+        rclcpp::Parameter("manual_pitch_offset_rad", 0.0),
+        rclcpp::Parameter("manual_lift_offset_z", 0.0),
+      });
+  }
+}
+
 bool ScoopingPanel::bakeMotionTuningIntoScoopMarkers(QString& detail)
 {
   detail.clear();
@@ -3010,22 +3372,19 @@ bool ScoopingPanel::bakeMotionTuningIntoScoopMarkers(QString& detail)
   double sweep_scale = 1.0;
   double pitch_offset_deg = 0.0;
   double lift_offset_z = 0.0;
-  if (!readDoubleField(pattern_offset_x_edit_, "Pattern offset X", offset_x) ||
-      !readDoubleField(pattern_offset_y_edit_, "Pattern offset Y", offset_y) ||
-      !readDoubleField(pattern_offset_z_edit_, "Pattern offset Z", offset_z) ||
-      !readDoubleField(sweep_scale_edit_, "Sweep scale", sweep_scale) ||
-      !readDoubleField(pitch_offset_edit_, "Pitch offset", pitch_offset_deg) ||
-      !readDoubleField(lift_offset_z_edit_, "Lift offset Z", lift_offset_z))
+  if (!readMotionTuningGeometry(
+        offset_x, offset_y, offset_z, sweep_scale, pitch_offset_deg, lift_offset_z))
   {
     detail = "Could not read Motion Tuning fields";
     return false;
   }
 
-  const bool identity =
-    std::abs(offset_x) < 1e-9 && std::abs(offset_y) < 1e-9 && std::abs(offset_z) < 1e-9 &&
-    std::abs(sweep_scale - 1.0) < 1e-9 && std::abs(pitch_offset_deg) < 1e-9 &&
-    std::abs(lift_offset_z) < 1e-9;
-  if (identity) {
+  if (geometry_tuning_is_identity(
+        offset_x, offset_y, offset_z, sweep_scale, pitch_offset_deg, lift_offset_z))
+  {
+    if (has_scoop_poses_) {
+      captureBaseScoopPosesFromLatest();
+    }
     return true;
   }
 
@@ -3034,9 +3393,17 @@ bool ScoopingPanel::bakeMotionTuningIntoScoopMarkers(QString& detail)
       "Motion Tuning is non-zero, but scoop markers are not available to bake into the pose set";
     return false;
   }
+  if (!has_base_scoop_poses_ || base_scoop_poses_.size() < 5) {
+    // Fall back: markers may already be live-adjusted; reverse then re-apply once.
+    adoptScoopPosesFromMarkerServer(latest_scoop_poses_);
+  }
+  if (!has_base_scoop_poses_) {
+    detail = "No base scoop poses available to bake Motion Tuning";
+    return false;
+  }
 
   const auto baked = apply_manual_pose_adjustments(
-    latest_scoop_poses_,
+    base_scoop_poses_,
     offset_x,
     offset_y,
     offset_z,
@@ -3044,11 +3411,14 @@ bool ScoopingPanel::bakeMotionTuningIntoScoopMarkers(QString& detail)
     degrees_to_radians(pitch_offset_deg),
     lift_offset_z);
   latest_scoop_poses_ = baked;
+  base_scoop_poses_ = baked;
+  has_base_scoop_poses_ = true;
   geometry_msgs::msg::PoseArray msg;
   msg.header.stamp = node_->now();
   msg.header.frame_id =
     latest_scoop_frame_id_.empty() ? kScoopTaskFrame : latest_scoop_frame_id_;
   msg.poses = baked;
+  ignore_scoop_pose_echo_ = true;
   scoop_poses_cmd_pub_->publish(msg);
   // Do not nest rclcpp::spin_some here — this panel node is already spun by
   // onRosTimer. Callers that need the marker server to apply /scoop_poses_cmd
@@ -3074,7 +3444,9 @@ bool ScoopingPanel::bakeMotionTuningIntoScoopMarkers(QString& detail)
   return true;
 }
 
-void ScoopingPanel::sendSavePoseSetRequest(const QString& bake_detail)
+void ScoopingPanel::sendSavePoseSetRequest(
+  const QString& bake_detail,
+  const QString& overwrite_set_id)
 {
   if (!save_pose_set_client_ || !save_pose_set_client_->service_is_ready()) {
     updatePoseSetStatus("Save pose set service not ready", "#fca5a5");
@@ -3083,9 +3455,11 @@ void ScoopingPanel::sendSavePoseSetRequest(const QString& bake_detail)
   }
   auto request = std::make_shared<SaveScoopPoseSet::Request>();
   request->note = pose_set_note_edit_->text().trimmed().toStdString();
+  request->set_id = overwrite_set_id.toStdString();
   save_pose_set_client_->async_send_request(
     request,
-    [this, bake_detail](rclcpp::Client<SaveScoopPoseSet>::SharedFuture future) {
+    [this, bake_detail, overwrite_set_id](
+      rclcpp::Client<SaveScoopPoseSet>::SharedFuture future) {
       try {
         const auto response = future.get();
         QString message = QString::fromStdString(
@@ -3095,8 +3469,19 @@ void ScoopingPanel::sendSavePoseSetRequest(const QString& bake_detail)
         }
         updatePoseSetStatus(message, response->success ? "#86efac" : "#fca5a5");
         if (response->success) {
+          if (!overwrite_set_id.isEmpty()) {
+            loaded_pose_set_id_ = overwrite_set_id;
+          } else if (!response->set_id.empty()) {
+            loaded_pose_set_id_ = QString::fromStdString(response->set_id);
+          }
           pose_set_note_edit_->clear();
           refreshPoseSetList();
+          if (!loaded_pose_set_id_.isEmpty()) {
+            const int idx = pose_set_combo_->findData(loaded_pose_set_id_);
+            if (idx >= 0) {
+              pose_set_combo_->setCurrentIndex(idx);
+            }
+          }
         }
       } catch (const std::exception& ex) {
         updatePoseSetStatus(QString("Save pose set failed: %1").arg(ex.what()), "#fca5a5");
@@ -3120,14 +3505,48 @@ void ScoopingPanel::onSavePoseSetClicked()
     return;
   }
   if (!bake_detail.isEmpty()) {
-    updatePoseSetStatus(bake_detail + " — saving set…", "#93c5fd");
+    updatePoseSetStatus(bake_detail + " — saving new set…", "#93c5fd");
     // Wait for a couple of onRosTimer spins so the marker server applies the
     // baked /scoop_poses_cmd before SaveScoopPoseSet reads poses_.
-    QTimer::singleShot(350, this, [this, bake_detail]() { sendSavePoseSetRequest(bake_detail); });
+    QTimer::singleShot(350, this, [this, bake_detail]() {
+      sendSavePoseSetRequest(bake_detail, /*overwrite_set_id=*/QString());
+    });
     return;
   }
-  updatePoseSetStatus("Saving scoop pose set…", "#93c5fd");
-  sendSavePoseSetRequest(bake_detail);
+  updatePoseSetStatus("Saving new scoop pose set…", "#93c5fd");
+  sendSavePoseSetRequest(bake_detail, /*overwrite_set_id=*/QString());
+}
+
+void ScoopingPanel::onUpdatePoseSetClicked()
+{
+  if (!save_pose_set_client_ || !save_pose_set_client_->service_is_ready()) {
+    updatePoseSetStatus("Save pose set service not ready", "#fca5a5");
+    refreshServiceState();
+    return;
+  }
+  const auto set_id = pose_set_combo_->currentData().toString();
+  if (set_id.isEmpty() || set_id == "default") {
+    updatePoseSetStatus(
+      "Select an existing non-default pose set to update (use Save New Set for a new one)",
+      "#fca5a5");
+    return;
+  }
+
+  QString bake_detail;
+  if (!bakeMotionTuningIntoScoopMarkers(bake_detail)) {
+    updatePoseSetStatus(bake_detail, "#fca5a5");
+    refreshServiceState();
+    return;
+  }
+  if (!bake_detail.isEmpty()) {
+    updatePoseSetStatus(bake_detail + QString(" — updating “%1”…").arg(set_id), "#93c5fd");
+    QTimer::singleShot(350, this, [this, bake_detail, set_id]() {
+      sendSavePoseSetRequest(bake_detail, set_id);
+    });
+    return;
+  }
+  updatePoseSetStatus(QString("Updating pose set “%1”…").arg(set_id), "#93c5fd");
+  sendSavePoseSetRequest(bake_detail, set_id);
 }
 
 void ScoopingPanel::onLoadPoseSetClicked()
@@ -3156,11 +3575,15 @@ void ScoopingPanel::onLoadPoseSetClicked()
         QString message = QString::fromStdString(
           response->message.empty() ? "Pose set load finished." : response->message);
         if (response->success) {
+          loaded_pose_set_id_ = set_id;
           message += " · Motion Tuning geometry cleared";
           // Never nest rclcpp::spin_some from a service callback — this node is
           // already spun by onRosTimer ("already been added to an executor").
           // Defer UI refresh so the next timer ticks deliver /scoop_poses.
           QTimer::singleShot(200, this, [this, set_id]() {
+            if (has_scoop_poses_) {
+              captureBaseScoopPosesFromLatest();
+            }
             updateScoopEditorsFromSelection();
             publishManualScoopPreviewMarkers();
             showAllScoopMarkers();
@@ -3254,6 +3677,42 @@ void ScoopingPanel::onPlanarModeToggled(bool checked)
   layout_editor_params_client_->set_parameters(
     {rclcpp::Parameter("planar_mode", checked)});
   updateStatus(checked ? "Planar mode enabled" : "6-DOF mode enabled");
+}
+
+void ScoopingPanel::onContainerAlphaChanged()
+{
+  double alpha = 0.35;
+  if (!readDoubleField(container_alpha_edit_, "Container opacity", alpha)) {
+    return;
+  }
+  if (alpha < 0.0) {
+    alpha = 0.0;
+  } else if (alpha > 1.0) {
+    alpha = 1.0;
+  }
+  setLineEditValue(container_alpha_edit_, alpha, 2);
+  applyContainerVisualAlpha(alpha);
+}
+
+void ScoopingPanel::applyContainerVisualAlpha(double alpha)
+{
+  const auto param = rclcpp::Parameter("visual_alpha", alpha);
+  bool sent = false;
+  if (layout_editor_params_client_ && layout_editor_params_client_->service_is_ready()) {
+    layout_editor_params_client_->set_parameters({param});
+    sent = true;
+  }
+  if (container_marker_params_client_ && container_marker_params_client_->service_is_ready()) {
+    container_marker_params_client_->set_parameters({param});
+    sent = true;
+  }
+  if (!sent) {
+    updateStatus(
+      "Container opacity: waiting for cell_layout_editor or container_marker_publisher",
+      "#fca5a5");
+    return;
+  }
+  updateStatus(QString("Container opacity set to %1").arg(alpha, 0, 'f', 2), "#86efac");
 }
 
 void ScoopingPanel::onLayoutObjectSelected(const QString& object_id)

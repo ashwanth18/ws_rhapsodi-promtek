@@ -391,9 +391,9 @@ targets:
   lightsoutPourStart:
     frame_id: base_link
     position:
-      x: 0.4278
-      y: -0.0094
-      z: 0.2502
+      x: 0.37559999999999999
+      y: -0.0094000000000000004
+      z: 0.25019999999999998
     orientation:
       x: 0
       y: 0
@@ -405,6 +405,17 @@ targets:
       x: 0.4229
       y: -0.0123
       z: 0.2064
+    orientation:
+      x: 0
+      y: 0
+      z: 0
+      w: 1
+  lightsoutPourStartV2:
+    frame_id: base_link
+    position:
+      x: 0.37559999999999999
+      y: -0.0094000000000000004
+      z: 0.25019999999999998
     orientation:
       x: 0
       y: 0

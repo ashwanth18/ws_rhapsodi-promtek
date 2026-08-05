@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <robot_common_msgs/msg/cell_layout_active.hpp>
 #include <visualization_msgs/msg/marker.hpp>
@@ -16,9 +17,12 @@ public:
   : Node("container_marker_publisher")
   {
     this->declare_parameter<std::string>("frame_id", "base_link");
+    // Authoring-friendly default: see scoop markers through the mesh.
+    this->declare_parameter<double>("visual_alpha", 0.35);
     scooping_controller::declare_container_scene_parameters(*this);
 
     frame_id_ = this->get_parameter("frame_id").as_string();
+    visual_alpha_ = clamp_alpha(this->get_parameter("visual_alpha").as_double());
     scene_specs_ = scooping_controller::load_container_scene_specs(*this);
 
     marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>(
@@ -35,6 +39,19 @@ public:
         }
       });
 
+    param_cb_ = this->add_on_set_parameters_callback(
+      [this](const std::vector<rclcpp::Parameter>& params) {
+        rcl_interfaces::msg::SetParametersResult result;
+        result.successful = true;
+        for (const auto& param : params) {
+          if (param.get_name() == "visual_alpha") {
+            visual_alpha_ = clamp_alpha(param.as_double());
+            publish_marker();
+          }
+        }
+        return result;
+      });
+
     timer_ = this->create_wall_timer(
       std::chrono::seconds(1),
       [this]() { publish_marker(); });
@@ -43,11 +60,22 @@ public:
   }
 
 private:
-  static visualization_msgs::msg::Marker make_marker(
+  static double clamp_alpha(double alpha)
+  {
+    if (alpha < 0.0) {
+      return 0.0;
+    }
+    if (alpha > 1.0) {
+      return 1.0;
+    }
+    return alpha;
+  }
+
+  visualization_msgs::msg::Marker make_marker(
     const rclcpp::Time& stamp,
     int id,
     const std::string& frame_id,
-    const scooping_controller::ContainerSceneSpec& spec)
+    const scooping_controller::ContainerSceneSpec& spec) const
   {
     visualization_msgs::msg::Marker marker;
     marker.header.frame_id = frame_id;
@@ -73,7 +101,7 @@ private:
     marker.color.r = spec.color[0];
     marker.color.g = spec.color[1];
     marker.color.b = spec.color[2];
-    marker.color.a = 1.0F;
+    marker.color.a = static_cast<float>(visual_alpha_);
     return marker;
   }
 
@@ -93,10 +121,12 @@ private:
   }
 
   std::string frame_id_;
+  double visual_alpha_{0.35};
   std::vector<scooping_controller::ContainerSceneSpec> scene_specs_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_pub_;
   rclcpp::Subscription<robot_common_msgs::msg::CellLayoutActive>::SharedPtr layout_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::Node::OnSetParametersCallbackHandle::SharedPtr param_cb_;
 };
 
 int main(int argc, char** argv)
