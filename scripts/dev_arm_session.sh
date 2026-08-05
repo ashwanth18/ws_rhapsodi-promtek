@@ -34,9 +34,14 @@ export ROBOT_IP="${ROBOT_IP:-169.254.200.200}"
 export ROS_AUTOMATIC_DISCOVERY_RANGE="${ROS_AUTOMATIC_DISCOVERY_RANGE:-SUBNET}"
 export ROS_STATIC_PEERS="${ROS_STATIC_PEERS:-169.254.200.201}"
 export FASTDDS_BUILTIN_TRANSPORTS="${FASTDDS_BUILTIN_TRANSPORTS:-UDPv4}"
+# ROS setup.bash references optional vars (e.g. AMENT_TRACE_SETUP_FILES); with
+# `set -u` that aborts unless we temporarily allow unbound variables.
+set +u
 # shellcheck disable=SC1091
 source /opt/ros/jazzy/setup.bash
+# shellcheck disable=SC1091
 [[ -f "$ROOT/install/setup.bash" ]] && source "$ROOT/install/setup.bash"
+set -u
 if ros2 action list 2>/dev/null | rg -qx '/move_to'; then
   echo "Refusing arm session: /move_to is already advertised locally" >&2
   exit 1

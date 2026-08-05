@@ -15,14 +15,20 @@ export CELL_LAYOUTS_DIR="${CELL_LAYOUTS_DIR:-$ROOT/config/layouts}"
 export ROBOT_TYPE="${ROBOT_TYPE:-$ROBOT}"
 
 # Prefer workspace overlay when built locally.
-if [[ -f "$ROOT/install/setup.bash" ]]; then
+# ROS setup.bash references optional vars (e.g. AMENT_TRACE_SETUP_FILES); with
+# `set -u` that aborts unless we temporarily allow unbound variables.
+source_ros() {
+  set +u
   # shellcheck disable=SC1091
   source /opt/ros/jazzy/setup.bash
-  # shellcheck disable=SC1091
-  source "$ROOT/install/setup.bash"
-elif [[ -f /opt/ros/jazzy/setup.bash ]]; then
-  # shellcheck disable=SC1091
-  source /opt/ros/jazzy/setup.bash
+  if [[ -f "$ROOT/install/setup.bash" ]]; then
+    # shellcheck disable=SC1091
+    source "$ROOT/install/setup.bash"
+  fi
+  set -u
+}
+if [[ -f /opt/ros/jazzy/setup.bash ]]; then
+  source_ros
 else
   echo "ROS 2 Jazzy not found" >&2
   exit 1
