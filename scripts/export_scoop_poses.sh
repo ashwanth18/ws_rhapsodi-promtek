@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Export authored scoop poses into the versioned layout tree
-# (config/layouts/<layout_id>/poses.yaml) with provenance stamps.
+# Save a timestamped scoop pose set under
+# config/layouts/<layout_id>/poses/sets/ (default poses.yaml is never overwritten).
 # Requires a running scooping_marker_server (bench or arm-session).
 # Never commands arm motion.
 set -euo pipefail
 
-echo "Calling /export_scoop_poses (writes config/layouts/<layout_id>/poses.yaml)..."
-ros2 service call /export_scoop_poses std_srvs/srv/Trigger {}
+NOTE="${1:-}"
+echo "Calling /save_scoop_pose_set (timestamped set under poses/sets/; default intact)..."
+ros2 service call /save_scoop_pose_set robot_common_msgs/srv/SaveScoopPoseSet "{note: '${NOTE}'}"

@@ -1,0 +1,10 @@
+# Diagnose each loaded scoop marker: IK reachability vs collision-at-goal.
+---
+bool success
+string summary
+# Marker names in order (approach, contact, scoop, lift, transport_ready)
+string[] marker_names
+# Per marker: ok | no_ik | collision_at_goal | joint_limits | tf_error | unknown
+string[] verdicts
+# Human-readable detail per marker (contact pairs, frame, etc.)
+string[] details

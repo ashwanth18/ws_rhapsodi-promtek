@@ -13,15 +13,19 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QScrollArea>
 #include <QSignalBlocker>
+#include <QTabWidget>
 #include <QVBoxLayout>
 
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <fstream>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
@@ -195,6 +199,25 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
 , preview_hint_label_(new QLabel(this))
 , pour_status_label_(new QLabel(this))
 , pour_metrics_label_(new QLabel(this))
+, layout_status_label_(new QLabel(this))
+, layout_fault_label_(new QLabel(this))
+, layout_object_combo_(new QComboBox(this))
+, catalog_model_combo_(new QComboBox(this))
+, planar_mode_checkbox_(new QCheckBox("Planar mode (XY + yaw)", this))
+, layout_object_id_edit_(new QLineEdit(this))
+, save_layout_button_(new QPushButton("Save Layout", this))
+, reload_layout_button_(new QPushButton("Reload", this))
+, add_layout_object_button_(new QPushButton("Add Object", this))
+, remove_layout_object_button_(new QPushButton("Remove Object", this))
+, capture_touch_button_(new QPushButton("Capture Touch Point", this))
+, fit_touch_button_(new QPushButton("Fit Touch Points", this))
+, check_reachability_button_(new QPushButton("Diagnose Scoop Poses", this))
+, export_poses_button_(new QPushButton("Save Pose Set", this))
+, pose_set_note_edit_(new QLineEdit(this))
+, pose_set_combo_(new QComboBox(this))
+, save_pose_set_button_(new QPushButton("Save Pose Set", this))
+, load_pose_set_button_(new QPushButton("Load Pose Set", this))
+, refresh_pose_sets_button_(new QPushButton("Refresh Sets", this))
 , target_name_edit_(new QLineEdit(this))
 , target_selector_combo_(new QComboBox(this))
 , scoop_marker_combo_(new QComboBox(this))
@@ -280,6 +303,7 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
 , has_scoop_poses_(false)
 , has_target_goal_pose_(false)
 , has_pour_status_(false)
+, layout_preview_active_(false)
 , updating_pose_fields_(false)
 , updating_scoop_pose_fields_(false)
 , current_scoop_focus_index_(-1)
@@ -615,22 +639,104 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   parameterized_layout->addLayout(parameterized_buttons);
   parameterized_box->setLayout(parameterized_layout);
 
+  planar_mode_checkbox_->setChecked(true);
+  layout_object_id_edit_->setPlaceholderText("object_id (optional)");
+  layout_status_label_->setWordWrap(true);
+  layout_fault_label_->setWordWrap(true);
+  layout_status_label_->setText("Layout editor: waiting for /cell_layout/active");
+  layout_fault_label_->setText("Pose fault: none");
+
+  auto* layout_hint = new QLabel(
+    "In RViz toolbar select Interact (mouse+arrows icon), then click-drag the "
+    "container cube/mesh (planar XY+yaw by default). Capture 3 TCP points → Fit → Save Layout.",
+    this);
+  layout_hint->setWordWrap(true);
+
+  auto* layout_object_row = new QHBoxLayout();
+  layout_object_row->addWidget(new QLabel("Object", this));
+  layout_object_row->addWidget(layout_object_combo_, 1);
+  layout_object_row->addWidget(remove_layout_object_button_);
+
+  auto* catalog_row = new QHBoxLayout();
+  catalog_row->addWidget(new QLabel("Catalog", this));
+  catalog_row->addWidget(catalog_model_combo_, 1);
+  catalog_row->addWidget(layout_object_id_edit_);
+  catalog_row->addWidget(add_layout_object_button_);
+
+  auto* layout_actions = new QGridLayout();
+  layout_actions->addWidget(planar_mode_checkbox_, 0, 0, 1, 2);
+  layout_actions->addWidget(capture_touch_button_, 1, 0);
+  layout_actions->addWidget(fit_touch_button_, 1, 1);
+  layout_actions->addWidget(check_reachability_button_, 2, 0);
+  layout_actions->addWidget(save_layout_button_, 2, 1);
+  layout_actions->addWidget(reload_layout_button_, 3, 0, 1, 2);
+
+  pose_set_note_edit_->setPlaceholderText("pose set note (optional)");
+  export_poses_button_->setToolTip(
+    "Save a timestamped pose set under layouts/<id>/poses/sets/. Does not change default poses.yaml.");
+  save_pose_set_button_->setToolTip(export_poses_button_->toolTip());
+  load_pose_set_button_->setToolTip(
+    "Load default (poses.yaml) or a saved set. Does not modify the default seed.");
+  auto* pose_sets_box = make_group_box("Scoop Pose Sets");
+  auto* pose_sets_layout = new QVBoxLayout(pose_sets_box);
+  auto* pose_set_note_row = new QHBoxLayout();
+  pose_set_note_row->addWidget(new QLabel("Note", this));
+  pose_set_note_row->addWidget(pose_set_note_edit_, 1);
+  auto* pose_set_combo_row = new QHBoxLayout();
+  pose_set_combo_row->addWidget(new QLabel("Set", this));
+  pose_set_combo_row->addWidget(pose_set_combo_, 1);
+  pose_set_combo_row->addWidget(refresh_pose_sets_button_);
+  auto* pose_set_buttons = new QHBoxLayout();
+  pose_set_buttons->addWidget(save_pose_set_button_);
+  pose_set_buttons->addWidget(load_pose_set_button_);
+  pose_sets_layout->addLayout(pose_set_note_row);
+  pose_sets_layout->addLayout(pose_set_combo_row);
+  pose_sets_layout->addLayout(pose_set_buttons);
+  export_poses_button_->hide();  // legacy Trigger alias; Save Pose Set is the UI entry point
+
+  auto* layout_tab = new QWidget(this);
+  auto* layout_tab_layout = new QVBoxLayout(layout_tab);
+  layout_tab_layout->addWidget(layout_hint);
+  layout_tab_layout->addLayout(layout_object_row);
+  layout_tab_layout->addLayout(catalog_row);
+  layout_tab_layout->addLayout(layout_actions);
+  layout_tab_layout->addWidget(pose_sets_box);
+  layout_tab_layout->addWidget(layout_status_label_);
+  layout_tab_layout->addWidget(layout_fault_label_);
+  layout_tab_layout->addStretch(1);
+
+  auto* scoop_tab = new QWidget(this);
+  auto* scoop_tab_layout = new QVBoxLayout(scoop_tab);
+  scoop_tab_layout->addWidget(execution_box);
+  scoop_tab_layout->addWidget(scoop_box);
+  scoop_tab_layout->addWidget(parameterized_box);
+  scoop_tab_layout->addStretch(1);
+
+  auto* motion_tab = new QWidget(this);
+  auto* motion_tab_layout = new QVBoxLayout(motion_tab);
+  motion_tab_layout->addWidget(motion_box);
+  motion_tab_layout->addStretch(1);
+
+  auto* targets_tab = new QWidget(this);
+  auto* targets_tab_layout = new QVBoxLayout(targets_tab);
+  targets_tab_layout->addWidget(authoring_box);
+  targets_tab_layout->addWidget(pour_box);
+  targets_tab_layout->addStretch(1);
+
+  auto* tabs = new QTabWidget(this);
+  tabs->addTab(layout_tab, "Cell Layout");
+  tabs->addTab(scoop_tab, "Scoop Motion");
+  tabs->addTab(motion_tab, "Motion Tuning");
+  tabs->addTab(targets_tab, "Targets and Pour");
+
   auto* content_widget = new QWidget(this);
   auto* content_layout = new QVBoxLayout(content_widget);
   content_layout->setContentsMargins(8, 8, 8, 8);
   content_layout->setSpacing(10);
   content_layout->addWidget(title);
   content_layout->addWidget(hint);
-  content_layout->addSpacing(4);
-  content_layout->addWidget(execution_box);
-  content_layout->addWidget(motion_box);
-  content_layout->addWidget(scoop_box);
-  content_layout->addWidget(authoring_box);
-  content_layout->addWidget(pour_box);
-  content_layout->addWidget(parameterized_box);
-  content_layout->addSpacing(4);
+  content_layout->addWidget(tabs, 1);
   content_layout->addWidget(status_label_);
-  content_layout->addStretch(1);
 
   auto* scroll_area = new QScrollArea(this);
   scroll_area->setWidgetResizable(true);
@@ -711,6 +817,23 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
   connect(shift_offset_positive_button_, &QPushButton::clicked, this, &ScoopingPanel::onShiftOffsetPositiveClicked);
   connect(shift_offset_negative_button_, &QPushButton::clicked, this, &ScoopingPanel::onShiftOffsetNegativeClicked);
   connect(zero_offset_button_, &QPushButton::clicked, this, &ScoopingPanel::onZeroOffsetClicked);
+  connect(save_layout_button_, &QPushButton::clicked, this, &ScoopingPanel::onSaveLayoutClicked);
+  connect(reload_layout_button_, &QPushButton::clicked, this, &ScoopingPanel::onReloadLayoutClicked);
+  connect(add_layout_object_button_, &QPushButton::clicked, this, &ScoopingPanel::onAddLayoutObjectClicked);
+  connect(remove_layout_object_button_, &QPushButton::clicked, this, &ScoopingPanel::onRemoveLayoutObjectClicked);
+  connect(capture_touch_button_, &QPushButton::clicked, this, &ScoopingPanel::onCaptureTouchPointClicked);
+  connect(fit_touch_button_, &QPushButton::clicked, this, &ScoopingPanel::onFitTouchPointsClicked);
+  connect(check_reachability_button_, &QPushButton::clicked, this, &ScoopingPanel::onCheckReachabilityClicked);
+  connect(export_poses_button_, &QPushButton::clicked, this, &ScoopingPanel::onExportPosesClicked);
+  connect(save_pose_set_button_, &QPushButton::clicked, this, &ScoopingPanel::onSavePoseSetClicked);
+  connect(load_pose_set_button_, &QPushButton::clicked, this, &ScoopingPanel::onLoadPoseSetClicked);
+  connect(refresh_pose_sets_button_, &QPushButton::clicked, this, &ScoopingPanel::onRefreshPoseSetsClicked);
+  connect(planar_mode_checkbox_, &QCheckBox::toggled, this, &ScoopingPanel::onPlanarModeToggled);
+  connect(
+    layout_object_combo_,
+    &QComboBox::currentTextChanged,
+    this,
+    &ScoopingPanel::onLayoutObjectSelected);
 
   auto preview_manual_tuning = [this]() {
     if (has_scoop_poses_) {
@@ -830,10 +953,23 @@ void ScoopingPanel::onInitialize()
   execute_parameterized_client_ = node_->create_client<Trigger>("/execute_parameterized_scoop");
   execute_continuous_client_ = node_->create_client<Trigger>("/execute_scoop_continuous");
   execute_waypoint_motion_client_ = node_->create_client<Trigger>("/execute_scoop_waypoint_motion");
+  export_poses_client_ = node_->create_client<Trigger>("/export_scoop_poses");
+  save_layout_client_ = node_->create_client<Trigger>("/cell_layout/save_objects");
+  reload_layout_client_ = node_->create_client<Trigger>("/cell_layout/reload_objects");
+  capture_touch_client_ = node_->create_client<Trigger>("/cell_layout/capture_touch_point");
+  fit_touch_client_ = node_->create_client<Trigger>("/cell_layout/fit_touch_points");
+  diagnose_poses_client_ = node_->create_client<DiagnoseScoopPoses>("/diagnose_scoop_poses");
+  save_pose_set_client_ = node_->create_client<SaveScoopPoseSet>("/save_scoop_pose_set");
+  list_pose_sets_client_ = node_->create_client<ListScoopPoseSets>("/list_scoop_pose_sets");
+  load_pose_set_client_ = node_->create_client<LoadScoopPoseSet>("/load_scoop_pose_set");
+  add_layout_object_client_ = node_->create_client<AddLayoutObject>("/cell_layout/add_object");
+  remove_layout_object_client_ = node_->create_client<RemoveLayoutObject>("/cell_layout/remove_object");
   record_target_client_ = node_->create_client<RecordTarget>("/record_target");
   scooping_params_client_ = std::make_shared<rclcpp::AsyncParametersClient>(node_, "/scooping_mtc_node");
   move_to_params_client_ = std::make_shared<rclcpp::AsyncParametersClient>(node_, "/move_to_server");
   record_target_params_client_ = std::make_shared<rclcpp::AsyncParametersClient>(node_, "/target_recorder");
+  layout_editor_params_client_ =
+    std::make_shared<rclcpp::AsyncParametersClient>(node_, "/cell_layout_editor");
   move_to_client_ = rclcpp_action::create_client<MoveTo>(node_, "/move_to");
   scoop_poses_cmd_pub_ = node_->create_publisher<geometry_msgs::msg::PoseArray>(
     "/scoop_poses_cmd",
@@ -899,12 +1035,47 @@ void ScoopingPanel::onInitialize()
       latest_incline_ = msg->data;
       updatePourStatusLabels();
     });
+  layout_active_sub_ = node_->create_subscription<robot_common_msgs::msg::CellLayoutActive>(
+    "/cell_layout/active",
+    rclcpp::QoS(1).transient_local().reliable(),
+    [this](const robot_common_msgs::msg::CellLayoutActive::SharedPtr msg) {
+      layout_preview_active_ = msg->preview;
+      active_layout_scene_yaml_ = msg->scene_yaml_path;
+      const QString mode = msg->preview ? "PREVIEW" : "applied";
+      layout_status_label_->setText(
+        QString("Layout %1 (%2) hash=%3")
+          .arg(QString::fromStdString(msg->layout_id))
+          .arg(mode)
+          .arg(QString::fromStdString(msg->layout_hash)));
+      refreshLayoutObjectList();
+    });
+  layout_status_sub_ = node_->create_subscription<std_msgs::msg::String>(
+    "/cell_layout/editor_status",
+    rclcpp::QoS(1).transient_local().reliable(),
+    [this](const std_msgs::msg::String::SharedPtr msg) {
+      layout_status_label_->setText(QString::fromStdString(msg->data));
+      refreshLayoutObjectList();
+    });
+  layout_fault_sub_ = node_->create_subscription<std_msgs::msg::String>(
+    "/cell_layout/pose_fault",
+    rclcpp::QoS(1).transient_local().reliable(),
+    [this](const std_msgs::msg::String::SharedPtr msg) {
+      layout_fault_label_->setText(
+        msg->data.empty() ?
+          QString("Pose fault: none") :
+          QString("Pose fault: %1").arg(QString::fromStdString(msg->data)));
+    });
+
+  if (const char* catalog = std::getenv("CELL_MODELS_CATALOG")) {
+    catalog_yaml_path_ = catalog;
+  }
 
   ros_timer_->start(150);
   updateStatus("Panel ready.");
   updatePourStatusLabels();
   refreshServiceState();
   refreshTargetsFromYaml();
+  loadCatalogModels();
 }
 
 void ScoopingPanel::onSaveClicked()
@@ -2650,8 +2821,38 @@ void ScoopingPanel::refreshServiceState()
   shift_offset_negative_button_->setEnabled(tuning_ready);
   zero_offset_button_->setEnabled(tuning_ready);
 
+  const bool layout_ready =
+    save_layout_client_ && save_layout_client_->service_is_ready();
+  save_layout_button_->setEnabled(layout_ready);
+  reload_layout_button_->setEnabled(
+    reload_layout_client_ && reload_layout_client_->service_is_ready());
+  add_layout_object_button_->setEnabled(
+    add_layout_object_client_ && add_layout_object_client_->service_is_ready());
+  remove_layout_object_button_->setEnabled(
+    remove_layout_object_client_ && remove_layout_object_client_->service_is_ready());
+  capture_touch_button_->setEnabled(
+    capture_touch_client_ && capture_touch_client_->service_is_ready());
+  fit_touch_button_->setEnabled(
+    fit_touch_client_ && fit_touch_client_->service_is_ready());
+  const bool diagnose_ready =
+    diagnose_poses_client_ && diagnose_poses_client_->service_is_ready();
+  check_reachability_button_->setEnabled(diagnose_ready);
+  const bool pose_set_save_ready =
+    save_pose_set_client_ && save_pose_set_client_->service_is_ready();
+  const bool pose_set_list_ready =
+    list_pose_sets_client_ && list_pose_sets_client_->service_is_ready();
+  const bool pose_set_load_ready =
+    load_pose_set_client_ && load_pose_set_client_->service_is_ready();
+  export_poses_button_->setEnabled(pose_set_save_ready);
+  save_pose_set_button_->setEnabled(pose_set_save_ready);
+  load_pose_set_button_->setEnabled(pose_set_load_ready && pose_set_combo_->count() > 0);
+  refresh_pose_sets_button_->setEnabled(pose_set_list_ready);
+  if (pose_set_list_ready && pose_set_combo_->count() == 0) {
+    refreshPoseSetList();
+  }
+
   service_state_label_->setText(
-    QString("Services: save=%1, load=%2, plan=%3, plan_template=%4, execute=%5, execute_template=%6, continuous=%7, waypoint=%8, move_to=%9, scoop_editor=%10, tuning=%11, targets=%12")
+    QString("Services: save=%1, load=%2, plan=%3, plan_template=%4, execute=%5, execute_template=%6, continuous=%7, waypoint=%8, move_to=%9, scoop_editor=%10, tuning=%11, targets=%12, layout=%13")
       .arg(save_ready ? "ready" : "waiting")
       .arg(load_ready ? "ready" : "waiting")
       .arg(plan_ready ? "ready" : "waiting")
@@ -2663,7 +2864,339 @@ void ScoopingPanel::refreshServiceState()
       .arg(move_ready ? "ready" : "waiting")
       .arg(scoop_edit_ready ? "ready" : "waiting")
       .arg(tuning_ready ? "ready" : "waiting")
-      .arg(targets_ready ? "ready" : "waiting"));
+      .arg(targets_ready ? "ready" : "waiting")
+      .arg(layout_ready ? "ready" : "waiting"));
+}
+
+void ScoopingPanel::sendLayoutTrigger(
+  const QString& action_name,
+  const rclcpp::Client<Trigger>::SharedPtr& client)
+{
+  sendRequest(action_name.toStdString(), client);
+}
+
+void ScoopingPanel::onSaveLayoutClicked()
+{
+  sendLayoutTrigger("Saving layout objects...", save_layout_client_);
+}
+
+void ScoopingPanel::onReloadLayoutClicked()
+{
+  sendLayoutTrigger("Reloading layout objects...", reload_layout_client_);
+}
+
+void ScoopingPanel::onCaptureTouchPointClicked()
+{
+  sendLayoutTrigger("Capturing TCP touch point...", capture_touch_client_);
+}
+
+void ScoopingPanel::onFitTouchPointsClicked()
+{
+  sendLayoutTrigger("Fitting touch points...", fit_touch_client_);
+}
+
+void ScoopingPanel::onCheckReachabilityClicked()
+{
+  if (!diagnose_poses_client_ || !diagnose_poses_client_->service_is_ready()) {
+    updateStatus("Diagnose scoop poses service not ready", "#fca5a5");
+    refreshServiceState();
+    return;
+  }
+
+  updateStatus("Diagnosing scoop poses (IK vs collision)...", "#93c5fd");
+  auto request = std::make_shared<DiagnoseScoopPoses::Request>();
+  diagnose_poses_client_->async_send_request(
+    request,
+    [this](rclcpp::Client<DiagnoseScoopPoses>::SharedFuture future) {
+      try {
+        const auto response = future.get();
+        QString body;
+        const auto count = std::min(
+          {response->marker_names.size(), response->verdicts.size(), response->details.size()});
+        for (std::size_t i = 0; i < count; ++i) {
+          body += QString("%1: %2\n  %3\n")
+                    .arg(QString::fromStdString(response->marker_names[i]))
+                    .arg(QString::fromStdString(response->verdicts[i]))
+                    .arg(QString::fromStdString(response->details[i]));
+        }
+        updateStatus(
+          QString::fromStdString(
+            response->summary.empty() ? "Diagnose finished." : response->summary),
+          response->success ? "#86efac" : "#fca5a5");
+        QMessageBox box(this);
+        box.setIcon(response->success ? QMessageBox::Information : QMessageBox::Warning);
+        box.setWindowTitle("Scoop Pose Diagnose");
+        box.setText(QString::fromStdString(response->summary));
+        box.setDetailedText(body.isEmpty() ? "(no per-marker details)" : body);
+        box.exec();
+      } catch (const std::exception& ex) {
+        updateStatus(QString("Diagnose failed: %1").arg(ex.what()), "#fca5a5");
+      }
+      refreshServiceState();
+    });
+}
+
+void ScoopingPanel::onExportPosesClicked()
+{
+  onSavePoseSetClicked();
+}
+
+void ScoopingPanel::onSavePoseSetClicked()
+{
+  if (!save_pose_set_client_ || !save_pose_set_client_->service_is_ready()) {
+    updateStatus("Save pose set service not ready", "#fca5a5");
+    refreshServiceState();
+    return;
+  }
+  updateStatus("Saving scoop pose set...", "#93c5fd");
+  auto request = std::make_shared<SaveScoopPoseSet::Request>();
+  request->note = pose_set_note_edit_->text().trimmed().toStdString();
+  save_pose_set_client_->async_send_request(
+    request,
+    [this](rclcpp::Client<SaveScoopPoseSet>::SharedFuture future) {
+      try {
+        const auto response = future.get();
+        updateStatus(
+          QString::fromStdString(
+            response->message.empty() ? "Pose set save finished." : response->message),
+          response->success ? "#86efac" : "#fca5a5");
+        if (response->success) {
+          refreshPoseSetList();
+        }
+      } catch (const std::exception& ex) {
+        updateStatus(QString("Save pose set failed: %1").arg(ex.what()), "#fca5a5");
+      }
+      refreshServiceState();
+    });
+}
+
+void ScoopingPanel::onLoadPoseSetClicked()
+{
+  if (!load_pose_set_client_ || !load_pose_set_client_->service_is_ready()) {
+    updateStatus("Load pose set service not ready", "#fca5a5");
+    refreshServiceState();
+    return;
+  }
+  const auto set_id = pose_set_combo_->currentData().toString();
+  if (set_id.isEmpty()) {
+    updateStatus("Select a pose set to load", "#fca5a5");
+    return;
+  }
+  updateStatus(QString("Loading pose set %1...").arg(set_id), "#93c5fd");
+  auto request = std::make_shared<LoadScoopPoseSet::Request>();
+  request->set_id = set_id.toStdString();
+  load_pose_set_client_->async_send_request(
+    request,
+    [this](rclcpp::Client<LoadScoopPoseSet>::SharedFuture future) {
+      try {
+        const auto response = future.get();
+        updateStatus(
+          QString::fromStdString(
+            response->message.empty() ? "Pose set load finished." : response->message),
+          response->success ? "#86efac" : "#fca5a5");
+      } catch (const std::exception& ex) {
+        updateStatus(QString("Load pose set failed: %1").arg(ex.what()), "#fca5a5");
+      }
+      refreshServiceState();
+    });
+}
+
+void ScoopingPanel::onRefreshPoseSetsClicked()
+{
+  refreshPoseSetList();
+}
+
+void ScoopingPanel::refreshPoseSetList()
+{
+  if (!list_pose_sets_client_ || !list_pose_sets_client_->service_is_ready()) {
+    return;
+  }
+  auto request = std::make_shared<ListScoopPoseSets::Request>();
+  list_pose_sets_client_->async_send_request(
+    request,
+    [this](rclcpp::Client<ListScoopPoseSets>::SharedFuture future) {
+      try {
+        const auto response = future.get();
+        if (!response->success) {
+          updateStatus(
+            QString::fromStdString(
+              response->message.empty() ? "Failed to list pose sets" : response->message),
+            "#fca5a5");
+          return;
+        }
+        const QString previous = pose_set_combo_->currentData().toString();
+        QSignalBlocker blocker(pose_set_combo_);
+        pose_set_combo_->clear();
+        const auto count = std::min(
+          {response->set_ids.size(), response->created_at.size(), response->notes.size()});
+        for (std::size_t i = 0; i < count; ++i) {
+          const auto id = QString::fromStdString(response->set_ids[i]);
+          const auto created = QString::fromStdString(response->created_at[i]);
+          const auto note = QString::fromStdString(response->notes[i]);
+          QString label = id;
+          if (!created.isEmpty() || !note.isEmpty()) {
+            label = QString("%1 | %2 | %3")
+                      .arg(id)
+                      .arg(created.isEmpty() ? "-" : created)
+                      .arg(note.isEmpty() ? "-" : note);
+          }
+          pose_set_combo_->addItem(label, id);
+        }
+        const int idx = pose_set_combo_->findData(previous);
+        pose_set_combo_->setCurrentIndex(idx >= 0 ? idx : 0);
+        load_pose_set_button_->setEnabled(
+          load_pose_set_client_ && load_pose_set_client_->service_is_ready() &&
+          pose_set_combo_->count() > 0);
+      } catch (const std::exception& ex) {
+        updateStatus(QString("List pose sets failed: %1").arg(ex.what()), "#fca5a5");
+      }
+    });
+}
+
+void ScoopingPanel::onPlanarModeToggled(bool checked)
+{
+  if (!layout_editor_params_client_ || !layout_editor_params_client_->service_is_ready()) {
+    updateStatus("Layout editor parameters not ready", "#fca5a5");
+    return;
+  }
+  layout_editor_params_client_->set_parameters(
+    {rclcpp::Parameter("planar_mode", checked)});
+  updateStatus(checked ? "Planar mode enabled" : "6-DOF mode enabled");
+}
+
+void ScoopingPanel::onLayoutObjectSelected(const QString& object_id)
+{
+  if (object_id.isEmpty() || !layout_editor_params_client_ ||
+      !layout_editor_params_client_->service_is_ready())
+  {
+    return;
+  }
+  layout_editor_params_client_->set_parameters(
+    {rclcpp::Parameter("selected_object_id", object_id.toStdString())});
+}
+
+void ScoopingPanel::onAddLayoutObjectClicked()
+{
+  if (!add_layout_object_client_ || !add_layout_object_client_->service_is_ready()) {
+    updateStatus("Add layout object service not ready", "#fca5a5");
+    return;
+  }
+  auto request = std::make_shared<AddLayoutObject::Request>();
+  request->model_id = catalog_model_combo_->currentData().toString().toStdString();
+  if (request->model_id.empty()) {
+    request->model_id = catalog_model_combo_->currentText().toStdString();
+  }
+  request->object_id = layout_object_id_edit_->text().trimmed().toStdString();
+  updateStatus("Adding layout object...");
+  add_layout_object_client_->async_send_request(
+    request,
+    [this](rclcpp::Client<AddLayoutObject>::SharedFuture future) {
+      try {
+        const auto response = future.get();
+        updateStatus(
+          QString::fromStdString(response->message),
+          response->success ? "#86efac" : "#fca5a5");
+        if (response->success) {
+          refreshLayoutObjectList();
+        }
+      } catch (const std::exception& ex) {
+        updateStatus(QString("Add failed: %1").arg(ex.what()), "#fca5a5");
+      }
+    });
+}
+
+void ScoopingPanel::onRemoveLayoutObjectClicked()
+{
+  if (!remove_layout_object_client_ || !remove_layout_object_client_->service_is_ready()) {
+    updateStatus("Remove layout object service not ready", "#fca5a5");
+    return;
+  }
+  auto request = std::make_shared<RemoveLayoutObject::Request>();
+  request->object_id = layout_object_combo_->currentText().toStdString();
+  if (request->object_id.empty()) {
+    updateStatus("No object selected to remove", "#fca5a5");
+    return;
+  }
+  updateStatus("Removing layout object...");
+  remove_layout_object_client_->async_send_request(
+    request,
+    [this](rclcpp::Client<RemoveLayoutObject>::SharedFuture future) {
+      try {
+        const auto response = future.get();
+        updateStatus(
+          QString::fromStdString(response->message),
+          response->success ? "#86efac" : "#fca5a5");
+        if (response->success) {
+          refreshLayoutObjectList();
+        }
+      } catch (const std::exception& ex) {
+        updateStatus(QString("Remove failed: %1").arg(ex.what()), "#fca5a5");
+      }
+    });
+}
+
+void ScoopingPanel::loadCatalogModels()
+{
+  catalog_model_combo_->clear();
+  std::string path = catalog_yaml_path_;
+  if (path.empty()) {
+    // Fall back to common authoring paths.
+    const char* home = std::getenv("HOME");
+    const std::vector<std::string> candidates = {
+      "config/models/catalog.yaml",
+      "../config/models/catalog.yaml",
+      home ? std::string(home) + "/ws_rhapsodi-promtek-dev/config/models/catalog.yaml" : "",
+      "/ws/config/models/catalog.yaml",
+    };
+    for (const auto& candidate : candidates) {
+      if (!candidate.empty() && std::ifstream(candidate).good()) {
+        path = candidate;
+        break;
+      }
+    }
+  }
+  if (path.empty()) {
+    catalog_model_combo_->addItem("(catalog missing)");
+    return;
+  }
+  catalog_yaml_path_ = path;
+  try {
+    const auto root = YAML::LoadFile(path);
+    for (const auto& entry : root["models"]) {
+      const auto model_id = entry["model_id"].as<std::string>();
+      const auto display = entry["display_name"] ?
+        entry["display_name"].as<std::string>() : model_id;
+      catalog_model_combo_->addItem(
+        QString::fromStdString(display), QString::fromStdString(model_id));
+    }
+  } catch (const std::exception& ex) {
+    catalog_model_combo_->addItem(QString("(catalog error: %1)").arg(ex.what()));
+  }
+}
+
+void ScoopingPanel::refreshLayoutObjectList()
+{
+  if (active_layout_scene_yaml_.empty()) {
+    return;
+  }
+  const QString previous = layout_object_combo_->currentText();
+  QSignalBlocker blocker(layout_object_combo_);
+  layout_object_combo_->clear();
+  try {
+    const auto root = YAML::LoadFile(active_layout_scene_yaml_);
+    for (const auto& object : root["objects"]) {
+      if (!object["enabled"] || !object["enabled"].as<bool>()) {
+        continue;
+      }
+      layout_object_combo_->addItem(QString::fromStdString(object["id"].as<std::string>()));
+    }
+    const int index = layout_object_combo_->findText(previous);
+    if (index >= 0) {
+      layout_object_combo_->setCurrentIndex(index);
+    }
+  } catch (const std::exception&) {
+    // Keep unknown; editor status will surface load errors.
+  }
 }
 }  // namespace scooping_controller
 

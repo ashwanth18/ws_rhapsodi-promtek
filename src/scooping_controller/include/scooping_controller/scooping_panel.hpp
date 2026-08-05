@@ -7,10 +7,18 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <robot_common_msgs/action/move_to.hpp>
+#include <robot_common_msgs/msg/cell_layout_active.hpp>
 #include <robot_common_msgs/msg/pour_status.hpp>
+#include <robot_common_msgs/srv/add_layout_object.hpp>
+#include <robot_common_msgs/srv/diagnose_scoop_poses.hpp>
+#include <robot_common_msgs/srv/list_scoop_pose_sets.hpp>
+#include <robot_common_msgs/srv/load_scoop_pose_set.hpp>
 #include <robot_common_msgs/srv/record_target.hpp>
+#include <robot_common_msgs/srv/remove_layout_object.hpp>
+#include <robot_common_msgs/srv/save_scoop_pose_set.hpp>
 #include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/int32.hpp>
+#include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/trigger.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 #endif
@@ -23,6 +31,7 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSlider>
+#include <QTabWidget>
 #include <QTimer>
 
 #include <map>
@@ -56,12 +65,31 @@ private Q_SLOTS:
   void onZeroOffsetClicked();
   void onRefreshTargetsClicked();
   void onLoadSelectedTargetClicked();
+  void onSaveLayoutClicked();
+  void onReloadLayoutClicked();
+  void onAddLayoutObjectClicked();
+  void onRemoveLayoutObjectClicked();
+  void onCaptureTouchPointClicked();
+  void onFitTouchPointsClicked();
+  void onCheckReachabilityClicked();
+  void onExportPosesClicked();
+  void onSavePoseSetClicked();
+  void onLoadPoseSetClicked();
+  void onRefreshPoseSetsClicked();
+  void onPlanarModeToggled(bool checked);
+  void onLayoutObjectSelected(const QString& object_id);
   void onRosTimer();
 
 private:
   using Trigger = std_srvs::srv::Trigger;
   using MoveTo = robot_common_msgs::action::MoveTo;
   using RecordTarget = robot_common_msgs::srv::RecordTarget;
+  using AddLayoutObject = robot_common_msgs::srv::AddLayoutObject;
+  using RemoveLayoutObject = robot_common_msgs::srv::RemoveLayoutObject;
+  using DiagnoseScoopPoses = robot_common_msgs::srv::DiagnoseScoopPoses;
+  using SaveScoopPoseSet = robot_common_msgs::srv::SaveScoopPoseSet;
+  using ListScoopPoseSets = robot_common_msgs::srv::ListScoopPoseSets;
+  using LoadScoopPoseSet = robot_common_msgs::srv::LoadScoopPoseSet;
 
   void sendRequest(
     const std::string& action_name,
@@ -150,12 +178,37 @@ private:
   void setLineEditValue(QLineEdit* edit, double value, int decimals);
   void updateStatus(const QString& text, const QString& color = "#e5e7eb");
   void refreshServiceState();
+  void refreshLayoutObjectList();
+  void loadCatalogModels();
+  void sendLayoutTrigger(
+    const QString& action_name,
+    const rclcpp::Client<Trigger>::SharedPtr& client);
+  void refreshPoseSetList();
 
   QLabel* service_state_label_;
   QLabel* status_label_;
   QLabel* preview_hint_label_;
   QLabel* pour_status_label_;
   QLabel* pour_metrics_label_;
+  QLabel* layout_status_label_;
+  QLabel* layout_fault_label_;
+  QComboBox* layout_object_combo_;
+  QComboBox* catalog_model_combo_;
+  QCheckBox* planar_mode_checkbox_;
+  QLineEdit* layout_object_id_edit_;
+  QPushButton* save_layout_button_;
+  QPushButton* reload_layout_button_;
+  QPushButton* add_layout_object_button_;
+  QPushButton* remove_layout_object_button_;
+  QPushButton* capture_touch_button_;
+  QPushButton* fit_touch_button_;
+  QPushButton* check_reachability_button_;
+  QPushButton* export_poses_button_;
+  QLineEdit* pose_set_note_edit_;
+  QComboBox* pose_set_combo_;
+  QPushButton* save_pose_set_button_;
+  QPushButton* load_pose_set_button_;
+  QPushButton* refresh_pose_sets_button_;
   QLineEdit* target_name_edit_;
   QComboBox* target_selector_combo_;
   QComboBox* scoop_marker_combo_;
@@ -248,14 +301,29 @@ private:
   rclcpp::Client<Trigger>::SharedPtr execute_waypoint_motion_client_;
   rclcpp::Client<Trigger>::SharedPtr plan_parameterized_client_;
   rclcpp::Client<Trigger>::SharedPtr execute_parameterized_client_;
+  rclcpp::Client<Trigger>::SharedPtr export_poses_client_;
+  rclcpp::Client<Trigger>::SharedPtr save_layout_client_;
+  rclcpp::Client<Trigger>::SharedPtr reload_layout_client_;
+  rclcpp::Client<Trigger>::SharedPtr capture_touch_client_;
+  rclcpp::Client<Trigger>::SharedPtr fit_touch_client_;
+  rclcpp::Client<DiagnoseScoopPoses>::SharedPtr diagnose_poses_client_;
+  rclcpp::Client<SaveScoopPoseSet>::SharedPtr save_pose_set_client_;
+  rclcpp::Client<ListScoopPoseSets>::SharedPtr list_pose_sets_client_;
+  rclcpp::Client<LoadScoopPoseSet>::SharedPtr load_pose_set_client_;
+  rclcpp::Client<AddLayoutObject>::SharedPtr add_layout_object_client_;
+  rclcpp::Client<RemoveLayoutObject>::SharedPtr remove_layout_object_client_;
   rclcpp::Client<RecordTarget>::SharedPtr record_target_client_;
   rclcpp::AsyncParametersClient::SharedPtr scooping_params_client_;
   rclcpp::AsyncParametersClient::SharedPtr move_to_params_client_;
   rclcpp::AsyncParametersClient::SharedPtr record_target_params_client_;
+  rclcpp::AsyncParametersClient::SharedPtr layout_editor_params_client_;
   rclcpp_action::Client<MoveTo>::SharedPtr move_to_client_;
   rclcpp::Subscription<geometry_msgs::msg::PoseArray>::SharedPtr scoop_poses_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr target_goal_sub_;
   rclcpp::Subscription<robot_common_msgs::msg::PourStatus>::SharedPtr pour_status_sub_;
+  rclcpp::Subscription<robot_common_msgs::msg::CellLayoutActive>::SharedPtr layout_active_sub_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr layout_status_sub_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr layout_fault_sub_;
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr weight_sub_;
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr vibration_sub_;
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr incline_sub_;
@@ -269,11 +337,14 @@ private:
   std::map<std::string, geometry_msgs::msg::PoseStamped> named_targets_;
   std::string latest_scoop_frame_id_;
   std::string targets_yaml_path_;
+  std::string active_layout_scene_yaml_;
+  std::string catalog_yaml_path_;
   geometry_msgs::msg::PoseStamped latest_target_goal_pose_;
   robot_common_msgs::msg::PourStatus latest_pour_status_;
   bool has_scoop_poses_;
   bool has_target_goal_pose_;
   bool has_pour_status_;
+  bool layout_preview_active_;
   bool updating_pose_fields_;
   bool updating_scoop_pose_fields_;
   int current_scoop_focus_index_;

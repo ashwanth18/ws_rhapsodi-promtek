@@ -22,6 +22,13 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/StartWebhookWeightment.srv"
   "srv/RecordTarget.srv"
   "srv/ApplyCellLayout.srv"
+  "srv/PreviewCellLayout.srv"
+  "srv/AddLayoutObject.srv"
+  "srv/RemoveLayoutObject.srv"
+  "srv/DiagnoseScoopPoses.srv"
+  "srv/SaveScoopPoseSet.srv"
+  "srv/ListScoopPoseSets.srv"
+  "srv/LoadScoopPoseSet.srv"
   DEPENDENCIES std_msgs geometry_msgs builtin_interfaces
 )
 

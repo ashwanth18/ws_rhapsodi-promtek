@@ -15,7 +15,10 @@
 #include <control_msgs/action/follow_joint_trajectory.hpp>
 #include <geometry_msgs/msg/pose_array.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <moveit/collision_detection/collision_common.hpp>
 #include <moveit/planning_scene/planning_scene.hpp>
+#include <moveit/robot_model_loader/robot_model_loader.hpp>
+#include <moveit/robot_state/robot_state.hpp>
 #include <moveit/task_constructor/storage.h>
 #include <moveit_task_constructor_msgs/msg/solution.hpp>
 #include <moveit/task_constructor/solvers.h>
@@ -27,9 +30,15 @@
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <robot_common_msgs/action/move_to.hpp>
 #include <robot_common_msgs/msg/cell_layout_active.hpp>
+#include <robot_common_msgs/srv/diagnose_scoop_poses.hpp>
+#include <sensor_msgs/msg/joint_state.hpp>
 #include <std_msgs/msg/float64.hpp>
 #include <std_srvs/srv/trigger.hpp>
 #include <tf2/LinearMath/Quaternion.h>
+#include <tf2_eigen/tf2_eigen.hpp>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
 #include <trajectory_msgs/msg/joint_trajectory.hpp>
 
 namespace mtc = moveit::task_constructor;
@@ -105,6 +114,16 @@ public:
       "/scoop_poses",
       rclcpp::QoS(1).transient_local(),
       std::bind(&ScoopingMtcNode::handle_pose_array, this, std::placeholders::_1));
+    joint_state_sub_ = this->create_subscription<sensor_msgs::msg::JointState>(
+      "/joint_states",
+      rclcpp::SensorDataQoS(),
+      [this](const sensor_msgs::msg::JointState::SharedPtr msg) {
+        std::scoped_lock<std::mutex> lock(joint_state_mutex_);
+        latest_joint_state_ = msg;
+      });
+
+    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
     plan_srv_ = this->create_service<std_srvs::srv::Trigger>(
       "/plan_scoop",
@@ -132,6 +151,9 @@ public:
     execute_waypoint_motion_srv_ = this->create_service<std_srvs::srv::Trigger>(
       "/execute_scoop_waypoint_motion",
       std::bind(&ScoopingMtcNode::handle_execute_waypoint_motion, this, std::placeholders::_1, std::placeholders::_2));
+    diagnose_srv_ = this->create_service<robot_common_msgs::srv::DiagnoseScoopPoses>(
+      "/diagnose_scoop_poses",
+      std::bind(&ScoopingMtcNode::handle_diagnose, this, std::placeholders::_1, std::placeholders::_2));
     action_callback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
     trajectory_client_ = rclcpp_action::create_client<FollowJointTrajectory>(
       this, trajectory_action_server(), action_callback_group_);
@@ -219,6 +241,199 @@ private:
       response->message =
         "Waypoint-style scoop executed: MoveTo(approach) + waypoint path(contact,scoop,lift) + MoveTo(transport_ready)";
     }
+  }
+
+  void handle_diagnose(
+    const std::shared_ptr<robot_common_msgs::srv::DiagnoseScoopPoses::Request> /*request*/,
+    std::shared_ptr<robot_common_msgs::srv::DiagnoseScoopPoses::Response> response)
+  {
+    diagnose_poses(*response);
+  }
+
+  void diagnose_poses(robot_common_msgs::srv::DiagnoseScoopPoses::Response& response)
+  {
+    static const std::vector<std::string> kMarkerNames = {
+      "approach", "contact", "scoop", "lift", "transport_ready"};
+
+    std::vector<geometry_msgs::msg::Pose> poses_copy;
+    std::string frame_id_copy;
+    {
+      std::scoped_lock<std::mutex> lock(poses_mutex_);
+      poses_copy = latest_poses_;
+      frame_id_copy = latest_frame_id_.empty() ? frame_id() : latest_frame_id_;
+    }
+    if (poses_copy.size() != kMarkerNames.size()) {
+      response.success = false;
+      response.summary =
+        "Expected exactly 5 scoop poses (approach, contact, scoop, lift, transport_ready); got " +
+        std::to_string(poses_copy.size());
+      return;
+    }
+
+    apply_pattern_offset(poses_copy);
+
+    robot_model_loader::RobotModelLoader loader(shared_from_this(), "robot_description");
+    const auto model = loader.getModel();
+    if (!model) {
+      response.success = false;
+      response.summary = "Failed to load robot_description for scoop diagnosis";
+      return;
+    }
+    const auto* jmg = model->getJointModelGroup(group());
+    if (!jmg) {
+      response.success = false;
+      response.summary = "Planning group '" + group() + "' not found in robot model";
+      return;
+    }
+
+    auto scene = std::make_shared<planning_scene::PlanningScene>(model);
+    for (const auto& object : scooping_controller::make_container_collision_objects(
+           planning_scene_frame_id(), container_scene_specs_))
+    {
+      if (!scene->processCollisionObjectMsg(object)) {
+        RCLCPP_WARN(
+          this->get_logger(),
+          "Could not add collision object '%s' to diagnose scene",
+          object.id.c_str());
+      }
+    }
+
+    moveit::core::RobotState seed(model);
+    seed.setToDefaultValues();
+    {
+      std::scoped_lock<std::mutex> lock(joint_state_mutex_);
+      if (latest_joint_state_) {
+        seed.setVariablePositions(latest_joint_state_->name, latest_joint_state_->position);
+        seed.update();
+      }
+    }
+
+    int ok_count = 0;
+    int no_ik_count = 0;
+    int collision_count = 0;
+    int other_count = 0;
+
+    for (std::size_t i = 0; i < poses_copy.size(); ++i) {
+      const auto& name = kMarkerNames[i];
+      response.marker_names.push_back(name);
+
+      geometry_msgs::msg::PoseStamped stamped_in;
+      stamped_in.header.stamp = this->now();
+      stamped_in.header.frame_id = frame_id_copy;
+      stamped_in.pose = poses_copy[i];
+
+      geometry_msgs::msg::PoseStamped stamped_out;
+      try {
+        stamped_out = tf_buffer_->transform(
+          stamped_in, planning_scene_frame_id(), tf2::durationFromSec(1.0));
+      } catch (const tf2::TransformException& ex) {
+        response.verdicts.push_back("tf_error");
+        response.details.push_back(
+          std::string("TF ") + frame_id_copy + " -> " + planning_scene_frame_id() +
+          " failed: " + ex.what());
+        ++other_count;
+        continue;
+      }
+
+      Eigen::Isometry3d target = Eigen::Isometry3d::Identity();
+      target.translation() = Eigen::Vector3d(
+        stamped_out.pose.position.x,
+        stamped_out.pose.position.y,
+        stamped_out.pose.position.z);
+      target.linear() = Eigen::Quaterniond(
+        stamped_out.pose.orientation.w,
+        stamped_out.pose.orientation.x,
+        stamped_out.pose.orientation.y,
+        stamped_out.pose.orientation.z)
+                          .normalized()
+                          .toRotationMatrix();
+
+      moveit::core::RobotState state = seed;
+      bool ik_ok = false;
+      for (int attempt = 0; attempt < 8 && !ik_ok; ++attempt) {
+        if (attempt > 0) {
+          state.setToRandomPositions(jmg);
+          state.update();
+        }
+        ik_ok = state.setFromIK(jmg, target, ik_frame(), 0.15);
+        if (ik_ok) {
+          state.update();
+        }
+      }
+
+      if (!ik_ok) {
+        response.verdicts.push_back("no_ik");
+        std::ostringstream detail;
+        detail << "No IK for " << ik_frame() << " at "
+               << planning_scene_frame_id() << " xyz=["
+               << stamped_out.pose.position.x << ", "
+               << stamped_out.pose.position.y << ", "
+               << stamped_out.pose.position.z
+               << "] (pattern offsets applied). Pose/orientation unreachable.";
+        response.details.push_back(detail.str());
+        ++no_ik_count;
+        RCLCPP_WARN(this->get_logger(), "[diagnose] %s: no_ik", name.c_str());
+        continue;
+      }
+
+      if (!state.satisfiesBounds(jmg)) {
+        response.verdicts.push_back("joint_limits");
+        response.details.push_back("IK found but joint limits violated for group '" + group() + "'");
+        ++other_count;
+        RCLCPP_WARN(this->get_logger(), "[diagnose] %s: joint_limits", name.c_str());
+        continue;
+      }
+
+      collision_detection::CollisionRequest creq;
+      collision_detection::CollisionResult cres;
+      creq.group_name = group();
+      creq.contacts = true;
+      creq.max_contacts = 8;
+      scene->checkCollision(creq, cres, state);
+      if (cres.collision) {
+        std::ostringstream detail;
+        detail << "IK ok, but goal state collides. Contacts:";
+        std::size_t shown = 0;
+        for (const auto& contact : cres.contacts) {
+          detail << " [" << contact.first.first << "↔" << contact.first.second << "]";
+          if (++shown >= 5) {
+            break;
+          }
+        }
+        if (cres.contacts.empty()) {
+          detail << " (no contact pairs reported)";
+        }
+        response.verdicts.push_back("collision_at_goal");
+        response.details.push_back(detail.str());
+        ++collision_count;
+        RCLCPP_WARN(this->get_logger(), "[diagnose] %s: collision_at_goal", name.c_str());
+        continue;
+      }
+
+      response.verdicts.push_back("ok");
+      std::ostringstream detail;
+      detail << "IK ok, no collision at goal in " << planning_scene_frame_id()
+             << " xyz=[" << stamped_out.pose.position.x << ", "
+             << stamped_out.pose.position.y << ", "
+             << stamped_out.pose.position.z << "]";
+      response.details.push_back(detail.str());
+      ++ok_count;
+      RCLCPP_INFO(this->get_logger(), "[diagnose] %s: ok", name.c_str());
+    }
+
+    std::ostringstream summary;
+    summary << "Scoop pose diagnose: ok=" << ok_count
+            << " no_ik=" << no_ik_count
+            << " collision_at_goal=" << collision_count
+            << " other=" << other_count
+            << ". pattern_offset_y="
+            << this->get_parameter("pattern_offset_y").as_double() << " m.";
+    for (std::size_t i = 0; i < response.marker_names.size(); ++i) {
+      summary << " | " << response.marker_names[i] << "=" << response.verdicts[i];
+    }
+    response.summary = summary.str();
+    response.success = (no_ik_count == 0 && collision_count == 0 && other_count == 0);
+    RCLCPP_INFO(this->get_logger(), "%s", response.summary.c_str());
   }
 
   void plan_only(
@@ -1281,13 +1496,20 @@ private:
   rclcpp::Subscription<robot_common_msgs::msg::CellLayoutActive>::SharedPtr layout_sub_;
   std::string latest_frame_id_;
 
+  std::mutex joint_state_mutex_;
+  sensor_msgs::msg::JointState::SharedPtr latest_joint_state_;
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+
   rclcpp::Subscription<geometry_msgs::msg::PoseArray>::SharedPtr pose_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr plan_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr plan_parameterized_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr execute_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr execute_parameterized_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr execute_continuous_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr execute_waypoint_motion_srv_;
+  rclcpp::Service<robot_common_msgs::srv::DiagnoseScoopPoses>::SharedPtr diagnose_srv_;
   rclcpp::CallbackGroup::SharedPtr action_callback_group_;
   rclcpp_action::Client<FollowJointTrajectory>::SharedPtr trajectory_client_;
   rclcpp_action::Client<MoveTo>::SharedPtr move_to_client_;

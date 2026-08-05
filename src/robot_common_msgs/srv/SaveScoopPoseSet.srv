@@ -1,0 +1,8 @@
+# Save a timestamped scoop pose set under layouts/<layout>/poses/sets/.
+# Does not overwrite the layout default poses.yaml.
+string note
+---
+bool success
+string message
+string set_id
+string path

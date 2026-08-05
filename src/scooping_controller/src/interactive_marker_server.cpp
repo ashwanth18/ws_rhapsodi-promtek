@@ -2,10 +2,13 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -15,6 +18,9 @@
 #include <interactive_markers/interactive_marker_server.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <robot_common_msgs/msg/cell_layout_active.hpp>
+#include <robot_common_msgs/srv/list_scoop_pose_sets.hpp>
+#include <robot_common_msgs/srv/load_scoop_pose_set.hpp>
+#include <robot_common_msgs/srv/save_scoop_pose_set.hpp>
 #include <rosidl_runtime_cpp/message_initialization.hpp>
 #include <std_msgs/msg/int32.hpp>
 #include <std_msgs/msg/string.hpp>
@@ -42,7 +48,66 @@ constexpr double kTcpOffsetY = 0.0;
 constexpr double kTcpOffsetZ = -0.09356;
 constexpr char kDefaultGoalFrame[] = "base_link";
 constexpr char kDefaultScoopFrame[] = "scooping_container_frame";
-constexpr char kDefaultTaskContainerId[] = "scooping_container";
+constexpr char kDefaultTaskContainerId[] = "rs6";
+constexpr char kDefaultPoseSetId[] = "default";
+
+std::string utc_timestamp_compact()
+{
+  const auto now = std::chrono::system_clock::now();
+  const std::time_t t = std::chrono::system_clock::to_time_t(now);
+  std::tm tm{};
+  gmtime_r(&t, &tm);
+  char buf[32];
+  std::strftime(buf, sizeof(buf), "%Y%m%dT%H%M%SZ", &tm);
+  return buf;
+}
+
+std::string utc_iso8601()
+{
+  const auto now = std::chrono::system_clock::now();
+  const std::time_t t = std::chrono::system_clock::to_time_t(now);
+  std::tm tm{};
+  gmtime_r(&t, &tm);
+  char buf[32];
+  std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm);
+  return buf;
+}
+
+std::string sanitize_pose_set_note(const std::string& note)
+{
+  std::string out;
+  out.reserve(note.size());
+  for (char ch : note) {
+    if (std::isalnum(static_cast<unsigned char>(ch))) {
+      out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+    } else if (ch == '-' || ch == '_' || ch == ' ') {
+      if (out.empty() || out.back() == '-') {
+        continue;
+      }
+      out.push_back('-');
+    }
+    if (out.size() >= 40U) {
+      break;
+    }
+  }
+  while (!out.empty() && out.back() == '-') {
+    out.pop_back();
+  }
+  return out;
+}
+
+bool is_safe_pose_set_id(const std::string& set_id)
+{
+  if (set_id.empty() || set_id == "." || set_id == ".." ||
+      set_id.find('/') != std::string::npos ||
+      set_id.find('\\') != std::string::npos)
+  {
+    return false;
+  }
+  return std::all_of(set_id.begin(), set_id.end(), [](unsigned char ch) {
+    return std::isalnum(ch) || ch == '-' || ch == '_' || ch == 'T' || ch == 'Z';
+  });
+}
 
 struct MarkerSeed
 {
@@ -332,6 +397,27 @@ public:
     export_srv_ = this->create_service<std_srvs::srv::Trigger>(
       "/export_scoop_poses",
       std::bind(&ScoopingMarkerServer::handle_export_request, this, std::placeholders::_1, std::placeholders::_2));
+    save_pose_set_srv_ = this->create_service<robot_common_msgs::srv::SaveScoopPoseSet>(
+      "/save_scoop_pose_set",
+      std::bind(
+        &ScoopingMarkerServer::handle_save_pose_set_request,
+        this,
+        std::placeholders::_1,
+        std::placeholders::_2));
+    list_pose_sets_srv_ = this->create_service<robot_common_msgs::srv::ListScoopPoseSets>(
+      "/list_scoop_pose_sets",
+      std::bind(
+        &ScoopingMarkerServer::handle_list_pose_sets_request,
+        this,
+        std::placeholders::_1,
+        std::placeholders::_2));
+    load_pose_set_srv_ = this->create_service<robot_common_msgs::srv::LoadScoopPoseSet>(
+      "/load_scoop_pose_set",
+      std::bind(
+        &ScoopingMarkerServer::handle_load_pose_set_request,
+        this,
+        std::placeholders::_1,
+        std::placeholders::_2));
 
     init_timer_ = this->create_wall_timer(
       std::chrono::milliseconds(0),
@@ -713,34 +799,89 @@ private:
     const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response)
   {
-    response->success = save_poses_to_yaml(poses_yaml_path_, response->message);
-    update_status(response->message);
+    std::string set_id;
+    std::string path;
+    response->success = save_pose_set(/*note=*/"", response->message, set_id, path);
+    update_status(
+      response->message,
+      response->success ? std::array<float, 3>{0.75f, 0.95f, 0.75f}
+                        : std::array<float, 3>{0.95f, 0.45f, 0.45f});
   }
 
   void handle_load_request(
     const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response)
   {
-    response->success = load_poses_from_yaml(
-      poses_yaml_path_, response->message, /*strict_authored_in=*/true);
-    update_status(response->message);
+    // Prefer the device-local cache; if missing/refused, reseed from the
+    // versioned layout poses so Load picks up repo edits.
+    bool loaded = false;
+    if (std::filesystem::exists(poses_yaml_path_)) {
+      loaded = load_poses_from_yaml(
+        poses_yaml_path_, response->message, /*strict_authored_in=*/true);
+    } else {
+      response->message = "Device-local poses not found: " + poses_yaml_path_;
+    }
+    if (!loaded && !seed_poses_yaml_path_.empty() &&
+        std::filesystem::exists(seed_poses_yaml_path_))
+    {
+      loaded = load_poses_from_yaml(
+        seed_poses_yaml_path_, response->message, /*strict_authored_in=*/false);
+      if (loaded) {
+        std::string save_message;
+        if (save_poses_to_yaml(poses_yaml_path_, save_message)) {
+          response->message =
+            "Reseeded from versioned layout poses: " + response->message;
+        } else {
+          RCLCPP_WARN(this->get_logger(), "%s", save_message.c_str());
+        }
+      }
+    }
+    response->success = loaded;
+    update_status(
+      response->message,
+      loaded ? std::array<float, 3>{0.75f, 0.95f, 0.75f}
+             : std::array<float, 3>{0.95f, 0.45f, 0.45f});
   }
 
   void handle_export_request(
     const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response)
   {
-    const auto layout_id = this->get_parameter("layout_id").as_string();
-    if (layouts_dir_.empty() || layout_id.empty()) {
-      response->success = false;
-      response->message =
-        "export_scoop_poses requires layouts_dir and an active layout_id";
-      update_status(response->message, {0.95f, 0.45f, 0.45f});
-      return;
-    }
-    const auto export_path =
-      (std::filesystem::path(layouts_dir_) / layout_id / "poses.yaml").string();
-    response->success = save_poses_to_yaml(export_path, response->message);
+    // Export no longer overwrites layout poses.yaml; it creates a timestamped set.
+    std::string set_id;
+    std::string path;
+    response->success = save_pose_set(/*note=*/"export", response->message, set_id, path);
+    update_status(
+      response->message,
+      response->success ? std::array<float, 3>{0.75f, 0.95f, 0.75f}
+                        : std::array<float, 3>{0.95f, 0.45f, 0.45f});
+  }
+
+  void handle_save_pose_set_request(
+    const std::shared_ptr<robot_common_msgs::srv::SaveScoopPoseSet::Request> request,
+    std::shared_ptr<robot_common_msgs::srv::SaveScoopPoseSet::Response> response)
+  {
+    response->success = save_pose_set(
+      request->note, response->message, response->set_id, response->path);
+    update_status(
+      response->message,
+      response->success ? std::array<float, 3>{0.75f, 0.95f, 0.75f}
+                        : std::array<float, 3>{0.95f, 0.45f, 0.45f});
+  }
+
+  void handle_list_pose_sets_request(
+    const std::shared_ptr<robot_common_msgs::srv::ListScoopPoseSets::Request> /*request*/,
+    std::shared_ptr<robot_common_msgs::srv::ListScoopPoseSets::Response> response)
+  {
+    response->success = list_pose_sets(
+      response->message, response->set_ids, response->created_at, response->notes);
+  }
+
+  void handle_load_pose_set_request(
+    const std::shared_ptr<robot_common_msgs::srv::LoadScoopPoseSet::Request> request,
+    std::shared_ptr<robot_common_msgs::srv::LoadScoopPoseSet::Response> response)
+  {
+    response->success = load_pose_set(request->set_id, response->message);
     update_status(
       response->message,
       response->success ? std::array<float, 3>{0.75f, 0.95f, 0.75f}
@@ -776,7 +917,18 @@ private:
       rclcpp::Parameter("seed_poses_yaml", seed_poses_yaml_path_)});
   }
 
-  bool save_poses_to_yaml(const std::string& path, std::string& message)
+  std::filesystem::path pose_sets_dir() const
+  {
+    const auto layout_id = this->get_parameter("layout_id").as_string();
+    return std::filesystem::path(layouts_dir_) / layout_id / "poses" / "sets";
+  }
+
+  bool save_poses_to_yaml(
+    const std::string& path,
+    std::string& message,
+    const std::string& set_id = "",
+    const std::string& created_at = "",
+    const std::string& note = "")
   {
     try {
       if (path.empty()) {
@@ -796,6 +948,15 @@ private:
       root["container_spec_hash"] = active_layout_hash_;
       root["authored_in"] = this->get_parameter("authored_in").as_string();
       root["robot_key"] = this->get_parameter("robot_key").as_string();
+      if (!set_id.empty()) {
+        root["set_id"] = set_id;
+      }
+      if (!created_at.empty()) {
+        root["created_at"] = created_at;
+      }
+      if (!note.empty() || !set_id.empty()) {
+        root["note"] = note;
+      }
       YAML::Node markers(YAML::NodeType::Sequence);
       for (std::size_t i = 0; i < seeds_.size(); ++i) {
         YAML::Node entry;
@@ -825,6 +986,153 @@ private:
       message = std::string("Failed to save scoop poses: ") + ex.what();
       return false;
     }
+  }
+
+  bool save_pose_set(
+    const std::string& note,
+    std::string& message,
+    std::string& set_id,
+    std::string& path)
+  {
+    const auto layout_id = this->get_parameter("layout_id").as_string();
+    if (layouts_dir_.empty() || layout_id.empty()) {
+      message = "Saving a pose set requires layouts_dir and an active layout_id";
+      return false;
+    }
+    if (poses_.size() != seeds_.size()) {
+      message = "Scoop poses are not initialized";
+      return false;
+    }
+
+    const auto stamp = utc_timestamp_compact();
+    const auto sanitized = sanitize_pose_set_note(note);
+    set_id = sanitized.empty() ? stamp : (stamp + "_" + sanitized);
+    const auto sets_dir = pose_sets_dir();
+    std::error_code ec;
+    std::filesystem::create_directories(sets_dir, ec);
+    if (ec) {
+      message = "Failed to create pose sets directory: " + sets_dir.string() + " (" + ec.message() + ")";
+      return false;
+    }
+    path = (sets_dir / (set_id + ".yaml")).string();
+    const auto created_at = utc_iso8601();
+    if (!save_poses_to_yaml(path, message, set_id, created_at, note)) {
+      return false;
+    }
+
+    // Refresh device working cache for session continuity; never touch poses.yaml.
+    std::string cache_message;
+    if (!save_poses_to_yaml(poses_yaml_path_, cache_message)) {
+      RCLCPP_WARN(this->get_logger(), "%s", cache_message.c_str());
+    }
+    message = "Saved pose set '" + set_id + "' to " + path +
+      " (default poses.yaml unchanged)";
+    return true;
+  }
+
+  bool list_pose_sets(
+    std::string& message,
+    std::vector<std::string>& set_ids,
+    std::vector<std::string>& created_at,
+    std::vector<std::string>& notes)
+  {
+    set_ids.clear();
+    created_at.clear();
+    notes.clear();
+
+    const auto layout_id = this->get_parameter("layout_id").as_string();
+    if (layouts_dir_.empty() || layout_id.empty()) {
+      message = "Listing pose sets requires layouts_dir and an active layout_id";
+      return false;
+    }
+
+    set_ids.push_back(kDefaultPoseSetId);
+    created_at.push_back("");
+    notes.push_back("layout default (poses.yaml)");
+
+    const auto sets_dir = pose_sets_dir();
+    if (std::filesystem::exists(sets_dir) && std::filesystem::is_directory(sets_dir)) {
+      std::vector<std::filesystem::directory_entry> entries;
+      for (const auto& entry : std::filesystem::directory_iterator(sets_dir)) {
+        if (entry.is_regular_file() && entry.path().extension() == ".yaml") {
+          entries.push_back(entry);
+        }
+      }
+      std::sort(
+        entries.begin(), entries.end(),
+        [](const std::filesystem::directory_entry& a,
+           const std::filesystem::directory_entry& b) {
+          return a.path().filename().string() > b.path().filename().string();
+        });
+      for (const auto& entry : entries) {
+        const auto stem = entry.path().stem().string();
+        std::string created;
+        std::string note;
+        try {
+          const auto root = YAML::LoadFile(entry.path().string());
+          if (root["created_at"]) {
+            created = root["created_at"].as<std::string>();
+          }
+          if (root["note"]) {
+            note = root["note"].as<std::string>();
+          }
+        } catch (const std::exception& ex) {
+          RCLCPP_WARN(
+            this->get_logger(),
+            "Could not read pose set metadata from %s: %s",
+            entry.path().c_str(),
+            ex.what());
+        }
+        set_ids.push_back(stem);
+        created_at.push_back(created);
+        notes.push_back(note);
+      }
+    }
+
+    message = "Found " + std::to_string(set_ids.size()) + " pose set(s) including default";
+    return true;
+  }
+
+  bool load_pose_set(const std::string& set_id, std::string& message)
+  {
+    const auto layout_id = this->get_parameter("layout_id").as_string();
+    if (layouts_dir_.empty() || layout_id.empty()) {
+      message = "Loading a pose set requires layouts_dir and an active layout_id";
+      return false;
+    }
+    if (set_id.empty()) {
+      message = "Pose set id is empty";
+      return false;
+    }
+
+    std::string path;
+    if (set_id == kDefaultPoseSetId) {
+      path = seed_poses_yaml_path_;
+      if (path.empty() || !std::filesystem::exists(path)) {
+        message = "Default poses.yaml not found for layout " + layout_id;
+        return false;
+      }
+    } else {
+      if (!is_safe_pose_set_id(set_id)) {
+        message = "Invalid pose set id";
+        return false;
+      }
+      path = (pose_sets_dir() / (set_id + ".yaml")).string();
+      if (!std::filesystem::exists(path)) {
+        message = "Pose set not found: " + path;
+        return false;
+      }
+    }
+
+    if (!load_poses_from_yaml(path, message, /*strict_authored_in=*/false)) {
+      return false;
+    }
+    std::string cache_message;
+    if (!save_poses_to_yaml(poses_yaml_path_, cache_message)) {
+      RCLCPP_WARN(this->get_logger(), "%s", cache_message.c_str());
+    }
+    message = "Loaded pose set '" + set_id + "' from " + path;
+    return true;
   }
 
   bool seed_startup_poses(std::string& message)
@@ -1146,6 +1454,9 @@ private:
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr save_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr load_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr export_srv_;
+  rclcpp::Service<robot_common_msgs::srv::SaveScoopPoseSet>::SharedPtr save_pose_set_srv_;
+  rclcpp::Service<robot_common_msgs::srv::ListScoopPoseSets>::SharedPtr list_pose_sets_srv_;
+  rclcpp::Service<robot_common_msgs::srv::LoadScoopPoseSet>::SharedPtr load_pose_set_srv_;
   std::vector<geometry_msgs::msg::Pose> poses_;
 };
 

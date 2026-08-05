@@ -28,9 +28,12 @@ find_package(rclcpp_action REQUIRED)
 find_package(robot_common_msgs REQUIRED)
 find_package(rviz_common REQUIRED)
 find_package(shape_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(tf2 REQUIRED)
+find_package(tf2_eigen REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
@@ -99,9 +102,14 @@ ament_target_dependencies(
   rclcpp
   rclcpp_action
   robot_common_msgs
+  sensor_msgs
   shape_msgs
   std_msgs
   std_srvs
+  tf2
+  tf2_eigen
+  tf2_geometry_msgs
+  tf2_ros
 )
 target_link_libraries(scooping_mtc_node yaml-cpp)
 
@@ -168,6 +176,29 @@ ament_target_dependencies(
 )
 target_link_libraries(cell_layout_manager yaml-cpp)
 
+add_executable(cell_layout_editor src/cell_layout_editor.cpp)
+target_compile_features(cell_layout_editor PUBLIC cxx_std_17)
+target_include_directories(cell_layout_editor PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+  ${EIGEN3_INCLUDE_DIRS})
+ament_target_dependencies(
+  cell_layout_editor
+  geometric_shapes
+  geometry_msgs
+  interactive_markers
+  moveit_msgs
+  rclcpp
+  robot_common_msgs
+  shape_msgs
+  std_msgs
+  std_srvs
+  tf2
+  tf2_ros
+  visualization_msgs
+)
+target_link_libraries(cell_layout_editor yaml-cpp)
+
 install(
   TARGETS
     scooping_marker_server
@@ -176,6 +207,7 @@ install(
     planning_scene_collision_publisher
     scooping_task_frame_publisher
     cell_layout_manager
+    cell_layout_editor
   DESTINATION lib/${PROJECT_NAME}
 )
 

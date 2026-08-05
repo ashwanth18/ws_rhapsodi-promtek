@@ -1,0 +1,8 @@
+# List available scoop pose sets for the active layout.
+# Always includes synthetic set_id "default" first (poses.yaml).
+---
+bool success
+string message
+string[] set_ids
+string[] created_at
+string[] notes

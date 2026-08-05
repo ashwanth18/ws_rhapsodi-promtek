@@ -1,0 +1,5 @@
+# Load a scoop pose set by id ("default" or a sets/ filename stem).
+string set_id
+---
+bool success
+string message
