@@ -45,4 +45,5 @@ exec ros2 launch scooping_controller scooping_simulation.launch.py \
   layout_id:="$LAYOUT_ID" \
   layouts_dir:="$CELL_LAYOUTS_DIR" \
   use_gazebo_gui:=true \
-  headless:=false
+  headless:=false \
+  use_rviz:=true

@@ -14,6 +14,7 @@ from launch.actions import (
     SetEnvironmentVariable,
     TimerAction,
 )
+from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import (
@@ -126,6 +127,7 @@ def _robot_sim_setup(context):
         layouts_dir_value = _default_layouts_dir()
 
     use_sim_time = LaunchConfiguration("use_sim_time")
+    use_rviz = LaunchConfiguration("use_rviz")
     rviz_config = LaunchConfiguration("rviz_config")
     poses_yaml = LaunchConfiguration("poses_yaml")
     seed_poses_yaml = LaunchConfiguration("seed_poses_yaml")
@@ -487,7 +489,7 @@ def _robot_sim_setup(context):
     scooping_rviz = Node(
         package="rviz2",
         executable="rviz2",
-        output="log",
+        output="screen",
         arguments=["-d", rviz_config],
         parameters=[
             moveit_config.robot_description,
@@ -498,6 +500,7 @@ def _robot_sim_setup(context):
             warehouse_ros_config,
             {"use_sim_time": use_sim_time},
         ],
+        condition=IfCondition(use_rviz),
     )
 
     start_controllers = RegisterEventHandler(
@@ -527,7 +530,6 @@ def _robot_sim_setup(context):
             TimerAction(period=5.7, actions=[planning_scene_collisions]),
             TimerAction(period=5.9, actions=[cell_layout_manager]),
             TimerAction(period=6.0, actions=[scooping_mtc]),
-            TimerAction(period=7.0, actions=[scooping_rviz]),
         ]
 
     start_scooping_stack = RegisterEventHandler(
@@ -537,6 +539,8 @@ def _robot_sim_setup(context):
         )
     )
 
+    # RViz is independent of the controller spawn chain so a Gazebo/controller
+    # stall still brings up the authoring UI (matches make bench).
     return [
         robot_state_publisher,
         *static_tf_block,
@@ -544,6 +548,7 @@ def _robot_sim_setup(context):
         start_controllers,
         start_arm_controller,
         start_scooping_stack,
+        TimerAction(period=5.0, actions=[scooping_rviz]),
     ]
 
 
@@ -638,6 +643,11 @@ def generate_launch_description():
         "headless",
         default_value="false",
         description="Disable Gazebo GUI when true",
+    )
+    declare_use_rviz = DeclareLaunchArgument(
+        "use_rviz",
+        default_value="true",
+        description="Launch RViz for sim authoring and monitoring",
     )
     declare_rviz_config = DeclareLaunchArgument(
         "rviz_config",
@@ -765,6 +775,7 @@ def generate_launch_description():
             declare_use_sim_time,
             declare_use_gazebo_gui,
             declare_headless,
+            declare_use_rviz,
             declare_rviz_config,
             declare_poses_yaml,
             declare_seed_poses_yaml,
