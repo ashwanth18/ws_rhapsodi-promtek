@@ -22,7 +22,7 @@ if [[ "$active" != *'"active_run":null'* ]]; then
 fi
 
 pi_compose stop scooping_stack
-if pi_compose ps --status running -q scooping_stack | rg -q .; then
+if pi_compose ps --status running -q scooping_stack | grep -q .; then
   echo "Refusing arm session: scooping_stack is still running" >&2
   exit 1
 fi
@@ -47,7 +47,7 @@ source /opt/ros/jazzy/setup.bash
 # shellcheck disable=SC1091
 [[ -f "$ROOT/install/setup.bash" ]] && source "$ROOT/install/setup.bash"
 set -u
-if ros2 action list 2>/dev/null | rg -qx '/move_to'; then
+if ros2 action list 2>/dev/null | grep -qx '/move_to'; then
   echo "Refusing arm session: /move_to is already advertised locally" >&2
   exit 1
 fi
