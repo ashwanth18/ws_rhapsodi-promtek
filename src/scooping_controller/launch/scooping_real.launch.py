@@ -232,7 +232,7 @@ def _robot_real_setup(context, *args, **kwargs):
         name="move_group",
     )
 
-    scooping_    task_frame = Node(
+    scooping_task_frame = Node(
         package="scooping_controller",
         executable="scooping_task_frame_publisher",
         output="screen",
