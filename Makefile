@@ -32,8 +32,8 @@ bench:  ## Laptop bench loop, mock hardware, isolated ROS domain (LAYOUT=<id> RO
 sim:  ## Gazebo sim with layout-composed world (ROBOT=<id> LAYOUT=<id>)
 	$(ROOT)/scripts/dev_sim.sh $(ROBOT) $(LAYOUT)
 
-arm-session:  ## Real-arm authoring handoff; stops Pi scooping_stack. No motion commanded.
-	$(ROOT)/scripts/dev_arm_session.sh
+arm-session:  ## Real-arm authoring handoff (LAYOUT=<id>); stops Pi scooping_stack. No motion commanded.
+	$(ROOT)/scripts/dev_arm_session.sh $(LAYOUT) $(ROBOT)
 
 export-poses:  ## Save timestamped scoop pose set under layouts/<id>/poses/sets/ (default intact)
 	$(ROOT)/scripts/export_scoop_poses.sh

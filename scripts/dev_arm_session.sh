@@ -3,10 +3,17 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LAYOUT_ID="${1:-${LAYOUT:-dual-container}}"
+ROBOT="${2:-${ROBOT_TYPE:-niryo}}"
 PI_HOST="${ROBOT_HOST:-rhapsodi-pi5}"
 PI_SSH="${ROBOT_SSH:-admin@${PI_HOST}}"
 PI_HTTP="${ROBOT_HTTP_URL:-http://${PI_HOST}:8000}"
 DEST="${ROBOT_WORKSPACE:-/opt/rhapsodi/ws_rhapsodi-promtek}"
+
+if [[ ! -f "$ROOT/config/layouts/${LAYOUT_ID}.yaml" ]]; then
+  echo "Unknown layout_id='$LAYOUT_ID' (expected $ROOT/config/layouts/${LAYOUT_ID}.yaml)" >&2
+  exit 1
+fi
 
 # Match ansible/fleet-agent: env-file supplies COMPOSE_FILE=compose/devices/pi5.yml.
 pi_compose() {
@@ -53,8 +60,12 @@ if ros2 action list 2>/dev/null | grep -qx '/move_to'; then
 fi
 
 echo "Launching authoring stack only; no motion is commanded by this script."
+echo "dev_arm_session: layout_id=$LAYOUT_ID robot=$ROBOT (ROS_DOMAIN_ID=$ROS_DOMAIN_ID)"
 export CELL_MODELS_CATALOG="${CELL_MODELS_CATALOG:-$ROOT/config/models/catalog.yaml}"
+export ROBOT_TYPE="${ROBOT_TYPE:-$ROBOT}"
 ros2 launch scooping_controller scooping_real.launch.py \
   use_rviz:=true \
   layout_edit:=true \
+  robot:="$ROBOT" \
+  layout_id:="$LAYOUT_ID" \
   layouts_dir:="${CELL_LAYOUTS_DIR:-$ROOT/config/layouts}"
