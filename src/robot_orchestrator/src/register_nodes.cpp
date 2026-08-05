@@ -21,6 +21,7 @@
 #include "robot_orchestrator/sample_target_weight_node.hpp"
 #include "robot_orchestrator/record_pour_outcome_node.hpp"
 #include "robot_orchestrator/evaluate_stop_condition_node.hpp"
+#include "robot_orchestrator/verify_cell_layout_node.hpp"
 #include "robot_orchestrator/episode_marker_node.hpp"
 #include "robot_orchestrator/episode_end_marker_node.hpp"
 #include "robot_orchestrator/phase_marker_node.hpp"
@@ -57,6 +58,7 @@ void RegisterNodes(BT::BehaviorTreeFactory & factory)
   factory.registerNodeType<SampleTargetWeightNode>("SampleTargetWeight");
   factory.registerNodeType<RecordPourOutcomeNode>("RecordPourOutcome");
   factory.registerNodeType<EvaluateStopConditionNode>("EvaluateStopCondition");
+  factory.registerNodeType<VerifyCellLayoutNode>("VerifyCellLayout");
   factory.registerNodeType<EpisodeMarkerNode>("EpisodeMarker");
   factory.registerNodeType<EpisodeEndMarkerNode>("EpisodeEndMarker");
   factory.registerNodeType<PhaseMarkerNode>("PhaseMarker");

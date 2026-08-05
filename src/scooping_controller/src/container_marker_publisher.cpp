@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
+#include <robot_common_msgs/msg/cell_layout_active.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 
 class ContainerMarkerPublisher : public rclcpp::Node
@@ -23,6 +24,16 @@ public:
     marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>(
       "/container_marker",
       rclcpp::QoS(1).transient_local().reliable());
+    layout_sub_ = this->create_subscription<robot_common_msgs::msg::CellLayoutActive>(
+      "/cell_layout/active", rclcpp::QoS(1).transient_local().reliable(),
+      [this](const robot_common_msgs::msg::CellLayoutActive::SharedPtr msg) {
+        try {
+          scene_specs_ = scooping_controller::load_container_scene_specs_from_yaml(msg->scene_yaml_path);
+          publish_marker();
+        } catch (const std::exception& ex) {
+          RCLCPP_ERROR(this->get_logger(), "Could not load layout markers: %s", ex.what());
+        }
+      });
 
     timer_ = this->create_wall_timer(
       std::chrono::seconds(1),
@@ -70,6 +81,9 @@ private:
   {
     const auto stamp = this->now();
     for (std::size_t i = 0; i < scene_specs_.size(); ++i) {
+      if (!scene_specs_[i].enabled) {
+        continue;
+      }
       marker_pub_->publish(make_marker(
         stamp,
         static_cast<int>(i),
@@ -81,6 +95,7 @@ private:
   std::string frame_id_;
   std::vector<scooping_controller::ContainerSceneSpec> scene_specs_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_pub_;
+  rclcpp::Subscription<robot_common_msgs::msg::CellLayoutActive>::SharedPtr layout_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 

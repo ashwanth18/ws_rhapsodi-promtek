@@ -126,6 +126,8 @@ export type DeviceTarget = {
   agent_reported_at?: string | null
   active_mode?: string | null
   environment?: string | null
+  layout_id?: string | null
+  layout_hash?: string | null
   has_agent_token?: boolean
 }
 
@@ -177,6 +179,8 @@ export type Device = {
   active_mode?: string | null
   /** Runtime environment axis: real | sim. */
   environment?: string | null
+  layout_id?: string | null
+  layout_hash?: string | null
   runtime_mode?: Record<string, unknown> | null
   version_check?: Record<string, unknown>
   metrics?: { cpu_pct?: number | null; mem_pct?: number | null; disk_pct?: number | null }

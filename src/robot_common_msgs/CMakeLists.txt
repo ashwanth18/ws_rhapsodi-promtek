@@ -9,6 +9,7 @@ find_package(builtin_interfaces REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ContainerSpec.msg"
+  "msg/CellLayoutActive.msg"
   "msg/SystemStatus.msg"
   "msg/PourStatus.msg"
   "msg/HealthEvent.msg"
@@ -20,6 +21,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/StartLightsOut.srv"
   "srv/StartWebhookWeightment.srv"
   "srv/RecordTarget.srv"
+  "srv/ApplyCellLayout.srv"
   DEPENDENCIES std_msgs geometry_msgs builtin_interfaces
 )
 

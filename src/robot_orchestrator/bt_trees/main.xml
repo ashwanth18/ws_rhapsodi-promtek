@@ -1,6 +1,7 @@
 <root BTCPP_format="4" main_tree_to_execute="Main">
   <BehaviorTree ID="Main">
     <Sequence name="PowderFlow">
+      <VerifyCellLayout/>
       <!-- Build queue from containers vector once -->
       <FetchBatch/>
       <WaitSeconds seconds="1.5"/>

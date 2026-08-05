@@ -1,0 +1,25 @@
+---
+description: Never start or command a real robot test run without explicit user approval
+alwaysApply: true
+---
+
+# No real robot runs
+
+**Never** start, trigger, or command a real robot motion/test run unless the user explicitly asks for that specific run in the current message.
+
+## Forbidden without explicit user ask
+
+- `POST /modes/lightsout/runs`, `POST /modes/mock/runs`, or any other run-start API against a live cell
+- Calling ROS services that start trees (`bt_start_lightsout`, `bt_start_webhook_weightment`, MoveTo / scoop / pour actions)
+- “Smoke tests”, “validation runs”, or deploy acceptance that move the arm, scoop, or pour
+- Assuming “validate on Pi” or a plan checklist implies permission to run hardware
+
+## Allowed without asking
+
+- Read-only checks: HTTP GETs, container status, logs, topic echo, image/tag verification
+- Unit/integration tests that do not talk to the live robot
+- Building, pushing, deploying software images
+
+## If a plan or todo says “smoke run on the robot”
+
+Stop and ask the user. Do not start the run yourself.

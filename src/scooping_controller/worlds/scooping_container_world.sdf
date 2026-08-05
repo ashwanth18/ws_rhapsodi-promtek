@@ -1,5 +1,8 @@
 <?xml version="1.0" ?>
 <sdf version="1.9">
+  <!-- Placement source of truth is config/layouts/dual-container.yaml.
+       scripts/generate_layout_world.py emits the matching include fragment;
+       this hand-maintained world remains only for compatibility. -->
   <world name="scooping_container_world">
     <!-- Use Bullet Featherstone (articulated rigid bodies). Required for robot arms:
          gz-physics-bullet-plugin lacks SetJointPosition/SetJointVelocity and only
@@ -93,7 +96,7 @@
     <include>
       <uri>model://weighing_container</uri>
       <name>weighing_container</name>
-      <pose>0.0 -0.4218 0.07 0 0 1.57079632679</pose>
+      <pose>0.0 -0.4218 0.105 0 0 1.57079632679</pose>
     </include>
   </world>
 </sdf>

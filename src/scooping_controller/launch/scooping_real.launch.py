@@ -26,6 +26,7 @@ def generate_launch_description():
     post_lift_vibration_intensity = LaunchConfiguration("post_lift_vibration_intensity")
     post_lift_vibration_publish_rate_hz = LaunchConfiguration("post_lift_vibration_publish_rate_hz")
     container_scene_yaml = LaunchConfiguration("container_scene_yaml")
+    layouts_dir = LaunchConfiguration("layouts_dir")
     drivers_list_file = LaunchConfiguration("drivers_list_file")
     whitelist_params_file = LaunchConfiguration("whitelist_params_file")
     driver_log_level = LaunchConfiguration("driver_log_level")
@@ -112,6 +113,11 @@ def generate_launch_description():
             ]
         ),
         description="Container scene calibration for RViz and MoveIt",
+    )
+    declare_layouts_dir = DeclareLaunchArgument(
+        "layouts_dir",
+        default_value="/ws/config/layouts",
+        description="Directory containing versioned cell-layout YAML files",
     )
     declare_drivers_list_file = DeclareLaunchArgument(
         "drivers_list_file",
@@ -280,6 +286,13 @@ def generate_launch_description():
         ],
     )
 
+    cell_layout_manager = Node(
+        package="scooping_controller",
+        executable="cell_layout_manager",
+        output="screen",
+        parameters=[{"layouts_dir": layouts_dir, "use_sim_time": False}],
+    )
+
     move_to_server = Node(
         package="robot_moveit",
         executable="move_to_server_node",
@@ -379,6 +392,7 @@ def generate_launch_description():
             declare_post_lift_vibration_intensity,
             declare_post_lift_vibration_publish_rate_hz,
             declare_container_scene_yaml,
+            declare_layouts_dir,
             declare_drivers_list_file,
             declare_whitelist_params_file,
             declare_driver_log_level,
@@ -395,6 +409,7 @@ def generate_launch_description():
             TimerAction(period=5.0, actions=[marker_server]),
             TimerAction(period=5.5, actions=[container_marker]),
             TimerAction(period=5.7, actions=[planning_scene_collisions]),
+            TimerAction(period=5.9, actions=[cell_layout_manager]),
             TimerAction(period=6.0, actions=[scooping_mtc]),
             TimerAction(period=7.0, actions=[scooping_rviz]),
         ]

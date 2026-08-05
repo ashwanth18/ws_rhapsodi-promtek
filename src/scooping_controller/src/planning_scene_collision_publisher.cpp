@@ -7,6 +7,7 @@
 
 #include <moveit/planning_scene_interface/planning_scene_interface.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <robot_common_msgs/msg/cell_layout_active.hpp>
 
 class PlanningSceneCollisionPublisher : public rclcpp::Node
 {
@@ -22,6 +23,18 @@ public:
     scene_specs_ = scooping_controller::load_container_scene_specs(*this);
     planning_scene_interface_ =
       std::make_shared<moveit::planning_interface::PlanningSceneInterface>();
+    layout_sub_ = this->create_subscription<robot_common_msgs::msg::CellLayoutActive>(
+      "/cell_layout/active", rclcpp::QoS(1).transient_local().reliable(),
+      [this](const robot_common_msgs::msg::CellLayoutActive::SharedPtr msg) {
+        try {
+          scene_specs_ = scooping_controller::load_container_scene_specs_from_yaml(msg->scene_yaml_path);
+          planning_scene_interface_->removeCollisionObjects(
+            scooping_controller::disabled_container_scene_ids(scene_specs_));
+          sync_collision_objects();
+        } catch (const std::exception& ex) {
+          RCLCPP_ERROR(this->get_logger(), "Rejected cell layout '%s': %s", msg->layout_id.c_str(), ex.what());
+        }
+      });
 
     timer_ = this->create_wall_timer(
       std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -71,6 +84,7 @@ private:
   std::string frame_id_;
   std::vector<scooping_controller::ContainerSceneSpec> scene_specs_;
   std::shared_ptr<moveit::planning_interface::PlanningSceneInterface> planning_scene_interface_;
+  rclcpp::Subscription<robot_common_msgs::msg::CellLayoutActive>::SharedPtr layout_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 

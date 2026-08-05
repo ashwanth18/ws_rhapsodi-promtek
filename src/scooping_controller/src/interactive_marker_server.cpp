@@ -14,8 +14,10 @@
 #include <geometry_msgs/msg/pose_array.hpp>
 #include <interactive_markers/interactive_marker_server.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <robot_common_msgs/msg/cell_layout_active.hpp>
 #include <rosidl_runtime_cpp/message_initialization.hpp>
 #include <std_msgs/msg/int32.hpp>
+#include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/trigger.hpp>
 #include <tf2/LinearMath/Transform.h>
 #include <visualization_msgs/msg/interactive_marker.hpp>
@@ -251,6 +253,10 @@ public:
     this->declare_parameter<std::string>("scoop_frame_id", kDefaultScoopFrame);
     this->declare_parameter<std::string>("goal_frame_id", kDefaultGoalFrame);
     this->declare_parameter<std::string>("task_container_id", kDefaultTaskContainerId);
+    this->declare_parameter<std::string>("layout_id", "");
+    this->declare_parameter<std::string>("tool_id", "");
+    this->declare_parameter<std::string>("authored_in", "");
+    this->declare_parameter<bool>("poses_provenance_ok", false);
     this->declare_parameter<std::string>("poses_yaml", "~/.ros/scooping_controller/poses.yaml");
     this->declare_parameter<std::string>("seed_poses_yaml", "");
     this->declare_parameter<bool>("auto_load_poses_on_startup", true);
@@ -304,6 +310,11 @@ public:
       std::bind(&ScoopingMarkerServer::handle_scoop_focus_command, this, std::placeholders::_1));
     legend_pub_ = this->create_publisher<MarkerArray>(
       "/scooping_legend", rclcpp::QoS(1).transient_local());
+    pose_fault_pub_ = this->create_publisher<std_msgs::msg::String>(
+      "/cell_layout/pose_fault", rclcpp::QoS(1).transient_local().reliable());
+    layout_sub_ = this->create_subscription<robot_common_msgs::msg::CellLayoutActive>(
+      "/cell_layout/active", rclcpp::QoS(1).transient_local().reliable(),
+      std::bind(&ScoopingMarkerServer::handle_active_layout, this, std::placeholders::_1));
 
     save_srv_ = this->create_service<std_srvs::srv::Trigger>(
       "/save_scoop_poses",
@@ -462,7 +473,7 @@ private:
 
     for (std::size_t i = 0; i < seeds_.size(); ++i) {
       if (feedback->marker_name == seeds_[i].marker_name) {
-        poses_[i] = feedback->pose;
+        poses_[i] = clamp_to_envelope(feedback->pose);
         publish_pose_array();
         RCLCPP_INFO(
           this->get_logger(),
@@ -556,6 +567,9 @@ private:
     }
 
     poses_ = msg->poses;
+    for (auto& pose : poses_) {
+      pose = clamp_to_envelope(pose);
+    }
     rebuild_scoop_markers();
     publish_pose_array();
     update_status("Updated selected scoop marker from typed pose", {0.95f, 0.95f, 0.95f});
@@ -687,6 +701,7 @@ private:
   bool save_poses_to_yaml(std::string& message)
   {
     try {
+      poses_yaml_path_ = expand_user_path(this->get_parameter("poses_yaml").as_string());
       const std::filesystem::path path(poses_yaml_path_);
       if (!path.parent_path().empty()) {
         std::filesystem::create_directories(path.parent_path());
@@ -694,6 +709,11 @@ private:
 
       YAML::Node root;
       root["frame_id"] = scoop_frame_id_;
+      root["layout_id"] = this->get_parameter("layout_id").as_string();
+      root["task_container_id"] = this->get_parameter("task_container_id").as_string();
+      root["tool_id"] = this->get_parameter("tool_id").as_string();
+      root["container_spec_hash"] = active_layout_hash_;
+      root["authored_in"] = this->get_parameter("authored_in").as_string();
       YAML::Node markers(YAML::NodeType::Sequence);
       for (std::size_t i = 0; i < seeds_.size(); ++i) {
         YAML::Node entry;
@@ -760,12 +780,35 @@ private:
   bool load_poses_from_yaml(std::string& message)
   {
     try {
+      poses_yaml_path_ = expand_user_path(this->get_parameter("poses_yaml").as_string());
       if (!std::filesystem::exists(poses_yaml_path_)) {
         message = "Pose YAML not found: " + poses_yaml_path_;
         return false;
       }
 
       const YAML::Node root = YAML::LoadFile(poses_yaml_path_);
+      const auto fail_provenance = [this, &message](const std::string& reason) {
+          message = "Refusing pose YAML provenance: " + reason;
+          std_msgs::msg::String fault;
+          fault.data = message;
+          pose_fault_pub_->publish(fault);
+          this->set_parameter(rclcpp::Parameter("poses_provenance_ok", false));
+          return false;
+        };
+      for (const auto& field : {"layout_id", "task_container_id", "frame_id", "tool_id",
+                                "container_spec_hash", "authored_in"}) {
+        if (!root[field]) {
+          return fail_provenance(std::string("missing ") + field);
+        }
+      }
+      if (root["layout_id"].as<std::string>() != this->get_parameter("layout_id").as_string() ||
+          root["task_container_id"].as<std::string>() != this->get_parameter("task_container_id").as_string() ||
+          root["frame_id"].as<std::string>() != scoop_frame_id_ ||
+          root["tool_id"].as<std::string>() != this->get_parameter("tool_id").as_string() ||
+          root["container_spec_hash"].as<std::string>() != active_layout_hash_ ||
+          root["authored_in"].as<std::string>() != this->get_parameter("authored_in").as_string()) {
+        return fail_provenance("layout, container, frame, tool, hash, or authoring context mismatch");
+      }
       const std::string source_frame =
         root["frame_id"] ? root["frame_id"].as<std::string>() : scoop_frame_id_;
       const auto markers = root["markers"];
@@ -803,12 +846,46 @@ private:
 
       rebuild_scoop_markers();
       publish_pose_array();
+      this->set_parameter(rclcpp::Parameter("poses_provenance_ok", true));
       message = "Loaded " + std::to_string(updated) + " scoop poses from " + poses_yaml_path_;
       return updated > 0;
     } catch (const std::exception& ex) {
       message = std::string("Failed to load scoop poses: ") + ex.what();
       return false;
     }
+  }
+
+  void handle_active_layout(const robot_common_msgs::msg::CellLayoutActive::SharedPtr layout)
+  {
+    active_layout_hash_ = layout->layout_hash;
+    this->set_parameters({
+      rclcpp::Parameter("layout_id", layout->layout_id),
+      rclcpp::Parameter("task_container_id", layout->task_container_id),
+      rclcpp::Parameter("tool_id", layout->tool_id)});
+    try {
+      const auto root = YAML::LoadFile(layout->scene_yaml_path);
+      const auto envelope = root["scoop_envelope"];
+      if (!envelope) {
+        throw std::runtime_error("layout missing scoop_envelope");
+      }
+      envelope_ = {envelope["x_min"].as<double>(), envelope["x_max"].as<double>(),
+        envelope["y_min"].as<double>(), envelope["y_max"].as<double>(),
+        envelope["z_min"].as<double>(), envelope["z_max"].as<double>()};
+      has_envelope_ = true;
+    } catch (const std::exception& ex) {
+      RCLCPP_ERROR(this->get_logger(), "Invalid active layout envelope: %s", ex.what());
+      has_envelope_ = false;
+    }
+  }
+
+  geometry_msgs::msg::Pose clamp_to_envelope(geometry_msgs::msg::Pose pose) const
+  {
+    if (has_envelope_) {
+      pose.position.x = std::clamp(pose.position.x, envelope_[0], envelope_[1]);
+      pose.position.y = std::clamp(pose.position.y, envelope_[2], envelope_[3]);
+      pose.position.z = std::clamp(pose.position.z, envelope_[4], envelope_[5]);
+    }
+    return pose;
   }
 
   void initialize_scoop_frame_transform()
@@ -885,6 +962,9 @@ private:
   std::string poses_yaml_path_;
   std::string seed_poses_yaml_path_;
   std::string tool_mesh_resource_;
+  std::string active_layout_hash_;
+  std::array<double, 6> envelope_{};
+  bool has_envelope_{false};
   std::array<double, 3> tcp_visual_offset_xyz_{
     kTcpOffsetX, kTcpOffsetY, kTcpOffsetZ};
   tf2::Transform scoop_frame_from_goal_;
@@ -904,6 +984,8 @@ private:
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr scoop_focus_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pose_cmd_sub_;
   rclcpp::Publisher<MarkerArray>::SharedPtr legend_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pose_fault_pub_;
+  rclcpp::Subscription<robot_common_msgs::msg::CellLayoutActive>::SharedPtr layout_sub_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr save_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr load_srv_;
   std::vector<geometry_msgs::msg::Pose> poses_;

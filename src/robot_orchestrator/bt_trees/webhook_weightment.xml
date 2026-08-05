@@ -2,6 +2,7 @@
   <BehaviorTree ID="WebhookWeightment">
     <Sequence name="WebhookWeightmentFlow">
       <WaitSeconds seconds="0.5"/>
+      <VerifyCellLayout/>
       <WeightFresh max_age_s="2.0"/>
       <CaptureBaseline/>
       <RetryIfNeedRescoop num_attempts="-1"

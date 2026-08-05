@@ -86,6 +86,33 @@ robots:
         collisions_delay: 5.7
         mtc_delay: 6.0
         rviz_delay: 7.0
+    # Laptop-only authoring loop: mock_components/GenericSystem, no Gazebo,
+    # no real driver. Isolated via ROS_DOMAIN_ID=42 (see scripts/dev_bench.sh).
+    mock:
+      scene:
+        package: scooping_controller
+        path: config/container_scene/niryo_real.yaml
+      moveit_package: niryo_ned3pro_moveit_config
+      urdf:
+        package: niryo_ned3pro_moveit_config
+        path: config/niryo_ned3pro.urdf.xacro
+        xacro_args: []
+      controllers:
+        package: scooping_controller
+        path: config/ros2_controllers_mock.yaml
+      move_group_controller_params:
+        package: scooping_controller
+        path: config/move_group_controller_params.yaml
+      timing:
+        move_group_delay: 1.0
+        move_to_delay: 2.0
+        target_recorder_delay: 2.2
+        task_frame_delay: 1.5
+        marker_delay: 1.5
+        container_delay: 1.7
+        collisions_delay: 1.8
+        mtc_delay: 2.0
+        rviz_delay: 2.5
 
   jaka:
     canonical_name: jaka_zu5

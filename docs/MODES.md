@@ -90,6 +90,12 @@ true. Outbound MES posts go through `MesClient` (`CondorMesClient` vs
 `NullMesClient` for mock-local / lights-out). `BT_TREE` / `tree_file` is
 an optional preferred-tree hint only.
 
+Each mode also resolves a required cell layout from `mode_layouts` in
+`config/profiles.yaml` (or `MODE_LAYOUTS` / `CELL_LAYOUTS`). A successful
+`PUT /runtime/mode` requests layout activation through the robot adapter; its
+ID and hash appear in `GET /runtime/mode`. Starts are refused until the mapped
+layout and its pose provenance are valid.
+
 Phase 4: `POST /modes/mock/runs` (active mode must already be
 `mock-local`, else 409) inserts a synthetic `WebhookWeightment` with
 `event_id` prefix `mock-` and starts via the production

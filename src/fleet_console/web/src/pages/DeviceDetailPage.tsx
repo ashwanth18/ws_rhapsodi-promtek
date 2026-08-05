@@ -427,6 +427,20 @@ export default function DeviceDetailPage() {
           help="Live from robot GET /runtime/mode; falls back to last fleet-agent heartbeat."
         />
         <MetricCard
+          label="Cell layout"
+          value={
+            <div className="text-base">
+              <span className="font-medium text-[var(--accent)]">
+                {device?.layout_id || '—'}
+              </span>
+              <div className="mt-0.5 font-mono text-xs text-[var(--text-muted)]">
+                {device?.layout_hash?.slice(0, 12) || '—'}
+              </div>
+            </div>
+          }
+          help="Layout reported by the robot runtime."
+        />
+        <MetricCard
           label="Running version"
           value={
             <div>

@@ -3,7 +3,7 @@
     <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
 
     <!-- Import niryo_ned3pro urdf file -->
-    <xacro:include filename="$(find niryo_ned_description)/urdf/ned3pro/niryo_ned3pro.urdf.xacro" />
+    <xacro:include filename="$(find niryo_robot_description)/urdf/ned3pro/niryo_ned3pro.urdf.xacro" />
 
     <!-- Import control_xacro -->
     <xacro:include filename="niryo_ned3pro.ros2_control.xacro" />

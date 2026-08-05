@@ -1,0 +1,129 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Selection
+    Name: Selection
+  - Class: rviz_common/Tool Properties
+    Name: Tool Properties
+  - Class: rviz_common/Views
+    Name: Views
+  - Class: scooping_controller/ScoopingPanel
+    Name: Scooping Controls
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Enabled: true
+      Name: Grid
+      Plane: XY
+      Reference Frame: <Fixed Frame>
+      Cell Size: 1
+    - Class: rviz_default_plugins/TF
+      Enabled: true
+      Name: TF
+      Frame Timeout: 15
+      Frames:
+        All Enabled: false
+      Marker Scale: 0.3
+      Show Arrows: true
+      Show Axes: true
+      Show Names: false
+      Update Interval: 0
+    - Class: rviz_default_plugins/RobotModel
+      Enabled: true
+      Name: RobotModel
+      Description Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /robot_description
+      Visual Enabled: true
+      Collision Enabled: false
+      Alpha: 1
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MoveTo Plan Preview Line
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /move_to_plan_preview
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Pour Pose Preview
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /pour_pose_preview
+    - Class: rviz_default_plugins/InteractiveMarkers
+      Enabled: true
+      Name: Scoop Markers
+      Update Topic: /scooping_markers/update
+    - Class: rviz_default_plugins/InteractiveMarkers
+      Enabled: true
+      Name: Move Goal Marker
+      Update Topic: /move_goal_marker/update
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Scoop Legend
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /scooping_legend
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Container
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /container_marker
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Parameterized Scoop Preview
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /parameterized_scoop_preview
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Manual Scoop Preview
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /manual_scoop_preview
+  Enabled: true
+  Global Options:
+    Fixed Frame: world
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/Interact
+      Hide Inactive Objects: true
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 1.8
+      Focal Point:
+        X: 0.2
+        Y: 0.0
+        Z: 0.2
+      Pitch: 0.6
+      Yaw: 0.7
+Window Geometry:
+  Height: 900
+  Width: 1400
+  Scooping Controls:
+    collapsed: false

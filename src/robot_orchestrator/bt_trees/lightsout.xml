@@ -2,6 +2,7 @@
   <BehaviorTree ID="LightsOut">
     <Sequence name="LightsOutFlow">
       <WaitSeconds seconds="0.5"/>
+      <VerifyCellLayout/>
       <Repeat num_cycles="{lightsout_episodes}">
         <Fallback name="EpisodeOrStop">
           <Precondition if="lightsout_stop_requested" else="FAILURE">

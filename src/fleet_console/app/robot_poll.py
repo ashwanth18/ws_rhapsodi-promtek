@@ -59,6 +59,8 @@ async def enrich_device(device: dict[str, Any]) -> dict[str, Any]:
         device['runtime_mode'] = None
         device['active_mode'] = None
         device['environment'] = None
+        device['layout_id'] = None
+        device['layout_hash'] = None
         device['provisioned'] = False
         return device
     host_info, active, runtime = await asyncio.gather(
@@ -96,9 +98,13 @@ async def enrich_device(device: dict[str, Any]) -> dict[str, Any]:
         env = runtime.get('environment')
         device['active_mode'] = str(mode).strip() if mode else None
         device['environment'] = str(env).strip() if env else None
+        device['layout_id'] = runtime.get('layout_id')
+        device['layout_hash'] = runtime.get('layout_hash')
     else:
         device['active_mode'] = None
         device['environment'] = None
+        device['layout_id'] = None
+        device['layout_hash'] = None
     return device
 
 

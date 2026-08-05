@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 import rclpy
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from robot_common_msgs.srv import StartLightsOut, StartWebhookWeightment
+from robot_common_msgs.srv import ApplyCellLayout, StartLightsOut, StartWebhookWeightment
 
 from rhapsodi_common.health import HealthEventPublisher
 
@@ -57,6 +57,17 @@ class StartLightsOutResponse(BaseModel):
     message: str
 
 
+class ApplyCellLayoutRequest(BaseModel):
+    layout_id: str
+
+
+class ApplyCellLayoutResponse(BaseModel):
+    success: bool
+    message: str
+    layout_hash: str
+    preflight_ok: bool
+
+
 class WebhookRobotStarter:
     def __init__(self) -> None:
         self.service_name = os.environ.get(
@@ -76,6 +87,7 @@ class WebhookRobotStarter:
         self._node = None
         self._client = None
         self._lightsout_client = None
+        self._layout_client = None
         self._health = None
 
     def start(self) -> None:
@@ -88,6 +100,9 @@ class WebhookRobotStarter:
         )
         self._lightsout_client = self._node.create_client(
             StartLightsOut, self.lightsout_service_name
+        )
+        self._layout_client = self._node.create_client(
+            ApplyCellLayout, '/cell_layout/apply'
         )
         self._health = HealthEventPublisher(
             self._node, 'robot_start_adapter'
@@ -104,6 +119,7 @@ class WebhookRobotStarter:
         self._node = None
         self._client = None
         self._lightsout_client = None
+        self._layout_client = None
 
     def service_ready(self) -> bool:
         if not self._started or self._client is None:
@@ -293,6 +309,40 @@ class WebhookRobotStarter:
                 message=str(response.message or ''),
             )
 
+    def apply_cell_layout(
+        self, payload: ApplyCellLayoutRequest
+    ) -> ApplyCellLayoutResponse:
+        if not self._started or self._node is None or self._layout_client is None:
+            raise RuntimeError('ROS adapter is not initialized')
+        with self._lock:
+            if not self._layout_client.wait_for_service(
+                timeout_sec=self.wait_timeout_seconds
+            ):
+                raise TimeoutError(
+                    '/cell_layout/apply not available after '
+                    f'{self.wait_timeout_seconds}s'
+                )
+            req = ApplyCellLayout.Request()
+            req.layout_id = payload.layout_id
+            future = self._layout_client.call_async(req)
+            rclpy.spin_until_future_complete(
+                self._node, future, timeout_sec=self.call_timeout_seconds
+            )
+            if not future.done():
+                raise TimeoutError(
+                    '/cell_layout/apply call timed out after '
+                    f'{self.call_timeout_seconds}s'
+                )
+            response = future.result()
+            if response is None:
+                raise RuntimeError('/cell_layout/apply returned no response')
+            return ApplyCellLayoutResponse(
+                success=bool(response.success),
+                message=str(response.message or ''),
+                layout_hash=str(response.layout_hash or ''),
+                preflight_ok=bool(response.preflight_ok),
+            )
+
 
 starter = WebhookRobotStarter()
 
@@ -336,6 +386,16 @@ def start_webhook_weightment(
 def start_lightsout(payload: StartLightsOutRequest) -> StartLightsOutResponse:
     try:
         return starter.start_lightsout(payload)
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post('/apply_cell_layout', response_model=ApplyCellLayoutResponse)
+def apply_cell_layout(payload: ApplyCellLayoutRequest) -> ApplyCellLayoutResponse:
+    try:
+        return starter.apply_cell_layout(payload)
     except TimeoutError as exc:
         raise HTTPException(status_code=504, detail=str(exc)) from exc
     except Exception as exc:

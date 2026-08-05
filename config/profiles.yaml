@@ -15,6 +15,12 @@
 # Pose/scene overrides under config/profiles/<id>/ are shipped in the slim
 # deploy bundle and mounted at /ws/config on the device.
 
+mode_layouts:
+  lightsout: lightsout-single-vessel
+  mock-local: dual-container
+  mes-condor: dual-container
+  mes-generic: dual-container
+
 profiles:
   prod-niryo:
     description: Production webhook weighment stack (Niryo)

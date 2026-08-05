@@ -43,7 +43,7 @@
        They are skipped on arm64 (vendor libjakaAPI.so is x86_64-only). -->
   <exec_depend>joint_trajectory_controller</exec_depend>
   <exec_depend>joint_state_broadcaster</exec_depend>
-  <exec_depend>mock_components</exec_depend>
+  <exec_depend>hardware_interface</exec_depend>
   <exec_depend>niryo_ned_ros2_driver</exec_depend>
   <exec_depend>niryo_ned3pro_moveit_config</exec_depend>
   <exec_depend>niryo_robot_description</exec_depend>

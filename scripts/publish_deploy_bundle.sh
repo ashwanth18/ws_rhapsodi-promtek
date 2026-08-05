@@ -11,6 +11,7 @@
 #   config/device_classes.yaml
 #   config/profiles.yaml
 #   config/profiles/** (pose/scene layout overrides)
+#   config/layouts/** (versioned cell layouts)
 #   monitoring/exporters/docker-compose.exporters.yml
 #   monitoring/exporters/promtail-config.yml
 #
@@ -73,6 +74,7 @@ BUNDLE_FILES=(
   config/recording_profiles.yaml
   config/powders.yaml
   config/powders.yaml.example
+  config/layouts/schema.json
   docker/nginx-dashboard.conf
   monitoring/exporters/docker-compose.exporters.yml
   monitoring/exporters/promtail-config.yml
@@ -121,6 +123,12 @@ for f in "${BUNDLE_FILES[@]}"; do
 done
 # Per-profile pose/scene layout packs
 cp -a "${ROOT_DIR}/config/profiles" config/
+# Versioned cell layouts (scene + targets + scoop poses)
+if [[ ! -d "${ROOT_DIR}/config/layouts" ]]; then
+  echo "Missing required directory: config/layouts" >&2
+  exit 1
+fi
+cp -a "${ROOT_DIR}/config/layouts" config/
 # Hardware compose files
 cp -a "${ROOT_DIR}/compose/devices/." compose/devices/
 

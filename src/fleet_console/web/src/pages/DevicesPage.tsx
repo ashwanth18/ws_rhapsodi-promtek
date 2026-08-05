@@ -218,6 +218,9 @@ export default function DevicesPage() {
                 <div className="text-[var(--text-muted)]">
                   {d.environment || '—'}
                 </div>
+                <div className="font-mono text-[var(--text-muted)]">
+                  {d.layout_id || 'no layout'}
+                </div>
               </div>
             ),
           },

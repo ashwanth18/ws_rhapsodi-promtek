@@ -55,6 +55,13 @@ from .modes.mock_local import (
     is_mock_event_id,
 )
 from .modes.batch_ids import prefix_for_mode, suggest_next_batch_id
+from .modes.cell_layout import (
+    configured_layout_id,
+    layout_path,
+    layout_provenance,
+    load_layout,
+    provenance_is_safe,
+)
 from .modes.lightsout_validate import resolve_lightsout_targets
 from .modes.powders import get_powder, load_powders
 from .modes.target_sampler import generate_target_schedule
@@ -96,6 +103,13 @@ ROBOT_LIGHTSOUT_ADAPTER_URL = os.environ.get(
     'ROBOT_LIGHTSOUT_ADAPTER_URL',
     'http://host.docker.internal:8010/start_lightsout',
 )
+ROBOT_LAYOUT_ADAPTER_URL = os.environ.get(
+    'ROBOT_LAYOUT_ADAPTER_URL',
+    'http://host.docker.internal:8010/apply_cell_layout',
+)
+ACTIVE_CELL_LAYOUT_PATH = Path(
+    os.environ.get('ACTIVE_CELL_LAYOUT_PATH', '/data/active_cell_layout.json')
+)
 ROBOT_START_ADAPTER_TIMEOUT_SECONDS = float(
     os.environ.get('ROBOT_START_ADAPTER_TIMEOUT_SECONDS', '15')
 )
@@ -113,6 +127,80 @@ def utc_now_dt() -> datetime:
 
 def utc_now() -> str:
     return utc_now_dt().isoformat()
+
+
+def get_active_cell_layout() -> dict[str, Any] | None:
+    try:
+        value = json.loads(ACTIVE_CELL_LAYOUT_PATH.read_text())
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def save_active_cell_layout(state: dict[str, Any]) -> None:
+    ACTIVE_CELL_LAYOUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp = ACTIVE_CELL_LAYOUT_PATH.with_suffix('.tmp')
+    temp.write_text(json.dumps(state, sort_keys=True, indent=2))
+    temp.replace(ACTIVE_CELL_LAYOUT_PATH)
+
+
+def apply_mode_layout(mode: str) -> dict[str, Any]:
+    """Apply the layout selected for mode and persist only ROS-confirmed state."""
+    layout_id = configured_layout_id(mode)
+    layout = load_layout(layout_path(layout_id))
+    provenance = layout_provenance(layout)
+    response = post_json(
+        ROBOT_LAYOUT_ADAPTER_URL,
+        {'layout_id': layout_id},
+        timeout_seconds=ROBOT_START_ADAPTER_TIMEOUT_SECONDS,
+    )
+    applied = bool(response.get('success')) and bool(response.get('preflight_ok'))
+    result = {
+        'layout_id': layout_id,
+        'layout_hash': response.get('layout_hash') or provenance['layout_hash'],
+        'applied': applied,
+        'message': str(response.get('message') or ''),
+        'preflight_ok': bool(response.get('preflight_ok')),
+    }
+    if applied:
+        save_active_cell_layout({
+            **provenance,
+            'layout_hash': result['layout_hash'],
+            'applied_at': utc_now(),
+        })
+    return result
+
+
+def require_layout_for_run(current: dict[str, str]) -> dict[str, Any]:
+    state = get_active_cell_layout()
+    if not state:
+        raise HTTPException(
+            status_code=409,
+            detail='No cell layout has been successfully applied for this runtime mode',
+        )
+    try:
+        expected_layout_id = configured_layout_id(current['mode'])
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if state.get('layout_id') != expected_layout_id:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Applied layout '{state.get('layout_id')}' does not match "
+                f"mode layout '{expected_layout_id}'"
+            ),
+        )
+    safe, reason = provenance_is_safe(
+        state,
+        environment=current['environment'],
+        production_mode=current['mode'] in {
+            OperatingMode.MES_CONDOR.value,
+            OperatingMode.MES_GENERIC.value,
+        },
+    )
+    if not safe:
+        raise HTTPException(status_code=409, detail=reason)
+    return state
 
 
 def parse_request_datetime(value: str | None) -> datetime | None:
@@ -211,6 +299,11 @@ def ensure_run_columns() -> None:
         'ALTER TABLE runs ADD COLUMN IF NOT EXISTS stop_on VARCHAR',
         'ALTER TABLE runs ADD COLUMN IF NOT EXISTS stop_value DOUBLE PRECISION',
         'ALTER TABLE runs ADD COLUMN IF NOT EXISTS stop_reason VARCHAR',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS layout_id VARCHAR',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS layout_hash VARCHAR',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS poses_hash VARCHAR',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS tool_id VARCHAR',
+        'ALTER TABLE runs ADD COLUMN IF NOT EXISTS authored_in VARCHAR',
     ]
     with engine.begin() as conn:
         for statement in statements:
@@ -236,6 +329,11 @@ def ensure_lightsout_processed_label_columns() -> None:
         'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS stop_on VARCHAR',
         'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS stop_value DOUBLE PRECISION',
         'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS stop_reason VARCHAR',
+        'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS layout_id VARCHAR',
+        'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS layout_hash VARCHAR',
+        'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS poses_hash VARCHAR',
+        'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS tool_id VARCHAR',
+        'ALTER TABLE lightsout_processed ADD COLUMN IF NOT EXISTS authored_in VARCHAR',
     ]
     with engine.begin() as conn:
         for statement in statements:
@@ -316,6 +414,7 @@ def health() -> dict:
 def get_runtime_mode() -> dict:
     manager = get_mode_manager()
     current = manager.current()
+    active_layout = get_active_cell_layout()
     db = SessionLocal()
     try:
         reconcile_stale_robot_runs(db)
@@ -344,6 +443,9 @@ def get_runtime_mode() -> dict:
             'mode': current['mode'],
             'environment': current['environment'],
             'active_run': active_payload,
+            'layout_id': (active_layout or {}).get('layout_id'),
+            'layout_hash': (active_layout or {}).get('layout_hash'),
+            'layout_applied': active_layout is not None,
         }
     finally:
         db.close()
@@ -383,11 +485,20 @@ def put_runtime_mode(payload: RuntimeModeRequest) -> dict:
             ) from exc
         except ModeValidationError as exc:
             raise HTTPException(status_code=400, detail=exc.message) from exc
-        return {
+        response = {
             'mode': current['mode'],
             'environment': current['environment'],
             'active_run': None,
         }
+        try:
+            response['layout_apply'] = apply_mode_layout(current['mode'])
+        except Exception as exc:  # Layout application must not undo a mode switch.
+            logger.warning('Mode layout apply failed: %s', exc, exc_info=True)
+            response['layout_apply'] = {
+                'applied': False,
+                'message': str(exc),
+            }
+        return response
     finally:
         db.close()
 
@@ -541,6 +652,7 @@ def create_mock_local_run(payload: MockLocalRunRequest) -> dict:
                 'environment': current['environment'],
             },
         )
+    require_layout_for_run(current)
     if payload.target_weight_g <= 0:
         raise HTTPException(
             status_code=400, detail='target_weight_g must be > 0'
@@ -609,6 +721,7 @@ def create_mock_local_run(payload: MockLocalRunRequest) -> dict:
             return_target_name=payload.return_target_name,
             tolerance_g=payload.tolerance_g,
         )
+        contract.update(require_layout_for_run(current))
         if powder is not None:
             contract['ingredient_id'] = powder.id
             contract['ingredient_name'] = powder.name
@@ -755,6 +868,7 @@ def create_lightsout_run(payload: LightsoutRunRequest) -> dict:
                 'environment': current['environment'],
             },
         )
+    require_layout_for_run(current)
     powder = _resolve_lightsout_powder(payload)
     try:
         resolved = resolve_lightsout_targets(
@@ -820,6 +934,7 @@ def create_lightsout_run(payload: LightsoutRunRequest) -> dict:
         'rng_seed': schedule.rng_seed,
         'label': label.model_dump(exclude_none=True),
     }
+    request_meta.update(require_layout_for_run(current))
 
     db = SessionLocal()
     try:

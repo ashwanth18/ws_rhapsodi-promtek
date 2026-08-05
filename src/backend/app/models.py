@@ -47,6 +47,11 @@ class Run(Base):
     stop_on = Column(String, nullable=True)
     stop_value = Column(Float, nullable=True)
     stop_reason = Column(String, nullable=True)
+    layout_id = Column(String, nullable=True)
+    layout_hash = Column(String, nullable=True)
+    poses_hash = Column(String, nullable=True)
+    tool_id = Column(String, nullable=True)
+    authored_in = Column(String, nullable=True)
 
     artifacts = relationship(
         'Artifact', back_populates='run', cascade='all, delete-orphan'
@@ -106,6 +111,11 @@ class LightsOutProcessed(Base):
     stop_on = Column(String, nullable=True)
     stop_value = Column(Float, nullable=True)
     stop_reason = Column(String, nullable=True)
+    layout_id = Column(String, nullable=True)
+    layout_hash = Column(String, nullable=True)
+    poses_hash = Column(String, nullable=True)
+    tool_id = Column(String, nullable=True)
+    authored_in = Column(String, nullable=True)
 
     run = relationship('Run')
 

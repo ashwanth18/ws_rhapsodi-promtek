@@ -26,6 +26,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <robot_common_msgs/action/move_to.hpp>
+#include <robot_common_msgs/msg/cell_layout_active.hpp>
 #include <std_msgs/msg/float64.hpp>
 #include <std_srvs/srv/trigger.hpp>
 #include <tf2/LinearMath/Quaternion.h>
@@ -89,6 +90,16 @@ public:
     this->declare_parameter<double>("template_lift_height", 0.24);
     scooping_controller::declare_container_scene_parameters(*this);
     container_scene_specs_ = scooping_controller::load_container_scene_specs(*this);
+    layout_sub_ = this->create_subscription<robot_common_msgs::msg::CellLayoutActive>(
+      "/cell_layout/active", rclcpp::QoS(1).transient_local().reliable(),
+      [this](const robot_common_msgs::msg::CellLayoutActive::SharedPtr msg) {
+        try {
+          container_scene_specs_ = scooping_controller::load_container_scene_specs_from_yaml(
+            msg->scene_yaml_path);
+        } catch (const std::exception& ex) {
+          RCLCPP_ERROR(this->get_logger(), "Could not reload layout collision specs: %s", ex.what());
+        }
+      });
 
     pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseArray>(
       "/scoop_poses",
@@ -1267,6 +1278,7 @@ private:
   std::mutex poses_mutex_;
   std::vector<geometry_msgs::msg::Pose> latest_poses_;
   std::vector<scooping_controller::ContainerSceneSpec> container_scene_specs_;
+  rclcpp::Subscription<robot_common_msgs::msg::CellLayoutActive>::SharedPtr layout_sub_;
   std::string latest_frame_id_;
 
   rclcpp::Subscription<geometry_msgs::msg::PoseArray>::SharedPtr pose_sub_;

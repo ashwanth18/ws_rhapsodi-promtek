@@ -104,6 +104,13 @@ def store_processed_run(
         else _metadata_field(payload, 'stop_value'),
         'stop_reason': payload.get('stop_reason')
         or _metadata_field(payload, 'stop_reason'),
+        'layout_id': payload.get('layout_id') or _metadata_field(payload, 'layout_id'),
+        'layout_hash': payload.get('layout_hash')
+        or _metadata_field(payload, 'layout_hash'),
+        'poses_hash': payload.get('poses_hash') or _metadata_field(payload, 'poses_hash'),
+        'tool_id': payload.get('tool_id') or _metadata_field(payload, 'tool_id'),
+        'authored_in': payload.get('authored_in')
+        or _metadata_field(payload, 'authored_in'),
     }
     if not run:
         run = Run(

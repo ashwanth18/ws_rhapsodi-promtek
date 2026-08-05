@@ -53,9 +53,9 @@
             <material name="base_color" />
         </visual>
         <collision>
-            <origin xyz="0 0 0" rpy="0 0 0" />
+            <origin xyz="-0.00220529 -3.22461e-05 0.0504" rpy="0 0 0" />
             <geometry>
-                <mesh filename="file://$(find niryo_robot_description)/meshes/ned3pro/stl/base_link.STL" />
+                <box size="0.189611 0.1816 0.1008" />
             </geometry>
         </collision>
     </link>
@@ -78,9 +78,9 @@
             <material name="shoulder_color" />
         </visual>
         <collision>
-            <origin xyz="0 0 0" rpy="0 0 0" />
+            <origin xyz="-0.0217268 0.0065 0.0697806" rpy="0 0 0" />
             <geometry>
-                <mesh filename="file://$(find niryo_robot_description)/meshes/ned3pro/stl/shoulder_link.STL" />
+                <box size="0.175346 0.145 0.141161" />
             </geometry>
         </collision>
     </link>
@@ -101,9 +101,9 @@
             <material name="arm_color" />
         </visual>
         <collision>
-            <origin xyz="0 0 0" rpy="0 0 ${PI}" />
+            <origin xyz="-0.00402863 -0.113297 -0.0135" rpy="0 0 ${PI}" />
             <geometry>
-                <mesh filename="file://$(find niryo_robot_description)/meshes/ned3pro/stl/arm_link.STL" />
+                <box size="0.103593 0.321803 0.128" />
             </geometry>
         </collision>
     </link>
@@ -124,9 +124,9 @@
             <material name="elbow_color" />
         </visual>
         <collision>
-            <origin xyz="0 0 0" rpy="${PI} 0 ${-PI/2}" />
+            <origin xyz="0.008625 -0.0137681 -0.00355" rpy="${PI} 0 ${-PI/2}" />
             <geometry>
-                <mesh filename="file://$(find niryo_robot_description)/meshes/ned3pro/stl/elbow_link.STL" />
+                <box size="0.09775 0.107964 0.0691" />
             </geometry>
         </collision>
     </link>
@@ -147,9 +147,9 @@
             <material name="forearm_color" />
         </visual>
         <collision>
-            <origin xyz="0 0 0" rpy="${PI} 0 0" />
+            <origin xyz="9.31323e-10 -0.0149 -0.1563" rpy="${PI} 0 0" />
             <geometry>
-                <mesh filename="file://$(find niryo_robot_description)/meshes/ned3pro/stl/forearm_link.STL" />
+                <box size="0.054 0.0942 0.217815" />
             </geometry>
         </collision>
     </link>
@@ -169,9 +169,9 @@
             <material name="wrist_color" />
         </visual>
         <collision>
-            <origin xyz="0 0 0" rpy="0 0 ${PI/2}" />
+            <origin xyz="0.0205 0.012 0.003375" rpy="0 0 ${PI/2}" />
             <geometry>
-                <mesh filename="file://$(find niryo_robot_description)/meshes/ned3pro/stl/wrist_link.STL" />
+                <box size="0.064 0.0465 0.04525" />
             </geometry>
         </collision>
     </link>
@@ -192,9 +192,9 @@
             <material name="hand_color" />
         </visual>
         <collision>
-            <origin xyz="0 0 0" rpy="0 0 0" />
+            <origin xyz="-6.10156e-06 0 0.0085" rpy="0 0 0" />
             <geometry>
-                <mesh filename="file://$(find niryo_robot_description)/meshes/ned3pro/stl/hand_link.STL" />
+                <box size="0.0204878 0.0204366 0.038" />
             </geometry>
         </collision>
     </link>
@@ -215,9 +215,9 @@
             <material name="tool_color" />
         </visual>
         <collision>
-            <origin xyz="0 0 0" rpy="0 0 0" />
+            <origin xyz="0.0822998 1.1301e-06 -0.0552548" rpy="0 0 0" />
             <geometry>
-                <mesh filename="file://$(find niryo_robot_description)/meshes/ned3pro/stl/niryo_scoop_v4-ros.STL" scale="0.001 0.001 0.001" />
+                <box size="0.1854 0.054 0.11051" />
             </geometry>
         </collision>
     </link>

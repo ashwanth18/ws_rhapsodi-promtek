@@ -1,7 +1,9 @@
 #pragma once
 
 #include <array>
+#include <cmath>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -14,12 +16,14 @@
 #include <moveit_msgs/msg/collision_object.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <shape_msgs/msg/solid_primitive.hpp>
+#include <yaml-cpp/yaml.h>
 
 namespace scooping_controller
 {
 struct ContainerSceneSpec
 {
   std::string id;
+  bool enabled{true};
   std::string geometry_type;
   std::string mesh_resource;
   std::array<double, 3> scale;
@@ -41,6 +45,76 @@ inline geometry_msgs::msg::Pose make_pose(
   pose.orientation.z = orientation[2];
   pose.orientation.w = orientation[3];
   return pose;
+}
+
+inline std::array<double, 4> rpy_deg_to_quaternion(const std::array<double, 3>& rpy)
+{
+  constexpr double kDegToRad = 3.14159265358979323846 / 180.0;
+  const double cr = std::cos(rpy[0] * kDegToRad / 2.0);
+  const double sr = std::sin(rpy[0] * kDegToRad / 2.0);
+  const double cp = std::cos(rpy[1] * kDegToRad / 2.0);
+  const double sp = std::sin(rpy[1] * kDegToRad / 2.0);
+  const double cy = std::cos(rpy[2] * kDegToRad / 2.0);
+  const double sy = std::sin(rpy[2] * kDegToRad / 2.0);
+  return {sr * cp * cy - cr * sp * sy, cr * sp * cy + sr * cp * sy,
+    cr * cp * sy - sr * sp * cy, cr * cp * cy + sr * sp * sy};
+}
+
+template<std::size_t N>
+inline std::array<double, N> yaml_array(const YAML::Node& node, const std::string& name)
+{
+  const auto value = node[name];
+  if (!value || !value.IsSequence() || value.size() != N) {
+    throw std::runtime_error("Layout object is missing " + name + " with " + std::to_string(N) + " values");
+  }
+  std::array<double, N> result{};
+  for (std::size_t i = 0; i < N; ++i) {
+    result[i] = value[i].as<double>();
+  }
+  return result;
+}
+
+inline std::vector<ContainerSceneSpec> load_container_scene_specs_from_yaml(const std::string& path)
+{
+  const auto root = YAML::LoadFile(path);
+  const auto objects = root["objects"];
+  if (!objects || !objects.IsSequence() || objects.size() == 0U) {
+    throw std::runtime_error("Layout " + path + " must contain a non-empty objects list");
+  }
+  std::vector<ContainerSceneSpec> specs;
+  for (const auto& object : objects) {
+    for (const auto& required : {"id", "enabled", "geometry_type", "position_xyz", "orientation",
+                                 "scale_xyz", "dimensions_xyz", "color_rgb"}) {
+      if (!object[required]) {
+        throw std::runtime_error("Layout " + path + " object missing required field " + std::string(required));
+      }
+    }
+    ContainerSceneSpec spec;
+    spec.id = object["id"].as<std::string>();
+    spec.enabled = object["enabled"].as<bool>();
+    spec.geometry_type = object["geometry_type"].as<std::string>();
+    spec.mesh_resource = object["mesh_resource"] ? object["mesh_resource"].as<std::string>() : "";
+    if (spec.geometry_type != "mesh" && spec.geometry_type != "box") {
+      throw std::runtime_error("Unsupported geometry_type for " + spec.id);
+    }
+    if (spec.geometry_type == "mesh" && spec.mesh_resource.empty()) {
+      throw std::runtime_error("Mesh object " + spec.id + " has no mesh_resource");
+    }
+    const auto orientation = object["orientation"];
+    const auto quat = orientation["quat_xyzw"] ? yaml_array<4>(orientation, "quat_xyzw") :
+      (orientation["rpy_deg"] ? rpy_deg_to_quaternion(yaml_array<3>(orientation, "rpy_deg")) :
+      throw std::runtime_error("Object " + spec.id + " must provide quat_xyzw or rpy_deg"));
+    spec.pose = make_pose(yaml_array<3>(object, "position_xyz"), quat);
+    spec.scale = yaml_array<3>(object, "scale_xyz");
+    if (object["mesh_units"] && object["mesh_units"].as<std::string>() == "mm") {
+      for (auto& value : spec.scale) { value *= 0.001; }
+    }
+    spec.dimensions = yaml_array<3>(object, "dimensions_xyz");
+    const auto color = yaml_array<3>(object, "color_rgb");
+    spec.color = {static_cast<float>(color[0]), static_cast<float>(color[1]), static_cast<float>(color[2])};
+    specs.push_back(spec);
+  }
+  return specs;
 }
 
 inline std::vector<ContainerSceneSpec> default_container_scene_specs()
@@ -129,6 +203,7 @@ inline void declare_container_scene_parameters(rclcpp::Node& node)
 {
   for (const auto& spec : default_container_scene_specs()) {
     const std::string prefix = spec.id + "_";
+    node.declare_parameter<bool>(prefix + "enabled", spec.enabled);
     node.declare_parameter<std::string>(prefix + "geometry_type", spec.geometry_type);
     node.declare_parameter<std::string>(prefix + "mesh_resource", spec.mesh_resource);
     node.declare_parameter<std::vector<double>>(
@@ -161,6 +236,7 @@ inline std::vector<ContainerSceneSpec> load_container_scene_specs(const rclcpp::
   std::vector<ContainerSceneSpec> specs = default_container_scene_specs();
   for (auto& spec : specs) {
     const std::string prefix = spec.id + "_";
+    spec.enabled = node.get_parameter(prefix + "enabled").as_bool();
     spec.geometry_type = node.get_parameter(prefix + "geometry_type").as_string();
     spec.mesh_resource = node.get_parameter(prefix + "mesh_resource").as_string();
     spec.pose = make_pose(
@@ -186,6 +262,9 @@ inline std::vector<moveit_msgs::msg::CollisionObject> make_container_collision_o
 {
   std::vector<moveit_msgs::msg::CollisionObject> objects;
   for (const auto& spec : specs) {
+    if (!spec.enabled) {
+      continue;
+    }
     moveit_msgs::msg::CollisionObject object;
     object.id = spec.id;
     object.header.frame_id = frame_id;
@@ -221,6 +300,18 @@ inline std::vector<moveit_msgs::msg::CollisionObject> make_container_collision_o
     objects.push_back(object);
   }
   return objects;
+}
+
+inline std::vector<std::string> disabled_container_scene_ids(
+  const std::vector<ContainerSceneSpec>& specs)
+{
+  std::vector<std::string> ids;
+  for (const auto& spec : specs) {
+    if (!spec.enabled) {
+      ids.push_back(spec.id);
+    }
+  }
+  return ids;
 }
 
 inline std::vector<moveit_msgs::msg::CollisionObject> make_container_collision_objects(

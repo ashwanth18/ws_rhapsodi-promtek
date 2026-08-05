@@ -132,6 +132,10 @@ int main(int argc, char ** argv)
   auto ros_node = rclcpp::Node::make_shared("robot_orchestrator");
   auto blackboard = BT::Blackboard::create();
   blackboard->set("ros_node", ros_node);
+  ros_node->declare_parameter<std::string>("lightsout_layout_id", "lightsout-single-vessel");
+  ros_node->declare_parameter<std::string>("webhook_layout_id", "dual-container");
+  ros_node->declare_parameter<std::string>("batch_layout_id", "dual-container");
+  blackboard->set("poses_provenance_ok", true);
 
   // Status publisher
   auto status_pub = ros_node->create_publisher<robot_common_msgs::msg::SystemStatus>("/system_status", 10);
@@ -288,6 +292,9 @@ int main(int argc, char ** argv)
         return;
       }
       beginPendingRun("Main", "batch", "/lightsout_training/phase");
+      blackboard->set(
+        "expected_layout_id",
+        ros_node->get_parameter("batch_layout_id").as_string());
       blackboard->set("containers", req->containers);
       blackboard->set("container_index", static_cast<std::size_t>(0));
       blackboard->set("container_name", std::string(""));
@@ -339,6 +346,9 @@ int main(int argc, char ** argv)
       }
 
       beginPendingRun("LightsOut", "lightsout", "/lightsout_training/phase");
+      blackboard->set(
+        "expected_layout_id",
+        ros_node->get_parameter("lightsout_layout_id").as_string());
       const std::string stop_on =
         req->stop_on.empty() ? std::string("episodes") : req->stop_on;
       blackboard->set("lightsout_powder_id", req->powder_id);
@@ -476,6 +486,9 @@ int main(int argc, char ** argv)
 
       // MES-family / mock share WebhookWeightment; active_mode aligns with RunSpec.
       beginPendingRun("WebhookWeightment", "mes-condor", "/webhook_run/phase");
+      blackboard->set(
+        "expected_layout_id",
+        ros_node->get_parameter("webhook_layout_id").as_string());
       blackboard->set("webhook_run_id", req->run_id);
       blackboard->set("webhook_weightment_id", req->weightment_id);
       blackboard->set("webhook_batch_id", req->batch_id);

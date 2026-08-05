@@ -1,0 +1,16 @@
+schema_version: 1
+layout_id: dual-container
+task_container_id: scooping_container
+tool_id: niryo_scoop_v4
+targets_yaml: dual-container/targets.yaml
+poses_yaml: dual-container/poses.yaml
+# Cartesian planning remains permissive unless a layout explicitly requires collision checking.
+scoop_cartesian_avoid_collisions: false
+safe_retreat_target: ReturnHome
+scoop_envelope: {x_min: -0.20, x_max: 0.20, y_min: -0.20, y_max: 0.20, z_min: 0.00, z_max: 0.35}
+calibration: {source: container_scene_real.yaml, frame_id: base_link}
+sim: {overlay: {mass: 0.2, friction: 0.8}}
+objects:
+  - {id: scooping_container, enabled: true, geometry_type: mesh, mesh_resource: package://scooping_controller/models/scooping_container/meshes/scooping_container.STL, mesh_units: mm, position_xyz: [0.460, -0.119, 0.0], orientation: {rpy_deg: [0, 0, 180]}, scale_xyz: [1, 1, 1], dimensions_xyz: [0, 0, 0], color_rgb: [0.7, 0.7, 0.7]}
+  - {id: weighing_container, enabled: true, geometry_type: mesh, mesh_resource: package://scooping_controller/models/weighing_container/meshes/rs3_container.STL, mesh_units: mm, position_xyz: [0.0, -0.4218, 0.105], orientation: {rpy_deg: [0, 0, 90]}, scale_xyz: [1, 1, 1], dimensions_xyz: [0, 0, 0], color_rgb: [0.4, 0.8, 0.4]}
+  - {id: table, enabled: true, geometry_type: box, position_xyz: [0, 0, -0.015], orientation: {quat_xyzw: [0, 0, 0, 1]}, scale_xyz: [1, 1, 1], dimensions_xyz: [1.02, 0.61, 0.03], color_rgb: [0.55, 0.39, 0.22]}

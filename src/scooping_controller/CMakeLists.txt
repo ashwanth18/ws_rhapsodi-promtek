@@ -47,6 +47,7 @@ ament_target_dependencies(
   interactive_markers
   moveit_msgs
   rclcpp
+  robot_common_msgs
   shape_msgs
   std_msgs
   std_srvs
@@ -102,6 +103,7 @@ ament_target_dependencies(
   std_msgs
   std_srvs
 )
+target_link_libraries(scooping_mtc_node yaml-cpp)
 
 add_executable(container_marker_publisher src/container_marker_publisher.cpp)
 target_compile_features(container_marker_publisher PUBLIC cxx_std_17)
@@ -114,9 +116,11 @@ ament_target_dependencies(
   geometric_shapes
   moveit_msgs
   rclcpp
+  robot_common_msgs
   shape_msgs
   visualization_msgs
 )
+target_link_libraries(container_marker_publisher yaml-cpp)
 
 add_executable(planning_scene_collision_publisher src/planning_scene_collision_publisher.cpp)
 target_compile_features(planning_scene_collision_publisher PUBLIC cxx_std_17)
@@ -128,9 +132,11 @@ ament_target_dependencies(
   moveit_msgs
   moveit_ros_planning_interface
   rclcpp
+  robot_common_msgs
   shape_msgs
   geometric_shapes
 )
+target_link_libraries(planning_scene_collision_publisher yaml-cpp)
 
 add_executable(scooping_task_frame_publisher src/scooping_task_frame_publisher.cpp)
 target_compile_features(scooping_task_frame_publisher PUBLIC cxx_std_17)
@@ -143,9 +149,24 @@ ament_target_dependencies(
   geometry_msgs
   moveit_msgs
   rclcpp
+  robot_common_msgs
   shape_msgs
   tf2_ros
 )
+target_link_libraries(scooping_task_frame_publisher yaml-cpp)
+
+add_executable(cell_layout_manager src/cell_layout_manager.cpp)
+target_compile_features(cell_layout_manager PUBLIC cxx_std_17)
+ament_target_dependencies(
+  cell_layout_manager
+  geometry_msgs
+  rclcpp
+  rclcpp_action
+  robot_common_msgs
+  std_msgs
+  std_srvs
+)
+target_link_libraries(cell_layout_manager yaml-cpp)
 
 install(
   TARGETS
@@ -154,6 +175,7 @@ install(
     container_marker_publisher
     planning_scene_collision_publisher
     scooping_task_frame_publisher
+    cell_layout_manager
   DESTINATION lib/${PROJECT_NAME}
 )
 

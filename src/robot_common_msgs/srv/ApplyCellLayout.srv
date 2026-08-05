@@ -1,0 +1,6 @@
+string layout_id
+---
+bool success
+string message
+string layout_hash
+bool preflight_ok

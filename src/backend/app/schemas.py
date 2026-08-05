@@ -97,6 +97,11 @@ class ProcessedRequest(BaseModel):
     stop_on: Optional[str] = None
     stop_value: Optional[float] = None
     stop_reason: Optional[str] = None
+    layout_id: Optional[str] = None
+    layout_hash: Optional[str] = None
+    poses_hash: Optional[str] = None
+    tool_id: Optional[str] = None
+    authored_in: Optional[str] = None
 
 
 class ProcessedResponse(BaseModel):
