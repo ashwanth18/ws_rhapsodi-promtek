@@ -1,0 +1,47 @@
+# Rhapsodi edge device identity — single source of truth for THIS Pi.
+#
+# Copy this file per robot, for example:
+#   cp config/device.yaml.example config/device.pi-3.yaml
+# then point that specific Pi at it:
+#   export RHAPSODI_DEVICE_CONFIG=/ws/config/device.pi-3.yaml
+# or, if you keep one checkout per Pi (as with robot-prod.env today), just
+# edit config/device.yaml directly for that Pi and leave the env var unset.
+#
+# Every ROS 2 node and future edge daemon in this repo should read identity
+# through src/rhapsodi_common/rhapsodi_common/device_config.py instead of
+# hardcoding "robot-1" / "localhost" defaults. See that module for the
+# fallback behavior if this file is missing.
+#
+# device_id should match the Tailscale hostname used for fleet monitoring
+# (scripts/generate_prom_targets.sh) so health/fault data collected here and
+# infra metrics in monitoring/ correlate on the same identifier.
+
+device:
+  # Stable per-Pi identifier. Recommended: same as the Tailscale hostname
+  # for this Pi (e.g. "rhapsodi-pi-3"), so it lines up with
+  # monitoring/prometheus/targets-node.json's "instance" label.
+  device_id: robot-1
+
+  # Business/robot identifier used in run folder names, MCAP metadata, and
+  # today's webhook/lightsout topics. Historically always "robot-1"; now
+  # per-Pi.
+  robot_id: robot-1
+
+  # Must match a key under `robots:` in
+  # src/scooping_controller/config/robots.yaml (e.g. niryo, jaka).
+  # Laptop / JAKA cells: use config/device.jaka-laptop.yaml and set
+  # RHAPSODI_DEVICE_CONFIG=/ws/config/device.jaka-laptop.yaml in
+  # robot-prod.laptop.env (see docs/jaka-laptop-networking.md).
+  robot_type: niryo
+
+  # Which physical site/facility this Pi is deployed at.
+  site_id: site-1
+
+  fleet:
+    # Existing per-run feature extraction service (unchanged).
+    processing_url: http://localhost:8002/process
+
+    # New Rhapsodi data-collection ingestion channel (NOT condor_agent /
+    # MES) — base URL only; uplink_daemon appends its own /v1/... paths
+    # (see data_collection_manager/uplink_client.py).
+    ingestion_url: http://localhost:8011

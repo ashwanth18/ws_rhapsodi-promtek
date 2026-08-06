@@ -1,0 +1,399 @@
+# Pi5 robot cell — production edge compose (moved from docker-compose.robot-prod.yml).
+# Selected via device_class=pi5 (see config/device_classes.yaml).
+
+name: rhapsodi-promtek-robot-prod
+
+x-ros-robot-service: &ros-robot-service
+  image: ${ROS_PROD_IMAGE:-iserenity/rhapsodi-promtek:ros-prod}
+  network_mode: host
+  ipc: host
+  environment:
+    ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+    ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+    RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+    FASTDDS_BUILTIN_TRANSPORTS: ${FASTDDS_BUILTIN_TRANSPORTS:-UDPv4}
+    ROBOT_IP: ${ROBOT_IP:-169.254.200.200}
+    # Single source of truth for this Pi's identity — see config/device.yaml
+    # and src/rhapsodi_common/rhapsodi_common/device_config.py.
+    RHAPSODI_DEVICE_CONFIG: ${RHAPSODI_DEVICE_CONFIG:-/ws/config/device.yaml}
+    ROBOT_PROFILES_DIR: ${ROBOT_PROFILES_DIR:-/ws/config/robots}
+    ROBOT_TYPE: ${ROBOT_TYPE:-}
+    PROFILE_ID: ${PROFILE_ID:-}
+  volumes:
+    - ./data:/data
+    - ./data/ros_home:/root/.ros
+    - ./config:/ws/config:ro
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: robot_data
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  backend:
+    image: ${BACKEND_IMAGE:-iserenity/rhapsodi-promtek:backend}
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/robot_data
+      # '*' → backend reflects any http(s) Origin (needed for MagicDNS / LAN).
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      WEIGHMENT_URL: ${WEIGHMENT_URL:-http://host.docker.internal:5002/batch/weighment}
+      BATCH_END_URL: ${BATCH_END_URL:-http://host.docker.internal:5002/batch/end}
+      TIMESERIES_URL: ${TIMESERIES_URL:-http://host.docker.internal:5002/timeseries}
+      # Must match Condor agent OrganisationId/SiteId/UserId (not RHAPSODI_1).
+      TIMESERIES_ORGANISATION_ID: ${TIMESERIES_ORGANISATION_ID:-6647A41A-8FEB-4082-86F4-3D14964161AD}
+      TIMESERIES_SITE_ID: ${TIMESERIES_SITE_ID:-76454DA2-683C-4706-A88E-4E2FC6773685}
+      TIMESERIES_USER_ID: ${TIMESERIES_USER_ID:-15de0997-1508-4f2e-91de-14745f295d9e}
+      PATH_MAP_FROM: ${WORKSPACE_ROOT:-/home/ashwanth/ws_rhapsodi-promtek-dev}/data
+      PATH_MAP_TO: /data
+      ROBOT_START_ADAPTER_URL: ${ROBOT_START_ADAPTER_URL:-http://host.docker.internal:8010/start_webhook_weightment}
+      ROBOT_LIGHTSOUT_ADAPTER_URL: ${ROBOT_LIGHTSOUT_ADAPTER_URL:-http://host.docker.internal:8010/start_lightsout}
+
+      ROBOT_RUNNING_TIMEOUT_SECONDS: ${ROBOT_RUNNING_TIMEOUT_SECONDS:-300}
+      ROSBRIDGE_HOST: host.docker.internal
+      ROSBRIDGE_PORT: 9090
+      ROBOT_LOCATION_TARGETS_JSON: ${ROBOT_LOCATION_TARGETS_JSON:-}
+      # Fleet Console /host_info identity + version (IMAGE_TAG from robot-prod.env)
+      IMAGE_TAG: ${IMAGE_TAG:-}
+      PROFILE_ID: ${PROFILE_ID:-}
+      DEVICE_CLASS: ${DEVICE_CLASS:-pi5}
+      # Sim is laptop-only; never enable on a Pi5 cell (see docs/MODES.md).
+      SIM_ALLOWED: ${SIM_ALLOWED:-0}
+      ENVIRONMENT: ${ENVIRONMENT:-real}
+      RHAPSODI_DEVICE_CONFIG: /ws/config/device.yaml
+      # Host metrics for Controls /host_info (node_exporter on Pi, else /host/proc)
+      NODE_EXPORTER_URL: ${NODE_EXPORTER_URL:-http://host.docker.internal:9100/metrics}
+      HOST_PROC: /host/proc
+      HOST_SYS: /host/sys
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+      - ./config:/ws/config:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro,rslave
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  processing:
+    image: ${PROCESSING_IMAGE:-iserenity/rhapsodi-promtek:processing}
+    environment:
+      BACKEND_URL: http://backend:8000
+      PATH_MAP_FROM: ${WORKSPACE_ROOT:-/home/ashwanth/ws_rhapsodi-promtek-dev}/data
+      PATH_MAP_TO: /data
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./data:/data
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  # Receiving side of the Rhapsodi data-collection uplink (central-ingestion-service):
+  # fleet health log, Tier 0 metadata/features/events, and resumable
+  # checksum-verified Tier 1 blobs from data_collection_manager's
+  # uplink_daemon. Fully separate from condor_agent/MES's webhook/backend
+  # flow — see src/backend/ingestion/ingestion/main.py.
+  ingestion:
+    image: ${INGESTION_IMAGE:-iserenity/rhapsodi-promtek:ingestion}
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/robot_data
+      OBJECT_STORE_ROOT: ${OBJECT_STORE_ROOT:-/data/ingested}
+    ports:
+      - "${INGESTION_PORT:-8011}:8011"
+    volumes:
+      - ./data:/data
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  webhook_service:
+    image: ${WEBHOOK_IMAGE:-iserenity/rhapsodi-promtek:webhook}
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/robot_data
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/data
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  condor_agent:
+    # Image-only: built/pushed by scripts/buildx_push_images.sh. Do not add a
+    # local `build:` block — edge devices only pull from the registry.
+    image: ${CONDOR_AGENT_IMAGE:-iserenity/rhapsodi-promtek:condor-agent}
+    environment:
+      promtek-condor-rhapsodi-agent__RhapsodiUrl: ${CONDOR_AGENT_RHAPSODI_URL:-http://webhook_service:5000}
+      promtek-condor-rhapsodi-agent__Port: ${CONDOR_AGENT_PORT:-5002}
+      FileLogger__Directory: ${CONDOR_AGENT_LOG_DIR:-/data/condor-agent/logs/{Service.Name}}
+    ports:
+      - "${CONDOR_AGENT_PORT:-5002}:5002"
+    volumes:
+      - ./data:/data
+    depends_on:
+      - webhook_service
+    restart: unless-stopped
+
+  dashboard:
+    image: ${DASHBOARD_IMAGE:-iserenity/rhapsodi-promtek:dashboard}
+    ports:
+      - "${DASHBOARD_PORT:-8080}:80"
+    # SPA deep links (/batches, etc.) need try_files → index.html.
+    # Mount keeps hostaware/older images working without a rebuild.
+    # Path is relative to --project-directory (workspace root). Fleet-agent
+    # and compose always use project-directory=<repo>; ../../docker/...
+    # incorrectly resolved to /opt/docker/ and created a host directory.
+    volumes:
+      - ./docker/nginx-dashboard.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  rosbridge:
+    <<: *ros-robot-service
+    command: ros2 launch niryo_robot_simulation_client rosbridge_websocket_fixed.launch.py address:=0.0.0.0 port:=9090
+
+  robot_start_adapter:
+    <<: *ros-robot-service
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+      ROBOT_IP: ${ROBOT_IP:-169.254.200.200}
+      FASTDDS_BUILTIN_TRANSPORTS: UDPv4
+      ROBOT_START_SERVICE_NAME: /bt_start_webhook_weightment
+      ROBOT_LIGHTSOUT_SERVICE_NAME: /bt_start_lightsout
+      ROBOT_START_SERVICE_WAIT_TIMEOUT_SECONDS: 5
+      ROBOT_START_SERVICE_CALL_TIMEOUT_SECONDS: 15
+    command:
+      [
+        "bash",
+        "-lc",
+        "cd /ws/src/backend/robot_adapter && uvicorn main:app --host 0.0.0.0 --port 8010",
+      ]
+
+  scooping_stack:
+    <<: *ros-robot-service
+    # Do not pass poses_yaml:= / robot:= / layout_id:= when empty — ros2 launch
+    # treats `name:=` as malformed. Empty POSES_YAML → marker server derives
+    # ~/.ros/scooping_controller/poses_real_<layout_id>.yaml. ROBOT_TYPE is
+    # already in the service environment; launch resolves robot from device.yaml.
+    # DEFAULT_LAYOUT_ID is compose-substituted from robot-prod.env into `lid`
+    # below (not a container env). When set, layout_id seeds
+    # cell_layout_manager without plan-only preflight (works around apply
+    # nested-spin failure on current ros-prod images).
+    command:
+      [
+        "bash",
+        "-lc",
+        "lid='${DEFAULT_LAYOUT_ID:-}'; extra=''; if [ -n \"$$lid\" ]; then extra=\"layout_id:=$$lid\"; fi; exec ros2 launch scooping_controller scooping_real.launch.py use_rviz:=false poses_env:=${POSES_ENV:-real} targets_yaml:=${TARGETS_YAML:-/ws/install/share/robot_moveit/targets.yaml} layouts_dir:=${CELL_LAYOUTS_DIR:-/ws/config/layouts} container_scene_yaml:=${CONTAINER_SCENE_YAML:-/ws/install/share/scooping_controller/config/container_scene_real.yaml} post_lift_vibration_enabled:=${POST_LIFT_VIBRATION_ENABLED:-true} post_lift_vibration_duration_s:=${POST_LIFT_VIBRATION_DURATION_S:-5.0} post_lift_vibration_intensity:=${POST_LIFT_VIBRATION_INTENSITY:-0.75} post_lift_vibration_publish_rate_hz:=${POST_LIFT_VIBRATION_PUBLISH_RATE_HZ:-10.0} $$extra",
+      ]
+
+  scale_launcher:
+    <<: *ros-robot-service
+    privileged: true
+    devices:
+      - ${SCALE_DEVICE:-/dev/ttyUSB0}:${SCALE_DEVICE:-/dev/ttyUSB0}
+    command: >
+      ros2 launch weighing_scale_driver weighing_scale.launch.py
+      port:=${SCALE_DEVICE:-/dev/ttyUSB0}
+      baud:=${SCALE_BAUD:-9600}
+      topic:=/weight
+
+  micro_ros_agent:
+    image: ${MICRO_ROS_AGENT_IMAGE:-microros/micro-ros-agent:jazzy}
+    network_mode: host
+    privileged: true
+    volumes:
+      - /dev:/dev
+    command:
+      [
+        "serial",
+        "--dev",
+        "${MICRO_ROS_DEVICE:-/dev/ttyACM0}"
+      ]
+    restart: unless-stopped
+
+  # Publishes /system/health_events on micro-ROS heartbeat staleness/recovery
+  # (see control_heartbeat_method.md for the dashboard-side equivalent check).
+  microros_health_watchdog:
+    <<: *ros-robot-service
+    command: ros2 run rhapsodi_common microros_health_watchdog
+
+  pouring_controller:
+    <<: *ros-robot-service
+    command: >
+      bash -lc "
+      ros2 run pouring_controller incline_control_node
+      --ros-args
+      -p incline_topic:=/incline_control
+      -p joint_state_topic:=/joint_states
+      -p traj_action_server:=${TRAJ_ACTION_SERVER:-/niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory}
+      -p tilt_joint_name:=${TILT_JOINT_NAME:-joint_5}
+      -p max_incline_deg:=${MAX_INCLINE_DEG:-20.0}
+      -p incline_direction:=${INCLINE_DIRECTION:--1.0}
+      -p joint_move_time_s:=${INCLINE_JOINT_MOVE_TIME_S:-0.5}
+      &
+      exec ros2 run pouring_controller pour_server_node
+      --ros-args
+      -p weight_topic:=/weight
+      -p vibration_topic:=/vibration/intensity
+      -p joint_state_topic:=/joint_states
+      -p coarse_tilt_deg:=${COARSE_TILT_DEG:-15.0}
+      -p coarse_threshold:=${COARSE_THRESHOLD:-0.40}
+      -p fine_threshold:=${FINE_THRESHOLD:-0.05}
+      -p coarse_vibration_intensity:=${COARSE_VIBRATION_INTENSITY:-0.9}
+      -p fine_vibration_intensity:=${FINE_VIBRATION_INTENSITY:-0.70}
+      -p trickle_vibration_intensity:=${TRICKLE_VIBRATION_INTENSITY:-0.5}
+      -p trickle_pulse_ms:=${TRICKLE_PULSE_MS:-180.0}
+      -p trickle_pause_ms:=${TRICKLE_PAUSE_MS:-160.0}
+      -p no_progress_timeout_s:=${NO_PROGRESS_TIMEOUT_S:-3.0}
+      -p no_progress_incline_step_deg:=${NO_PROGRESS_INCLINE_STEP_DEG:-5.0}
+      -p max_incline_deg:=${MAX_INCLINE_DEG:-20.0}
+      "
+
+  # Development pouring controller: rebuilds a mounted source overlay at container start.
+  # Opt-in only — never start on edge with plain `compose up` (crash-loops without full src/).
+  #   docker compose ... --profile edge-dev up -d pouring_controller_dev
+  pouring_controller_dev:
+    <<: *ros-robot-service
+    profiles: ["edge-dev"]
+    volumes:
+      - .:/workspace:rw
+      - ./data:/data
+      - ./data/ros_home:/root/.ros
+    working_dir: /workspace
+    command: >
+      bash -lc "
+      set -e;
+      source /opt/ros/jazzy/setup.bash &&
+      source /ws/install/setup.bash &&
+      rm -rf /tmp/pouring_controller_build /tmp/pouring_controller_install /tmp/pouring_controller_log &&
+      colcon --log-base /tmp/pouring_controller_log build
+      --build-base /tmp/pouring_controller_build
+      --install-base /tmp/pouring_controller_install
+      --packages-select robot_common_msgs pouring_controller
+      --symlink-install &&
+      source /tmp/pouring_controller_install/setup.bash;
+      echo Using pouring_controller prefix: /tmp/pouring_controller_install/pouring_controller;
+      /tmp/pouring_controller_install/pouring_controller/lib/pouring_controller/incline_control_node
+      --ros-args
+      -p incline_topic:=/incline_control
+      -p joint_state_topic:=/joint_states
+      -p traj_action_server:=${TRAJ_ACTION_SERVER:-/niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory}
+      -p tilt_joint_name:=${TILT_JOINT_NAME:-joint_5}
+      -p max_incline_deg:=${MAX_INCLINE_DEG:-20.0}
+      -p incline_direction:=${INCLINE_DIRECTION:--1.0}
+      -p joint_move_time_s:=${INCLINE_JOINT_MOVE_TIME_S:-0.5}
+      &
+      exec /tmp/pouring_controller_install/pouring_controller/lib/pouring_controller/pour_server_node
+      --ros-args
+      -p weight_topic:=/weight
+      -p vibration_topic:=/vibration/intensity
+      -p joint_state_topic:=/joint_states
+      -p coarse_tilt_deg:=${COARSE_TILT_DEG:-15.0}
+      -p coarse_threshold:=${COARSE_THRESHOLD:-0.40}
+      -p fine_threshold:=${FINE_THRESHOLD:-0.05}
+      -p coarse_vibration_intensity:=${COARSE_VIBRATION_INTENSITY:-0.9}
+      -p fine_vibration_intensity:=${FINE_VIBRATION_INTENSITY:-0.70}
+      -p trickle_vibration_intensity:=${TRICKLE_VIBRATION_INTENSITY:-0.5}
+      -p trickle_pulse_ms:=${TRICKLE_PULSE_MS:-180.0}
+      -p trickle_pause_ms:=${TRICKLE_PAUSE_MS:-160.0}
+      -p no_progress_timeout_s:=${NO_PROGRESS_TIMEOUT_S:-3.0}
+      -p no_progress_incline_step_deg:=${NO_PROGRESS_INCLINE_STEP_DEG:-5.0}
+      -p max_incline_deg:=${MAX_INCLINE_DEG:-20.0}
+      "
+
+  data_collection:
+    <<: *ros-robot-service
+    # robot_id / processing_url default from config/device.yaml (mounted
+    # above at /ws/config/device.yaml) via rhapsodi_common.device_config —
+    # no longer hardcoded here. Override with -p robot_id:=... /
+    # -p processing_url:=... only for one-off testing.
+    # recording_profiles.yaml is under ./config (mounted at /ws/config:ro
+    # via x-ros-robot-service) — pour/scoop/camera topics come from there.
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+      FASTDDS_BUILTIN_TRANSPORTS: ${FASTDDS_BUILTIN_TRANSPORTS:-UDPv4}
+      ROBOT_IP: ${ROBOT_IP:-169.254.200.200}
+      RHAPSODI_DEVICE_CONFIG: ${RHAPSODI_DEVICE_CONFIG:-/ws/config/device.yaml}
+      RHAPSODI_RECORDING_PROFILES: ${RHAPSODI_RECORDING_PROFILES:-/ws/config/recording_profiles.yaml}
+    command: >
+      ros2 run data_collection_manager data_collection_manager
+      --ros-args
+      -p output_root:=${DATA_OUTPUT_ROOT:-/data/runs}
+    depends_on:
+      - processing
+
+  # Enforces manifest.sqlite's Tier 0/Tier 1 retention policy (local-manifest-retention):
+  # Tier 1 (run.mcap, vision/) is only pruned once the uplink daemon acks a
+  # run, oldest-first, anomaly-flagged runs exempt. Runs independently of
+  # data_collection so a stuck recorder never blocks retention enforcement.
+  retention_watchdog:
+    <<: *ros-robot-service
+    command: >
+      ros2 run data_collection_manager retention_watchdog
+      --ros-args
+      -p output_root:=${DATA_OUTPUT_ROOT:-/data/runs}
+
+  # Store-and-forward uplink to central-ingestion-service (the "ingestion" service)
+  # (uplink-daemon): fleet health log, then Tier 0, then Tier 1, in that
+  # priority order. ingestion_url defaults from config/device.yaml.
+  uplink_daemon:
+    <<: *ros-robot-service
+    command: >
+      ros2 run data_collection_manager uplink_daemon
+      --ros-args
+      -p output_root:=${DATA_OUTPUT_ROOT:-/data/runs}
+
+  # tree_file is optional (preferred-tree hint). Orchestrator registers all
+  # share/bt_trees/*.xml at startup and creates a tree per start-service run.
+  orchestrator:
+    <<: *ros-robot-service
+    command: >
+      ros2 run robot_orchestrator orchestrator_node
+      --ros-args
+      -p tree_file:=${BT_TREE:-/ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml}
+
+  # Development orchestrator: rebuilds a mounted source overlay at container start.
+  # Opt-in only — never start on edge with plain `compose up` (crash-loops without full src/).
+  #   docker compose ... --profile edge-dev up -d orchestrator_dev
+  orchestrator_dev:
+    <<: *ros-robot-service
+    profiles: ["edge-dev"]
+    volumes:
+      - .:/workspace:rw
+      - ./data:/data
+      - ./data/ros_home:/root/.ros
+    working_dir: /workspace
+    command: >
+      bash -lc "
+      source /opt/ros/jazzy/setup.bash &&
+      source /ws/install/setup.bash &&
+      rm -rf /tmp/orchestrator_build /tmp/orchestrator_install /tmp/orchestrator_log &&
+      colcon --log-base /tmp/orchestrator_log build
+      --build-base /tmp/orchestrator_build
+      --install-base /tmp/orchestrator_install
+      --packages-select robot_common_msgs robot_orchestrator
+      --symlink-install &&
+      source /tmp/orchestrator_install/setup.bash &&
+      ros2 run robot_orchestrator orchestrator_node --ros-args
+      -p tree_file:=/workspace/src/robot_orchestrator/bt_trees/webhook_weightment.xml
+      "
+
+volumes:
+  db_data:
