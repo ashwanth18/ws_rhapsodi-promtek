@@ -1,0 +1,83 @@
+# Fleet runtime profiles — behavior only (orthogonal to device hardware).
+#
+# A device picks:
+#   - device_class: pi5 | jetson | x86  → compose/devices/<class>.yml
+#   - platform: linux/arm64 | linux/amd64 (OCI)
+#   - version: tracked_branch + Release (images)
+#   - profile: one of the keys below (runtime behavior / layout)
+#
+# Compose is NOT selected here — see config/device_classes.yaml.
+# Optional device_classes: restrict which hardware may use this profile.
+#
+# Ansible apply (deploy.yml / provision via agent):
+#   profile env overrides are written into robot-prod.env.
+#
+# Pose/scene overrides under config/profiles/<id>/ are shipped in the slim
+# deploy bundle and mounted at /ws/config on the device.
+
+mode_layouts:
+  lightsout: lightsout-single-vessel
+  mock-local: dual-container
+  mes-condor: dual-container
+  mes-generic: dual-container
+
+profiles:
+  prod-niryo:
+    description: Production webhook weighment stack (Niryo)
+    robot_type: niryo
+    device_classes: [pi5]
+    env:
+      PROFILE_ID: prod-niryo
+      BT_TREE: /ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml
+      # Single root; runs land under {DATA_OUTPUT_ROOT}/{mode}/...
+      DATA_OUTPUT_ROOT: /data/runs
+      # Sim is laptop-only; never enable on Pi5 profiles.
+      SIM_ALLOWED: "0"
+      ENVIRONMENT: real
+      # Empty: scooping_marker_server derives poses_real_<layout_id>.yaml
+      POSES_YAML: ""
+      POSES_ENV: real
+      TARGETS_YAML: /ws/install/share/robot_moveit/targets.yaml
+      CONTAINER_SCENE_YAML: /ws/install/share/scooping_controller/config/container_scene_real.yaml
+
+  lightsout-training:
+    description: Lights-out training BT + data collection (Niryo)
+    robot_type: niryo
+    device_classes: [pi5]
+    env:
+      PROFILE_ID: lightsout-training
+      BT_TREE: /ws/install/share/robot_orchestrator/bt_trees/lightsout.xml
+      DATA_OUTPUT_ROOT: /data/runs
+      SIM_ALLOWED: "0"
+      ENVIRONMENT: real
+      POSES_YAML: ""
+      POSES_ENV: real
+      TARGETS_YAML: /ws/install/share/robot_moveit/targets.yaml
+      CONTAINER_SCENE_YAML: /ws/install/share/scooping_controller/config/container_scene_real.yaml
+
+  prod-jaka:
+    description: Production webhook weighment stack (Jaka) — amd64 / x86 host
+    robot_type: jaka
+    device_classes: [x86]
+    env:
+      PROFILE_ID: prod-jaka
+      BT_TREE: /ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml
+      DATA_OUTPUT_ROOT: /data/runs
+      POSES_YAML: ""
+      POSES_ENV: real
+      TARGETS_YAML: /ws/install/share/robot_moveit/targets_jaka.yaml
+      CONTAINER_SCENE_YAML: /ws/install/share/scooping_controller/config/container_scene/jaka_real.yaml
+      TRAJ_ACTION_SERVER: /jaka_zu5_controller/follow_joint_trajectory
+
+  jaka-site2-layout:
+    description: Jaka with site-2 table layout (custom scoop/pour poses)
+    robot_type: jaka
+    device_classes: [x86]
+    env:
+      PROFILE_ID: jaka-site2-layout
+      BT_TREE: /ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml
+      DATA_OUTPUT_ROOT: /data/runs
+      # Host paths under the slim deploy bundle (mounted as /ws/config)
+      POSES_YAML: /ws/config/profiles/jaka-site2/poses_real.yaml
+      TARGETS_YAML: /ws/config/profiles/jaka-site2/targets_jaka.yaml
+      CONTAINER_SCENE_YAML: /ws/config/profiles/jaka-site2/container_scene.yaml
