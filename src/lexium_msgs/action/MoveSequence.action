@@ -1,0 +1,14 @@
+# Execute an ordered list of Lexium moves, each with its own speed/acc.
+# Moves run one-at-a-time; a move with arc_transition == 0 stops at its target
+# (a clean point to change speed), while arc_transition > 0 blends into the next.
+MoveCommand[] moves
+---
+# Result
+bool success
+string message
+int32 completed        # number of moves that finished
+---
+# Feedback
+int32 current_index    # index of the move currently executing
+int32 total            # total number of moves in the goal
+int32 active_command_id

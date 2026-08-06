@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>lexium_driver</name>
+  <version>0.0.0</version>
+  <description>ROS 2 driver for the Schneider Lexium Cobot using the native JSON/TCP protocol (commands on port 10001, feedback on port 10000). Exposes a FollowJointTrajectory action server and /joint_states so MoveIt 2 can plan and execute on the real robot.</description>
+
+  <maintainer email="todo@todo.todo">ashwanth</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>control_msgs</exec_depend>
+  <exec_depend>trajectory_msgs</exec_depend>
+  <exec_depend>builtin_interfaces</exec_depend>
+  <exec_depend>lexium_msgs</exec_depend>
+  <exec_depend>lexium_rviz_plugins</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

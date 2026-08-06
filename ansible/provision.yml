@@ -67,16 +67,11 @@
           Missing vault secrets. Create ansible/.vault_pass and ensure
           group_vars/all/vault.yml decrypts (see vault.yml.example).
 
-    - name: Guard against Jaka on arm64 (vendor libjakaAPI.so is x86-only)
-      ansible.builtin.fail:
-        msg: >-
-          robot_type=jaka is not supported on {{ ansible_architecture }} yet.
-          The Jaka vendor library (libjakaAPI.so) is x86_64-only; ARM64 ROS
-          images skip jaka_driver/jaka_planner. Use robot_type=niryo on Pi /
-          Jetson, or provision Jaka on an amd64 host.
-      when:
-        - robot_type == 'jaka'
-        - ansible_architecture in ['aarch64', 'arm64']
+    # Historical note: jaka_driver/jaka_planner (vendor libjakaAPI.so) were
+    # x86_64-only and used to block robot_type=jaka on arm64. Real Jaka/Lexium
+    # cells now use lexium_driver (pure Python JSON/TCP, arch-independent);
+    # the SDK packages are skipped unconditionally in docker/ros/Dockerfile.prod.
+    # No architecture guard remains for robot_type=jaka.
 
     - name: Install base packages
       ansible.builtin.apt:

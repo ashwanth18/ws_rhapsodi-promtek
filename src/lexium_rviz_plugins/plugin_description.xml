@@ -1,0 +1,10 @@
+<library path="lexium_rviz_plugins">
+  <class
+    name="lexium_rviz_plugins/SafetyPanel"
+    type="lexium_rviz_plugins::SafetyPanel"
+    base_class_type="rviz_common::Panel">
+    <description>
+      Power on/off, enable/disable, clear error, and emergency stop for the Lexium driver.
+    </description>
+  </class>
+</library>

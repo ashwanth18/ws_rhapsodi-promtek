@@ -4,14 +4,16 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help author bench sim arm-session export-poses status validate-layouts \
-        layout-parity touch-off-parity gen-vscode-tasks check-vscode-tasks \
-        api-sandbox-up api-sandbox-down dashboard-dev console-dev \
-        deploy-jetson push-layout test-backend
+.PHONY: help author bench sim arm-session lexium-session export-poses status \
+        validate-layouts layout-parity touch-off-parity gen-vscode-tasks \
+        check-vscode-tasks api-sandbox-up api-sandbox-down dashboard-dev \
+        console-dev deploy-jetson push-layout test-backend ros-image-local
 
 LAYOUT ?= dual-container
 ROBOT ?= niryo
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+ROS_IMAGE_LOCAL_TAG ?= iserenity/rhapsodi-promtek:ros-prod-lexium
+BUILDX_BUILDER ?= multiarch
 
 ##@ Authoring
 help:  ## List available tasks (grouped)
@@ -35,11 +37,20 @@ sim:  ## Gazebo sim with layout-composed world (ROBOT=<id> LAYOUT=<id>)
 arm-session:  ## Real-arm authoring handoff (LAYOUT=<id>); stops Pi scooping_stack. No motion commanded.
 	$(ROOT)/scripts/dev_arm_session.sh $(LAYOUT) $(ROBOT)
 
+lexium-session:  ## Native RViz + Lexium Safety panel against laptop scooping_stack (ROBOT=jaka)
+	$(ROOT)/scripts/dev_lexium_session.sh $(ROBOT)
+
 export-poses:  ## Save timestamped scoop pose set under layouts/<id>/poses/sets/ (default intact)
 	$(ROOT)/scripts/export_scoop_poses.sh
 
 status:  ## Doctor: active layout, dirty tree, pose freshness, validation, next step
 	$(ROOT)/scripts/dev_status.sh
+
+##@ Images
+ros-image-local:  ## Build ros-prod for local amd64 (Lexium packages); tag ROS_IMAGE_LOCAL_TAG
+	docker buildx build --builder $(BUILDX_BUILDER) --platform linux/amd64 \
+		-f $(ROOT)/docker/ros/Dockerfile.prod \
+		-t $(ROS_IMAGE_LOCAL_TAG) --load $(ROOT)
 
 ##@ Validate
 validate-layouts:  ## Schema + catalog validate every config/layouts/*.yaml

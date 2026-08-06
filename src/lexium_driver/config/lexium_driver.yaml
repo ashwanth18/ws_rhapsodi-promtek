@@ -1,0 +1,51 @@
+lexium_driver:
+  ros__parameters:
+    # --- Network ---
+    ip: "192.168.88.82"
+    command_port: 10001          # Schneider command channel (request/response)
+    feedback_port: 10000         # Schneider feedback stream (~50 Hz)
+
+    # --- Joint mapping ---
+    joints: ["joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6"]
+    controller_name: "jaka_zu5_controller"   # => action /jaka_zu5_controller/follow_joint_trajectory
+    # Calibration between the URDF zero/direction and the Lexium zero/direction.
+    # VERIFY ON HARDWARE with a slow jog before trusting motion.
+    joint_sign: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    joint_offset_deg: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    # --- Motion shaping (moveJ has no duration, so timing is approximated) ---
+    move_speed_deg: 30.0         # max joint speed cap for moveJ (deg/s)
+    move_acc_deg: 60.0           # max joint accel cap for moveJ (deg/s^2)
+    speed_from_trajectory: true  # derive per-segment speed/acc from MoveIt's plan
+                                 # (honours the velocity/accel scaling sliders);
+                                 # move_speed_deg/move_acc_deg act as caps
+    min_move_speed_deg: 2.0      # floor so segments never stall
+    # Apply the controller global override (set_speed_rate) from the planned
+    # peak velocity. This scales acceleration too, so the MoveIt velocity slider
+    # stays effective even on short, acceleration-limited segments. When active,
+    # each moveJ is sent at the full move_speed_deg/move_acc_deg caps and the
+    # global rate does the scaling; the configured speed_rate is restored after.
+    speed_rate_from_trajectory: true
+    max_joint_speed_degps: 90.0  # reference max joint speed (= 1.57 rad/s)
+    min_speed_rate: 0.02         # floor for the derived global override
+    arc_transition_deg: 2.0      # blending radius between segments ("blended" mode)
+    downsample_threshold_deg: 15.0  # keep a waypoint once any joint moves this much
+    execution_mode: "blended"    # "blended" (smooth) or "sequential" (stop at each waypoint)
+    goal_tolerance_deg: 1.0
+    inter_command_delay: 0.02
+
+    # --- Safety / startup ---
+    feedback_timeout: 1.0        # watchdog: stale feedback => abort/refuse motion
+    require_remote_control: true # require control_source == 3 (Remote) before motion
+    auto_power_on: false         # leave power/enable to the operator by default
+    auto_enable: false
+    speed_rate: 0.1              # conservative speed override applied on startup (0..1)
+    motion_wait_timeout: 60.0
+    command_timeout: 10.0        # default TCP command ack timeout (moveJ, etc.)
+    state_command_timeout: 45.0  # power/enable commands can be slow after power cycle
+    state_feedback_timeout: 15.0 # wait for powered_on/enabled in feedback stream
+    power_on_settle_sec: 3.0     # pause after power_on before checking feedback
+    power_off_settle_sec: 1.0    # pause after power_off before power_on
+    pre_enable_settle_sec: 2.0   # pause after power_on before enable attempts
+    enable_retry_count: 3        # enable_robot retries (controller can be slow)
+    enable_retry_delay: 2.0      # seconds between enable retries

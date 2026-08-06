@@ -129,6 +129,10 @@ robots:
     targets:
       package: robot_moveit
       path: targets/jaka_zu5.yaml
+    # Fixed Frame link0 + Lexium Safety panel (Bring Up / Shut Down / STOP).
+    rviz:
+      package: scooping_controller
+      path: config/scooping_jaka.rviz
     tool:
       mesh_resource: package://niryo_robot_description/meshes/stl/niryo_scoop_v4-ros.STL
       tcp_visual_offset_xyz: [0.15825, 0.0, -0.09356]
@@ -178,7 +182,7 @@ robots:
         path: config/jaka_zu5.urdf.xacro
         # use_rviz_sim keeps ros2_control on mock_components; scooping_real does
         # not run controller_manager. Trajectory execution goes through
-        # jaka_planner/moveit_server (FollowJointTrajectory + /joint_states).
+        # lexium_driver (FollowJointTrajectory + /joint_states via JSON/TCP).
         xacro_args: ["use_rviz_sim:=true"]
       controllers:
         package: jaka_zu5_moveit_config
@@ -186,27 +190,27 @@ robots:
       move_group_controller_params:
         package: scooping_controller
         path: config/move_group_controller_params_jaka.yaml
-      # moveit_server implements FollowJointTrajectory via the JAKA SDK.
+      # Lexium JSON/TCP driver (Schneider Lexium Cobot; kinematic twin of
+      # JAKA Zu5). JAKA SDK packages cannot log into Lexium firmware.
       # ${ROBOT_IP} is expanded by scooping_real.launch.py from the robot_ip
-      # launch arg / ROBOT_IP env (compose default for JAKA: 10.5.5.100).
+      # launch arg / ROBOT_IP env (default Lexium: 192.168.88.82).
+      # Power/enable is operator-driven (RViz Lexium Safety panel or
+      # /lexium_driver/bring_up); the driver itself connects immediately.
       driver:
-        package: jaka_planner
-        path: launch/moveit_server.launch.py
+        package: lexium_driver
+        path: launch/lexium_driver.launch.py
         launch_arguments:
           ip: ${ROBOT_IP}
-          model: zu5
-      # moveit_server sleeps ~8s after power_on and ~4s after enable_robot
-      # (driver itself starts at t=3s), so move_group must wait ~18s+.
       timing:
-        move_group_delay: 18.0
-        move_to_delay: 19.0
-        target_recorder_delay: 19.2
-        task_frame_delay: 19.5
-        marker_delay: 19.7
-        container_delay: 20.0
-        collisions_delay: 20.2
-        mtc_delay: 20.5
-        rviz_delay: 21.0
+        move_group_delay: 8.0
+        move_to_delay: 9.0
+        target_recorder_delay: 9.2
+        task_frame_delay: 9.5
+        marker_delay: 9.7
+        container_delay: 10.0
+        collisions_delay: 10.2
+        mtc_delay: 10.5
+        rviz_delay: 11.0
     # Laptop-only authoring loop (mock_components via use_rviz_sim:=true).
     mock:
       scene:

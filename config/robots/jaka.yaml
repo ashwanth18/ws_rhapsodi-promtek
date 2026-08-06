@@ -13,6 +13,9 @@ position_only_goal: false
 targets:
   package: robot_moveit
   path: targets/jaka_zu5.yaml
+rviz:
+  package: scooping_controller
+  path: config/scooping_jaka.rviz
 tool:
   mesh_resource: package://niryo_robot_description/meshes/stl/niryo_scoop_v4-ros.STL
   tcp_visual_offset_xyz:
@@ -92,21 +95,20 @@ real:
     package: scooping_controller
     path: config/move_group_controller_params_jaka.yaml
   driver:
-    package: jaka_planner
-    path: launch/moveit_server.launch.py
+    package: lexium_driver
+    path: launch/lexium_driver.launch.py
     launch_arguments:
       ip: ${ROBOT_IP}
-      model: zu5
   timing:
-    move_group_delay: 18.0
-    move_to_delay: 19.0
-    target_recorder_delay: 19.2
-    task_frame_delay: 19.5
-    marker_delay: 19.7
-    container_delay: 20.0
-    collisions_delay: 20.2
-    mtc_delay: 20.5
-    rviz_delay: 21.0
+    move_group_delay: 8.0
+    move_to_delay: 9.0
+    target_recorder_delay: 9.2
+    task_frame_delay: 9.5
+    marker_delay: 9.7
+    container_delay: 10.0
+    collisions_delay: 10.2
+    mtc_delay: 10.5
+    rviz_delay: 11.0
 mock:
   scene:
     package: scooping_controller

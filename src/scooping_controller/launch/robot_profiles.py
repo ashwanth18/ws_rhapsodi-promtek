@@ -207,6 +207,20 @@ def package_share_path(spec):
     )
 
 
+def resolve_rviz_config(profile: dict, explicit: str | None = None) -> str:
+    """Resolve RViz config path: explicit arg, else profile rviz, else scooping.rviz."""
+    if explicit and str(explicit).strip():
+        return str(explicit).strip()
+    rviz_spec = profile.get("rviz")
+    if rviz_spec:
+        return package_share_path(rviz_spec)
+    return os.path.join(
+        get_package_share_directory("scooping_controller"),
+        "config",
+        "scooping.rviz",
+    )
+
+
 def xacro_command_args(xacro_executable, urdf_spec):
     args = [xacro_executable, " ", package_path(urdf_spec)]
     for xacro_arg in urdf_spec.get("xacro_args", []):

@@ -1,0 +1,219 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /Global Options1
+        - /Status1
+        - /Motion Planning Tasks1
+        - /PlanningScene1
+      Splitter Ratio: 0.5
+  - Class: scooping_controller/ScoopingPanel
+    Name: Scooping Controls
+  - Class: lexium_rviz_plugins/SafetyPanel
+    Name: Lexium Safety
+  - Class: moveit_task_constructor/Motion Planning Tasks
+    Global Settings:
+      Task View Settings:
+        Old task handling: Keep
+        Show Computation Times: true
+        Task Expansion: All Expanded
+    Name: Motion Planning Tasks
+    Tasks View:
+      property_splitter:
+        - 436
+        - 267
+      solution_sorting:
+        column: 0
+        order: 1
+      solutions_splitter:
+        - 419
+        - 209
+      solutions_view_columns:
+        - 57
+        - 58
+        - 92
+      tasks_view_columns:
+        - 246
+        - 57
+        - 57
+        - 57
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Enabled: true
+      Name: Grid
+      Plane: XY
+      Reference Frame: <Fixed Frame>
+      Cell Size: 1
+    - Class: rviz_default_plugins/TF
+      Enabled: true
+      Name: TF
+    - Class: rviz_default_plugins/RobotModel
+      Enabled: true
+      Name: RobotModel
+      Description Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /robot_description
+    - Class: moveit_rviz_plugin/PlanningScene
+      Enabled: true
+      Name: PlanningScene
+      Planning Scene Topic: /monitored_planning_scene
+      Robot Description: robot_description
+    - Class: moveit_rviz_plugin/Trajectory
+      Color Enabled: false
+      Enabled: true
+      Interrupt Display: false
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: Links in Alphabetic Order
+      Loop Animation: false
+      Name: MoveTo Planned Path
+      Robot Alpha: 0.5
+      Robot Color: 150; 50; 150
+      Robot Description: robot_description
+      Show Robot Collision: false
+      Show Robot Visual: true
+      Show Trail: false
+      State Display Time: 0.05 s
+      Trail Step Size: 1
+      Trajectory Topic: /display_planned_path
+      Use Sim Time: false
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MoveTo Plan Preview Line
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /move_to_plan_preview
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Pour Pose Preview
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /pour_pose_preview
+    - Class: moveit_task_constructor/Motion Planning Tasks
+      Enabled: true
+      Interrupt Display: false
+      Loop Animation: false
+      Markers:
+        All at once?: false
+        Value: true
+      Name: Motion Planning Tasks
+      Robot:
+        Fixed Robot Color: 150; 50; 150
+        Robot Alpha: 0.5
+        Show Robot Collision: false
+        Show Robot Visual: true
+        Use Fixed Robot Color: false
+        Value: ""
+      Robot Description: robot_description
+      Scene:
+        Attached Body Color: 150; 50; 150
+        Scene Alpha: 0.25
+        Scene Color: 50; 230; 50
+        Value: true
+        Voxel Coloring: Z-Axis
+        Voxel Rendering: Occupied Voxels
+      Show Trail: false
+      State Display Time: 0.05 s
+      Task Solution Topic: /solution
+    - Class: rviz_default_plugins/InteractiveMarkers
+      Enabled: true
+      Name: Scoop Markers_markers
+      Update Topic: /scooping_markers/update
+    - Class: rviz_default_plugins/InteractiveMarkers
+      Enabled: true
+      Name: Move Goal Marker
+      Update Topic: /move_goal_marker/update
+    - Class: rviz_default_plugins/InteractiveMarkers
+      Enabled: true
+      Name: Cell Layout Markers
+      Update Topic: /cell_layout_markers/update
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Scoop Legend
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /scooping_legend
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Container
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /container_marker
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Parameterized Scoop Preview
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /parameterized_scoop_preview
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Manual Scoop Preview
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /manual_scoop_preview
+  Enabled: true
+  Global Options:
+    Fixed Frame: link0
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/Interact
+      Hide Inactive Objects: true
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 1.8
+      Focal Point:
+        X: 0.2
+        Y: 0.0
+        Z: 0.2
+      Pitch: 0.6
+      Yaw: 0.7
+Window Geometry:
+  Height: 900
+  Motion Planning Tasks:
+    collapsed: false
+  Scooping Controls:
+    collapsed: false
+  Width: 1600

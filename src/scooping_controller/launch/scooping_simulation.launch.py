@@ -36,6 +36,7 @@ from robot_profiles import (
     default_targets_path,
     package_path,
     resolve_robot,
+    resolve_rviz_config,
     robot_profile,
     xacro_command_args,
 )
@@ -147,7 +148,8 @@ def _robot_sim_setup(context):
 
     use_sim_time = LaunchConfiguration("use_sim_time")
     use_rviz = LaunchConfiguration("use_rviz")
-    rviz_config = LaunchConfiguration("rviz_config")
+    rviz_config_explicit = LaunchConfiguration("rviz_config").perform(context).strip()
+    rviz_config = resolve_rviz_config(profile, rviz_config_explicit or None)
     poses_yaml = LaunchConfiguration("poses_yaml")
     seed_poses_yaml = LaunchConfiguration("seed_poses_yaml")
     targets_yaml = LaunchConfiguration("targets_yaml")
@@ -702,14 +704,11 @@ def generate_launch_description():
     )
     declare_rviz_config = DeclareLaunchArgument(
         "rviz_config",
-        default_value=PathJoinSubstitution(
-            [
-                FindPackageShare("scooping_controller"),
-                "config",
-                "scooping.rviz",
-            ]
+        default_value="",
+        description=(
+            "RViz config path. Empty selects the robot profile's rviz "
+            "entry, else scooping_controller/config/scooping.rviz."
         ),
-        description="RViz config for the scooping workflow",
     )
     declare_poses_yaml = DeclareLaunchArgument(
         "poses_yaml",
