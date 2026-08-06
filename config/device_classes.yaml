@@ -1,0 +1,26 @@
+# Hardware / form-factor catalog — selects compose + default OCI platform.
+# Orthogonal to profiles.yaml (behavior) and robot_type (OEM stack).
+#
+# Fleet Console + agent resolve:
+#   compose_file = device_classes[<device_class>].compose_file
+# Release gating (when set):
+#   device.device_class must be listed on Release.device_classes
+
+device_classes:
+  pi5:
+    description: Raspberry Pi 5 robot cell
+    platform: linux/arm64
+    compose_file: compose/devices/pi5.yml
+    production: true
+
+  jetson:
+    description: Jetson Orin robot cell (stub — not production)
+    platform: linux/arm64
+    compose_file: compose/devices/jetson.yml
+    production: false
+
+  x86:
+    description: amd64 workstation / JAKA ZU5 laptop cell (compose/devices/x86.yml)
+    platform: linux/amd64
+    compose_file: compose/devices/x86.yml
+    production: false
