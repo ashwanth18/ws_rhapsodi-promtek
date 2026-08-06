@@ -14,13 +14,10 @@
 namespace robot_orchestrator {
 
 // Centre a joint_5 residue-purge tilt on the vessel:
-// 1) pre-shift the TCP opposite the expected wrist-arc swing (same orientation,
-//    easy MoveIt plan),
-// 2) publish /incline_control so the tip swings back onto the original point,
-// 3) on restore: incline 0 then MoveTo the stashed pour pose.
-//
-// Pure tip-fixed IK (orientation change at fixed XYZ) fails at the pour pose
-// with STOMP; this two-step approach reuses the reliable joint incline path.
+// 1) Cartesian lift + pre-shift opposite the wrist-arc swing,
+// 2) publish /incline_control so the tip swings onto the original XY.
+// Untilt is left to a following SetIncline(0); MoveBackToContainer then
+// leaves the pour pose (no restore MoveTo — that plan also failed at cell).
 class TiltAboutTcpNode : public BT::StatefulActionNode {
 public:
   using MoveTo = robot_common_msgs::action::MoveTo;
@@ -34,11 +31,7 @@ public:
   void onHalted() override;
 
 private:
-  enum class Phase {
-    Idle,
-    Moving,
-    WaitingIncline,
-  };
+  enum class Phase { Idle, Moving, WaitingIncline };
 
   bool lookup_pose(
     const std::string& target_frame,
@@ -46,7 +39,10 @@ private:
     geometry_msgs::msg::PoseStamped& out,
     std::string& err) const;
 
-  bool send_move_to(const geometry_msgs::msg::PoseStamped& pose);
+  bool send_cartesian_shift(
+    const geometry_msgs::msg::PoseStamped& start,
+    const geometry_msgs::msg::PoseStamped& lifted,
+    const geometry_msgs::msg::PoseStamped& pre);
   void publish_incline(double degrees);
   void cancel_move();
 
@@ -57,7 +53,6 @@ private:
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
   Phase phase_{Phase::Idle};
-  bool restore_{false};
   double pending_incline_deg_{0.0};
   double incline_settle_s_{0.6};
   rclcpp::Time incline_done_time_{};

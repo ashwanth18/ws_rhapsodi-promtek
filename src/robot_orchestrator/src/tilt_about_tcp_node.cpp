@@ -32,30 +32,30 @@ void set_pose_position(geometry_msgs::msg::Pose& pose, const tf2::Vector3& p)
 BT::PortsList TiltAboutTcpNode::providedPorts()
 {
   return {
-    BT::InputPort<double>("degrees", 0.0, "tilt angle in degrees (ignored when restore=true)"),
-    // Matches compose INCLINE_DIRECTION default (-1.0).
+    BT::InputPort<double>("degrees", 0.0, "tilt angle in degrees"),
     BT::InputPort<double>("direction", -1.0, "sign applied to degrees (+1 or -1)"),
     BT::InputPort<std::string>("base_frame", std::string("base_link"), "planning / TF parent frame"),
-    BT::InputPort<std::string>("tcp_frame", std::string("tcp_link"), "tool tip frame held fixed"),
+    BT::InputPort<std::string>("tcp_frame", std::string("tcp_link"), "tool tip frame"),
     BT::InputPort<std::string>(
       "axis_frame", std::string("wrist_link"), "frame whose origin lies on the tilt axis"),
     BT::InputPort<double>("axis_x", 0.0, "tilt axis x in axis_frame"),
     BT::InputPort<double>("axis_y", 0.0, "tilt axis y in axis_frame"),
     BT::InputPort<double>("axis_z", 1.0, "tilt axis z in axis_frame (joint_5 = wrist z)"),
-    BT::InputPort<double>("velocity_scaling", 0.5, "MoveTo velocity scaling [0,1]"),
-    BT::InputPort<double>("acceleration_scaling", 0.5, "MoveTo acceleration scaling [0,1]"),
-    BT::InputPort<std::string>("planner_id", std::string(), "optional MoveIt planner id"),
-    BT::InputPort<std::string>(
-      "planning_pipeline", std::string("ompl"), "MoveIt pipeline for the pre-shift / restore move"),
+    BT::InputPort<double>("lift_m", 0.04, "Cartesian lift before pre-shift (metres)"),
+    BT::InputPort<double>("velocity_scaling", 0.4, "MoveTo velocity scaling [0,1]"),
+    BT::InputPort<double>("acceleration_scaling", 0.4, "MoveTo acceleration scaling [0,1]"),
+    BT::InputPort<double>("eef_step", 0.01, "Cartesian eef step (metres)"),
+    BT::InputPort<std::string>("planning_pipeline", std::string("ompl"), "unused for cartesian; kept for logs"),
     BT::InputPort<double>(
       "incline_settle_s", 0.6, "seconds to wait after publishing /incline_control"),
     BT::InputPort<std::string>(
       "incline_topic", std::string("/incline_control"), "Float64 incline topic (degrees)"),
-    BT::InputPort<bool>("restore", false, "if true, untilt then return to stashed pose"),
+    // restore kept so older trees still parse; ignored (untilt is SetIncline 0).
+    BT::InputPort<bool>("restore", false, "ignored; untilt via SetIncline(0) in the tree"),
     BT::InputPort<std::string>(
       "restore_key",
       std::string("lightsout_purge_pretilt_pose"),
-      "blackboard key for pre-tilt PoseStamped"),
+      "unused stash key (kept for port compatibility)"),
   };
 }
 
@@ -111,31 +111,34 @@ void TiltAboutTcpNode::publish_incline(double degrees)
     topic.c_str());
 }
 
-bool TiltAboutTcpNode::send_move_to(const geometry_msgs::msg::PoseStamped& pose)
+bool TiltAboutTcpNode::send_cartesian_shift(
+  const geometry_msgs::msg::PoseStamped& start,
+  const geometry_msgs::msg::PoseStamped& lifted,
+  const geometry_msgs::msg::PoseStamped& pre)
 {
   if (!client_->wait_for_action_server(10s)) {
-    RCLCPP_ERROR(node_->get_logger(), "TiltAboutTcp: /move_to action server unavailable");
+    RCLCPP_ERROR(node_->get_logger(), "TiltAboutTcp: /move_to unavailable");
     return false;
   }
 
   MoveTo::Goal goal;
-  goal.target_pose = pose;
-  goal.use_cartesian = false;
+  goal.use_cartesian = true;
   goal.plan_only = false;
-  if (auto pipeline = getInput<std::string>("planning_pipeline");
-      pipeline && !pipeline->empty()) {
-    goal.planning_pipeline = *pipeline;
-  }
+  goal.eef_step = static_cast<float>(getInput<double>("eef_step").value_or(0.01));
+  goal.jump_threshold = 0.0f;
+  // Waypoints: lift straight up, then horizontal to pre-shift (still raised).
+  // Incline from the raised pre pose; tip XY recentres over the vessel.
+  goal.waypoints = {lifted, pre};
+  // Also set target_pose to final for servers that prefer it.
+  goal.target_pose = pre;
   if (auto vs = getInput<double>("velocity_scaling"); vs && *vs > 0.0) {
     goal.velocity_scaling = static_cast<float>(*vs);
   }
   if (auto as = getInput<double>("acceleration_scaling"); as && *as > 0.0) {
     goal.acceleration_scaling = static_cast<float>(*as);
   }
-  if (auto planner = getInput<std::string>("planner_id"); planner && !planner->empty()) {
-    goal.planner_id = *planner;
-  }
 
+  (void)start;
   goal_handle_.reset();
   send_future_ = {};
   result_future_ = {};
@@ -146,7 +149,7 @@ bool TiltAboutTcpNode::send_move_to(const geometry_msgs::msg::PoseStamped& pose)
       if (!gh) {
         RCLCPP_ERROR(node_->get_logger(), "TiltAboutTcp: MoveTo goal rejected");
       } else {
-        RCLCPP_INFO(node_->get_logger(), "TiltAboutTcp: MoveTo goal accepted");
+        RCLCPP_INFO(node_->get_logger(), "TiltAboutTcp: Cartesian pre-shift accepted");
       }
     };
   send_future_ = client_->async_send_goal(goal, opts);
@@ -172,39 +175,20 @@ BT::NodeStatus TiltAboutTcpNode::onStart()
   phase_ = Phase::Idle;
   cancel_move();
 
-  restore_ = getInput<bool>("restore").value_or(false);
-  incline_settle_s_ = std::max(0.1, getInput<double>("incline_settle_s").value_or(0.6));
-  const std::string restore_key =
-    getInput<std::string>("restore_key").value_or("lightsout_purge_pretilt_pose");
-  const std::string base_frame =
-    getInput<std::string>("base_frame").value_or("base_link");
-
-  if (restore_) {
-    auto bb = config().blackboard;
-    geometry_msgs::msg::PoseStamped stashed;
-    if (!bb->get(restore_key, stashed)) {
-      RCLCPP_ERROR(
-        node_->get_logger(),
-        "TiltAboutTcp: restore missing blackboard key '%s'",
-        restore_key.c_str());
-      return BT::NodeStatus::FAILURE;
-    }
-    // Untilt first (tip swings back to the pre-shift pose), then return to stash.
-    pending_incline_deg_ = 0.0;
+  // Older trees may still call restore=true; untilt is SetIncline(0) in the tree.
+  if (getInput<bool>("restore").value_or(false)) {
     publish_incline(0.0);
+    incline_settle_s_ = std::max(0.1, getInput<double>("incline_settle_s").value_or(0.6));
     incline_done_time_ = node_->now() + rclcpp::Duration::from_seconds(incline_settle_s_);
     phase_ = Phase::WaitingIncline;
-    // Park the restore MoveTo target on the blackboard temporarily via pending stash reuse.
-    config().blackboard->set(restore_key + "/_restore_target", stashed);
-    RCLCPP_INFO(
-      node_->get_logger(),
-      "TiltAboutTcp: restore untilt then MoveTo (%.4f, %.4f, %.4f)",
-      stashed.pose.position.x,
-      stashed.pose.position.y,
-      stashed.pose.position.z);
+    pending_incline_deg_ = 0.0;
+    RCLCPP_INFO(node_->get_logger(), "TiltAboutTcp: restore degenerates to incline 0");
     return BT::NodeStatus::RUNNING;
   }
 
+  incline_settle_s_ = std::max(0.1, getInput<double>("incline_settle_s").value_or(0.6));
+  const std::string base_frame =
+    getInput<std::string>("base_frame").value_or("base_link");
   const double degrees = getInput<double>("degrees").value_or(0.0);
   const double direction = getInput<double>("direction").value_or(-1.0);
   const std::string tcp_frame =
@@ -214,6 +198,7 @@ BT::NodeStatus TiltAboutTcpNode::onStart()
   const double axis_x = getInput<double>("axis_x").value_or(0.0);
   const double axis_y = getInput<double>("axis_y").value_or(0.0);
   const double axis_z = getInput<double>("axis_z").value_or(1.0);
+  const double lift_m = std::max(0.0, getInput<double>("lift_m").value_or(0.04));
 
   geometry_msgs::msg::PoseStamped tcp_pose;
   std::string err;
@@ -241,9 +226,6 @@ BT::NodeStatus TiltAboutTcpNode::onStart()
     return BT::NodeStatus::FAILURE;
   }
 
-  // Stash the pour/tip pose so restore can return here after untilt.
-  config().blackboard->set(restore_key, tcp_pose);
-
   tf2::Quaternion q_wrist;
   tf2::fromMsg(wrist_tf.transform.rotation, q_wrist);
   const tf2::Matrix3x3 R_base_wrist(q_wrist);
@@ -258,38 +240,36 @@ BT::NodeStatus TiltAboutTcpNode::onStart()
     wrist_tf.transform.translation.y,
     wrist_tf.transform.translation.z);
 
-  // incline_control applies: joint = base + direction * deg. Pure joint_5 tilt
-  // about the wrist axis moves TCP to pivot + R(angle)*(tcp - pivot). Pre-shift
-  // to the inverse so the subsequent incline lands the tip back on the original
-  // Cartesian point (vessel centre).
   const double angle_rad = direction * degrees * kDegToRad;
   const tf2::Quaternion q_delta(axis_base, angle_rad);
   const tf2::Vector3 tcp = pose_position(tcp_pose.pose);
+  // Pre-shift so joint incline about the wrist axis returns tip XY to `tcp`.
   const tf2::Vector3 tcp_pre = pivot + tf2::quatRotate(q_delta.inverse(), tcp - pivot);
 
-  geometry_msgs::msg::PoseStamped pre_pose = tcp_pose;
-  set_pose_position(pre_pose.pose, tcp_pre);
-  // Keep current orientation — this is a pure translation for MoveIt.
+  geometry_msgs::msg::PoseStamped lifted = tcp_pose;
+  lifted.pose.position.z += lift_m;
 
-  const double shift = (tcp_pre - tcp).length();
+  geometry_msgs::msg::PoseStamped pre = tcp_pose;
+  set_pose_position(pre.pose, tcp_pre);
+  pre.pose.position.z = tcp.z() + lift_m;  // keep raised; incline from here
+
+  const double shift_xy = std::hypot(tcp_pre.x() - tcp.x(), tcp_pre.y() - tcp.y());
   RCLCPP_INFO(
     node_->get_logger(),
-    "TiltAboutTcp: pre-shift %.1fmm then incline %.1fdeg "
-    "(tcp=(%.4f,%.4f,%.4f) pre=(%.4f,%.4f,%.4f) axis=(%.3f,%.3f,%.3f))",
-    shift * 1000.0,
+    "TiltAboutTcp: cartesian lift=%.0fmm shift_xy=%.1fmm then incline %.1fdeg "
+    "(tcp=(%.4f,%.4f,%.4f) pre=(%.4f,%.4f,%.4f))",
+    lift_m * 1000.0,
+    shift_xy * 1000.0,
     degrees,
     tcp.x(),
     tcp.y(),
     tcp.z(),
-    tcp_pre.x(),
-    tcp_pre.y(),
-    tcp_pre.z(),
-    axis_base.x(),
-    axis_base.y(),
-    axis_base.z());
+    pre.pose.position.x,
+    pre.pose.position.y,
+    pre.pose.position.z);
 
   pending_incline_deg_ = degrees;
-  if (!send_move_to(pre_pose)) {
+  if (!send_cartesian_shift(tcp_pose, lifted, pre)) {
     return BT::NodeStatus::FAILURE;
   }
   return BT::NodeStatus::RUNNING;
@@ -302,25 +282,6 @@ BT::NodeStatus TiltAboutTcpNode::onRunning()
       rclcpp::spin_some(node_);
       return BT::NodeStatus::RUNNING;
     }
-    if (restore_) {
-      const std::string restore_key =
-        getInput<std::string>("restore_key").value_or("lightsout_purge_pretilt_pose");
-      geometry_msgs::msg::PoseStamped target;
-      if (!config().blackboard->get(restore_key + "/_restore_target", target)) {
-        // Fall back to the primary stash.
-        if (!config().blackboard->get(restore_key, target)) {
-          RCLCPP_ERROR(node_->get_logger(), "TiltAboutTcp: restore target missing after untilt");
-          phase_ = Phase::Idle;
-          return BT::NodeStatus::FAILURE;
-        }
-      }
-      if (!send_move_to(target)) {
-        phase_ = Phase::Idle;
-        return BT::NodeStatus::FAILURE;
-      }
-      return BT::NodeStatus::RUNNING;
-    }
-    // Non-restore: incline settle finished — tip should now be recentred.
     phase_ = Phase::Idle;
     RCLCPP_INFO(node_->get_logger(), "TiltAboutTcp: incline settle done");
     return BT::NodeStatus::SUCCESS;
@@ -350,7 +311,7 @@ BT::NodeStatus TiltAboutTcpNode::onRunning()
     const bool ok = res.result && res.result->success;
     RCLCPP_INFO(
       node_->get_logger(),
-      "TiltAboutTcp: MoveTo success=%s msg=%s",
+      "TiltAboutTcp: Cartesian success=%s msg=%s",
       ok ? "true" : "false",
       res.result ? res.result->message.c_str() : "<none>");
     goal_handle_.reset();
@@ -361,13 +322,6 @@ BT::NodeStatus TiltAboutTcpNode::onRunning()
       return BT::NodeStatus::FAILURE;
     }
 
-    if (restore_) {
-      // Finished returning to stashed pour pose.
-      phase_ = Phase::Idle;
-      return BT::NodeStatus::SUCCESS;
-    }
-
-    // Pre-shift done — fire joint incline so the tip swings onto the stash point.
     publish_incline(pending_incline_deg_);
     incline_done_time_ = node_->now() + rclcpp::Duration::from_seconds(incline_settle_s_);
     phase_ = Phase::WaitingIncline;
@@ -382,8 +336,7 @@ void TiltAboutTcpNode::onHalted()
 {
   RCLCPP_INFO(node_->get_logger(), "TiltAboutTcp: halted");
   cancel_move();
-  // Best-effort untilt if we had commanded a non-zero incline.
-  if (!restore_ && std::abs(pending_incline_deg_) > 1e-3 && phase_ != Phase::Idle) {
+  if (std::abs(pending_incline_deg_) > 1e-3 && phase_ != Phase::Idle) {
     publish_incline(0.0);
   }
   phase_ = Phase::Idle;
