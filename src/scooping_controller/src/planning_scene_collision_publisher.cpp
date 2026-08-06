@@ -223,7 +223,11 @@ int main(int argc, char** argv)
 {
   rclcpp::init(argc, argv);
   auto node = std::make_shared<PlanningSceneCollisionPublisher>();
-  rclcpp::spin(node);
+  // Multi-threaded so allow_mount_table_collisions() can wait_for service
+  // futures without starving the executor (single-threaded spin deadlocks).
+  rclcpp::executors::MultiThreadedExecutor executor;
+  executor.add_node(node);
+  executor.spin();
   rclcpp::shutdown();
   return 0;
 }
