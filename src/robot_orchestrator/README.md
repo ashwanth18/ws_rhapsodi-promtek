@@ -308,9 +308,11 @@ back into the vessel before parking:
 
 1. optional `MoveTo` to `lightsout_purge_target` (empty = purge in place at the pour pose)
 2. tilt to `lightsout_purge_incline_deg` (default 20°):
-   - `lightsout_purge_hold_tcp:=true` (default): `TiltAboutTcp` keeps
-     `tcp_link` XYZ fixed and rotates about the wrist tilt axis via `/move_to`
-   - `lightsout_purge_hold_tcp:=false`: legacy `SetIncline` → `/incline_control`
+   - `lightsout_purge_hold_tcp:=true` (default): `TiltAboutTcp` pre-shifts
+     the tip opposite the wrist arc, then `/incline_control` so the tip
+     swings back onto the vessel centre (falls back to joint-only tilt if
+     the pre-shift plan fails)
+   - `lightsout_purge_hold_tcp:=false`: legacy `SetIncline` → `/incline_control` only
 3. `Vibrate` at `lightsout_purge_vibration` (default 0.8) for `lightsout_purge_duration_s` (default 10 s)
 4. restore upright tilt (`TiltAboutTcp restore=true` or `SetIncline 0`)
 5. `MoveTo` back to the scooping container
