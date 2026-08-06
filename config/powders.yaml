@@ -1,0 +1,24 @@
+# Operator-facing powder catalog for lightsout / mock-local labeling.
+# `id` and `name` tag the data; `container_target` / `pour_target` drive
+# robot motion and are intentionally decoupled from the label.
+# Do NOT use purely numeric ids — those collide with Condor stock-item ids.
+powders:
+  # container_target is the MoveTo pose before/after scoop. On
+  # lightsout-single-vessel that is the RS3 approach (not legacy boxA).
+  - id: alumina-5um
+    name: Alumina 5 um
+    container_target: MoveToScoopingContainer
+    pour_target: lightsoutPourStartV2
+    default_target_weight_g: 250
+    default_tolerance_g: 5
+    min_scooped_g: 20
+    density_g_per_ml: 3.95
+    notes: ""
+  - id: box-a
+    name: Box A (generic)
+    container_target: MoveToScoopingContainer
+    pour_target: lightsoutPourStartV2
+    default_target_weight_g: 200
+    default_tolerance_g: 5
+    min_scooped_g: 15
+    notes: "Legacy label; uses RS3 approach on lightsout-single-vessel"

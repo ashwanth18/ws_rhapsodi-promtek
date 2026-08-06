@@ -1,0 +1,35 @@
+schema_version: 2
+layout_id: lightsout-single-vessel
+# Scoop task frame follows the RS3 weighing-scale vessel in front of the arm.
+task_container_id: rs3
+tool_id: niryo_scoop_v4
+targets_by_robot:
+  niryo: lightsout-single-vessel/robots/niryo/targets.yaml
+# Legacy field required by ros-prod images before targets_by_robot (e.g. b0fff56).
+targets_yaml: lightsout-single-vessel/robots/niryo/targets.yaml
+poses_yaml: lightsout-single-vessel/poses.yaml
+scoop_cartesian_avoid_collisions: false
+safe_retreat_target: ReturnHome
+scoop_envelope: {x_min: -0.20, x_max: 0.20, y_min: -0.20, y_max: 0.20, z_min: 0.00, z_max: 0.35}
+calibration:
+  source: measured_clearance
+  frame_id: base_link
+  note: >
+    RS3 on robot +X centerline, shifted +0.065 m from the initial 0.35 m
+    back-face clearance so the open face matches dual-container RS6 front
+    distance (~0.268 m XY). Z is measured table→container-floor ≈ 0.08 m
+    (not the 0.105 m dual-container / catalog default).
+    Yaw 180 deg so the open side faces the robot.
+sim: {overlay: {mass: 0.2, friction: 0.8}}
+authoring:
+  method: layout_spec
+  robot_key: niryo
+  date: "2026-08-05"
+objects:
+  # RS6 kept disabled — lights-out scoops from the RS3 scale vessel only.
+  - {id: rs6, enabled: false, geometry_type: mesh, mesh_resource: package://scooping_controller/models/scooping_container/meshes/rs6_container.STL, mesh_units: mm, position_xyz: [0.460, -0.119, 0.0], orientation: {rpy_deg: [0, 0, 180]}, scale_xyz: [1, 1, 1], dimensions_xyz: [0, 0, 0], color_rgb: [0.7, 0.7, 0.7]}
+  # RS3 pose origin is mesh origin / inner floor. Measured table→floor ≈ 80 mm
+  # (was 105 mm / catalog rim_height default). front world-X = pose_x - 0.140.
+  - {id: rs3, enabled: true, geometry_type: mesh, mesh_resource: package://scooping_controller/models/weighing_container/meshes/rs3_container.STL, mesh_units: mm, position_xyz: [0.4076, 0.0, 0.08], orientation: {rpy_deg: [0, 0, 180]}, scale_xyz: [1, 1, 1], dimensions_xyz: [0, 0, 0], color_rgb: [0.4, 0.8, 0.4]}
+  # Table top at z=-0.01 (was flush at z=0 with base_link collision AABB).
+  - {id: table, enabled: true, geometry_type: box, position_xyz: [0, 0, -0.025], orientation: {quat_xyzw: [0, 0, 0, 1]}, scale_xyz: [1, 1, 1], dimensions_xyz: [1.02, 0.61, 0.03], color_rgb: [0.55, 0.39, 0.22]}
