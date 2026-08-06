@@ -1,0 +1,10 @@
+# STUB — Jetson Orin robot cell (not production).
+# Same arch as Pi5 (linux/arm64) but different devices/runtime will be needed
+# (NVIDIA container toolkit, cameras, etc.). Until then this includes the Pi5
+# stack as a structural placeholder only — do not ship Releases with
+# device_classes containing "jetson" until this file is purpose-built.
+#
+# See config/device_classes.yaml (production: false).
+
+include:
+  - path: pi5.yml
