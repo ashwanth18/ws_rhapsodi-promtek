@@ -60,7 +60,8 @@ function rowSignedError(row: Row): number | null {
 }
 
 function rowPouredForError(row: Row): number | null {
-  // Lights-out: compare net poured. MES: absolute final ≈ net when vessel is empty.
+  // Lights-out: net poured (final − baseline). MES/mock: absolute final ≈ net
+  // when the destination vessel starts empty/baselined.
   if (row.mode === 'lightsout') {
     return row.net_weight_g != null && Number.isFinite(row.net_weight_g)
       ? row.net_weight_g
@@ -69,6 +70,11 @@ function rowPouredForError(row: Row): number | null {
   return row.final_weight_g != null && Number.isFinite(row.final_weight_g)
     ? row.final_weight_g
     : null
+}
+
+/** Weight used for scatter/summary "achieved" plots (mode-aware). */
+function rowAchievedWeight(row: Row): number | null {
+  return rowPouredForError(row)
 }
 
 type LogsResponse = {
@@ -312,19 +318,24 @@ export default function LogsPage() {
     setTableTimeSort('desc')
   }
 
-  const plotPointsFinalVsTarget = plotRows
-    .filter((row) => row.target_weight_g != null && row.final_weight_g != null)
+  const plotUsesNet =
+    plotModeFilter === 'lightsout' ||
+    (plotModeFilter === 'all' && plotRows.some((row) => row.mode === 'lightsout'))
+  const achievedWeightLabel = plotModeFilter === 'lightsout' ? 'Net' : 'Achieved'
+
+  const plotPointsAchievedVsTarget = plotRows
+    .filter((row) => row.target_weight_g != null && rowAchievedWeight(row) != null)
     .map((row) => ({
       x: row.target_weight_g as number,
-      y: row.final_weight_g as number,
+      y: rowAchievedWeight(row) as number,
       label: `Episode ${row.episode_index ?? '—'}`,
     }))
 
-  const plotPointsDurationVsFinal = plotRows
-    .filter((row) => row.total_episode_time_s != null && row.final_weight_g != null)
+  const plotPointsDurationVsAchieved = plotRows
+    .filter((row) => row.total_episode_time_s != null && rowAchievedWeight(row) != null)
     .map((row) => ({
       x: row.total_episode_time_s as number,
-      y: row.final_weight_g as number,
+      y: rowAchievedWeight(row) as number,
       label: `Episode ${row.episode_index ?? '—'}`,
     }))
 
@@ -387,6 +398,7 @@ export default function LogsPage() {
   }
 
   const totalEpisodes = plotRows.length
+  const avgAchieved = averageOf(plotRows, (row) => rowAchievedWeight(row))
   const avgFinal = averageOf(plotRows, (row) => row.final_weight_g)
   const avgNet = averageOf(plotRows, (row) => row.net_weight_g)
   const avgFlow = averageOf(plotRows, (row) => row.avg_flow_rate_g_s)
@@ -402,14 +414,14 @@ export default function LogsPage() {
     }
   })
 
-  const rechartsFinalVsTarget = plotPointsFinalVsTarget.map((point) => ({
+  const rechartsAchievedVsTarget = plotPointsAchievedVsTarget.map((point) => ({
     target: point.x,
-    final: point.y,
+    achieved: point.y,
     label: point.label,
   }))
-  const rechartsDurationVsFinal = plotPointsDurationVsFinal.map((point) => ({
+  const rechartsDurationVsAchieved = plotPointsDurationVsAchieved.map((point) => ({
     duration: point.x,
-    final: point.y,
+    achieved: point.y,
     label: point.label,
   }))
   const rechartsHistogram = overshootHistogram.centers.map((center, idx) => ({
@@ -669,10 +681,16 @@ export default function LogsPage() {
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>Total Episodes</div>
               <div className="text-right">{totalEpisodes}</div>
-              <div>Avg Final (g)</div>
-              <div className="text-right">{avgFinal != null ? avgFinal.toFixed(2) : '—'}</div>
-              <div>Avg Net (g)</div>
-              <div className="text-right">{avgNet != null ? avgNet.toFixed(2) : '—'}</div>
+              <div>Avg {achievedWeightLabel} (g)</div>
+              <div className="text-right">{avgAchieved != null ? avgAchieved.toFixed(2) : '—'}</div>
+              {plotModeFilter === 'lightsout' ? null : (
+                <>
+                  <div>Avg Final (g)</div>
+                  <div className="text-right">{avgFinal != null ? avgFinal.toFixed(2) : '—'}</div>
+                  <div>Avg Net (g)</div>
+                  <div className="text-right">{avgNet != null ? avgNet.toFixed(2) : '—'}</div>
+                </>
+              )}
               <div>Avg Flow (g/s)</div>
               <div className="text-right">{avgFlow != null ? avgFlow.toFixed(2) : '—'}</div>
               <div>Avg Duration (s)</div>
@@ -739,7 +757,13 @@ export default function LogsPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card>
               <CardHeader>
-                <CardTitle>Final Weight vs Target</CardTitle>
+                <CardTitle>
+                  {plotModeFilter === 'lightsout'
+                    ? 'Net Weight vs Target'
+                    : plotUsesNet
+                      ? 'Achieved Weight vs Target'
+                      : 'Final Weight vs Target'}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div style={{ width: '100%', height: 240 }}>
@@ -754,17 +778,17 @@ export default function LogsPage() {
                         tick={{ fill: 'var(--chart-axis)', fontSize: 11 }}
                       />
                       <YAxis
-                        dataKey="final"
+                        dataKey="achieved"
                         type="number"
-                        name="Final"
+                        name={achievedWeightLabel}
                         unit="g"
                         tick={{ fill: 'var(--chart-axis)', fontSize: 11 }}
                       />
                       <Tooltip cursor={{ strokeDasharray: '3 3' }} />
                       <Legend />
                       <Scatter
-                        name={`Episodes (${rechartsFinalVsTarget.length})`}
-                        data={rechartsFinalVsTarget}
+                        name={`Episodes (${rechartsAchievedVsTarget.length})`}
+                        data={rechartsAchievedVsTarget}
                         fill="var(--accent)"
                       />
                     </ScatterChart>
@@ -774,7 +798,13 @@ export default function LogsPage() {
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>Duration vs Final Weight</CardTitle>
+                <CardTitle>
+                  {plotModeFilter === 'lightsout'
+                    ? 'Duration vs Net Weight'
+                    : plotUsesNet
+                      ? 'Duration vs Achieved Weight'
+                      : 'Duration vs Final Weight'}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div style={{ width: '100%', height: 240 }}>
@@ -789,17 +819,17 @@ export default function LogsPage() {
                         tick={{ fill: 'var(--chart-axis)', fontSize: 11 }}
                       />
                       <YAxis
-                        dataKey="final"
+                        dataKey="achieved"
                         type="number"
-                        name="Final"
+                        name={achievedWeightLabel}
                         unit="g"
                         tick={{ fill: '#cbd5f5', fontSize: 11 }}
                       />
                       <Tooltip cursor={{ strokeDasharray: '3 3' }} />
                       <Legend />
                       <Scatter
-                        name={`Episodes (${rechartsDurationVsFinal.length})`}
-                        data={rechartsDurationVsFinal}
+                        name={`Episodes (${rechartsDurationVsAchieved.length})`}
+                        data={rechartsDurationVsAchieved}
                         fill="#fbbf24"
                       />
                     </ScatterChart>
