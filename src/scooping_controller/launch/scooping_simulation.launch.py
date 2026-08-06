@@ -161,6 +161,9 @@ def _robot_sim_setup(context):
     post_lift_vibration_publish_rate_hz = LaunchConfiguration(
         "post_lift_vibration_publish_rate_hz"
     )
+    post_lift_vibration_settle_s = LaunchConfiguration(
+        "post_lift_vibration_settle_s"
+    )
     container_scene_yaml = LaunchConfiguration("container_scene_yaml")
 
     # Pick a robot-specific saved-targets file: the legacy targets.yaml is in
@@ -525,6 +528,7 @@ def _robot_sim_setup(context):
                 "post_lift_vibration_duration_s": post_lift_vibration_duration_s,
                 "post_lift_vibration_intensity": post_lift_vibration_intensity,
                 "post_lift_vibration_publish_rate_hz": post_lift_vibration_publish_rate_hz,
+                "post_lift_vibration_settle_s": post_lift_vibration_settle_s,
                 "trajectory_controller": cfg["follow_joint_trajectory_controller"],
                 "trajectory_action_server": traj_action_server,
             },
@@ -778,6 +782,14 @@ def generate_launch_description():
         default_value="10.0",
         description="Keepalive publish rate for post-lift shake-off",
     )
+    declare_post_lift_vibration_settle_s = DeclareLaunchArgument(
+        "post_lift_vibration_settle_s",
+        default_value="1.5",
+        description=(
+            "Seconds to wait after shake-off before the next trajectory "
+            "(avoids Niryo ROS1 preempt while the arm is still ringing)"
+        ),
+    )
     declare_container_scene_yaml = DeclareLaunchArgument(
         "container_scene_yaml",
         default_value=PathJoinSubstitution(
@@ -839,6 +851,7 @@ def generate_launch_description():
             declare_post_lift_vibration_duration_s,
             declare_post_lift_vibration_intensity,
             declare_post_lift_vibration_publish_rate_hz,
+            declare_post_lift_vibration_settle_s,
             declare_container_scene_yaml,
             declare_world,
             declare_gz_world_name,

@@ -66,6 +66,9 @@ def _robot_real_setup(context, *args, **kwargs):
     post_lift_vibration_publish_rate_hz = LaunchConfiguration(
         "post_lift_vibration_publish_rate_hz"
     )
+    post_lift_vibration_settle_s = LaunchConfiguration(
+        "post_lift_vibration_settle_s"
+    )
     container_scene_yaml = LaunchConfiguration("container_scene_yaml")
     layouts_dir = LaunchConfiguration("layouts_dir")
     layout_edit = LaunchConfiguration("layout_edit")
@@ -419,6 +422,7 @@ def _robot_real_setup(context, *args, **kwargs):
                 "post_lift_vibration_duration_s": post_lift_vibration_duration_s,
                 "post_lift_vibration_intensity": post_lift_vibration_intensity,
                 "post_lift_vibration_publish_rate_hz": post_lift_vibration_publish_rate_hz,
+                "post_lift_vibration_settle_s": post_lift_vibration_settle_s,
             },
         ],
     )
@@ -569,6 +573,14 @@ def generate_launch_description():
                 "post_lift_vibration_publish_rate_hz",
                 default_value="10.0",
                 description="Keepalive publish rate for post-lift shake-off",
+            ),
+            DeclareLaunchArgument(
+                "post_lift_vibration_settle_s",
+                default_value="1.5",
+                description=(
+                    "Seconds to wait after shake-off before the next trajectory "
+                    "(avoids Niryo ROS1 preempt while the arm is still ringing)"
+                ),
             ),
             DeclareLaunchArgument(
                 "container_scene_yaml",

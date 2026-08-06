@@ -141,8 +141,6 @@ int main(int argc, char ** argv)
   ros_node->declare_parameter<double>("lightsout_purge_vibration", 0.8);
   ros_node->declare_parameter<double>("lightsout_purge_duration_s", 10.0);
   ros_node->declare_parameter<std::string>("lightsout_purge_target", "");
-  // true = TiltAboutTcp (tip fixed); false = legacy joint_5 /incline_control tilt.
-  ros_node->declare_parameter<bool>("lightsout_purge_hold_tcp", true);
   blackboard->set("poses_provenance_ok", true);
 
   // Status publisher
@@ -396,8 +394,6 @@ int main(int argc, char ** argv)
         ros_node->get_parameter("lightsout_purge_enabled").as_bool();
       const std::string purge_target =
         ros_node->get_parameter("lightsout_purge_target").as_string();
-      const bool purge_hold_tcp =
-        ros_node->get_parameter("lightsout_purge_hold_tcp").as_bool();
       blackboard->set("lightsout_purge_enabled", purge_enabled);
       blackboard->set(
         "lightsout_purge_incline_deg",
@@ -411,10 +407,6 @@ int main(int argc, char ** argv)
       blackboard->set("lightsout_purge_target", purge_target);
       // Empty target => purge in place at the pour pose (no extra MoveTo).
       blackboard->set("lightsout_purge_pose_enabled", !purge_target.empty());
-      blackboard->set("lightsout_purge_hold_tcp", purge_hold_tcp);
-      // Complementary flag so the BT tree can select the legacy joint tilt
-      // without relying on script negation.
-      blackboard->set("lightsout_purge_use_joint_incline", !purge_hold_tcp);
 
       lightsout_active = true;
 

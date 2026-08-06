@@ -736,9 +736,13 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
     feedback->progress = 1.0f;
     goal_handle->publish_feedback(feedback);
   } else {
-    // Single-target joint-space plan with sync and retries
+    // Single-target joint-space plan with sync and retries.
+    // Growing backoff between execute retries so a post-vibration Niryo
+    // PREEMPT does not burn all three attempts inside one disturbance window.
     int retries = 3;
+    int attempt = 0;
     while (retries-- > 0) {
+      ++attempt;
       wait_and_sync_start_state();
       if (position_only_goal) {
         mgi_->setPositionTarget(
@@ -769,7 +773,6 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
       if (execute_plan_direct(plan)) {
         break;
       }
-      RCLCPP_WARN(get_logger(), "Execute aborted; checking pose tolerance and retrying. Retries left: %d", retries);
       auto cur_pose = mgi_->getCurrentPose(eef_link);
       if ((position_only_goal && within_position_tolerance(cur_pose.pose, target.pose)) ||
           (!position_only_goal && within_pose_tolerance(cur_pose.pose, target.pose))) {
@@ -777,11 +780,19 @@ void MoveToServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
         break;
       }
       if (retries <= 0) {
+        RCLCPP_WARN(get_logger(), "Execute aborted; no retries left");
         result->success = false;
         result->message = "Execution failed";
         goal_handle->succeed(result);
         return;
       }
+      const double backoff_s = 0.75 * static_cast<double>(attempt);
+      RCLCPP_WARN(
+        get_logger(),
+        "Execute aborted; waiting %.2fs before retry. Retries left: %d",
+        backoff_s,
+        retries);
+      std::this_thread::sleep_for(std::chrono::duration<double>(backoff_s));
     }
     feedback->progress = 1.0f;
     goal_handle->publish_feedback(feedback);

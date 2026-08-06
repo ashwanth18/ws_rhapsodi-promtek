@@ -60,9 +60,6 @@ inline const std::vector<std::string> kLightsoutBlackboardKeys = {
   "lightsout_purge_duration_s",
   "lightsout_purge_target",
   "lightsout_purge_pose_enabled",
-  "lightsout_purge_hold_tcp",
-  "lightsout_purge_use_joint_incline",
-  "lightsout_purge_pretilt_pose",
 };
 
 inline const std::vector<std::string> kBatchBlackboardKeys = {

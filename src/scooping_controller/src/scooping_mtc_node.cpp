@@ -82,6 +82,7 @@ public:
     this->declare_parameter<double>("post_lift_vibration_duration_s", 5.0);
     this->declare_parameter<double>("post_lift_vibration_intensity", 0.75);
     this->declare_parameter<double>("post_lift_vibration_publish_rate_hz", 10.0);
+    this->declare_parameter<double>("post_lift_vibration_settle_s", 1.5);
     this->declare_parameter<std::string>("post_lift_vibration_topic", "/vibration/intensity");
     this->declare_parameter<double>("cartesian_velocity_scaling", 0.15);
     this->declare_parameter<double>("cartesian_acceleration_scaling", 0.15);
@@ -1232,6 +1233,28 @@ private:
     }
     vibration_msg.data = 0.0;
     vibration_pub_->publish(vibration_msg);
+    // Keep publishing zeros briefly so any late keepalive subscribers clear,
+    // then wait for the arm to stop ringing before the next trajectory goal.
+    // Without this settle, Niryo ROS1 often PREEMPTs the next FJT goal.
+    const double settle_s = std::max(
+      0.0, this->get_parameter("post_lift_vibration_settle_s").as_double());
+    if (settle_s > 0.0) {
+      RCLCPP_INFO(
+        this->get_logger(),
+        "Post-lift shake-off done; waiting %.2fs for arm to settle",
+        settle_s);
+      const auto settle_end =
+        std::chrono::steady_clock::now() + std::chrono::duration<double>(settle_s);
+      while (std::chrono::steady_clock::now() < settle_end) {
+        vibration_pub_->publish(vibration_msg);
+        const auto remaining = settle_end - std::chrono::steady_clock::now();
+        if (remaining <= std::chrono::steady_clock::duration::zero()) {
+          break;
+        }
+        std::this_thread::sleep_for(
+          std::min(publish_period, std::chrono::duration<double>(remaining)));
+      }
+    }
     return true;
   }
 

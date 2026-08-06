@@ -47,12 +47,10 @@ sample pour target → pour back into the same vessel). No rescoop.
   incremental id per mode (`LO-0007`, `MOCK-…`, …); advisory only.
 - `enable_scoop` defaults **true**
 - **Scoop residue purge** (end of each episode, outside the MCAP window):
-  after `EpisodeEndMarker`, tilt and vibrate to dump leftover powder back
-  into the vessel, then park at the scooping container. Default tilt is
-  `TiltAboutTcp` (pre-shift tip, then joint incline) so residue falls near
-  the vessel centre; set `LIGHTSOUT_PURGE_HOLD_TCP=false` to use
-  joint_5-only tilt. Defaults: enabled, incline 20°, vibration 0.8 for
-  10 s, purge in place at the pour pose.
+  after `EpisodeEndMarker`, `SetIncline` (joint_5 via `/incline_control`)
+  and vibrate to dump leftover powder back into the vessel, then park at
+  the scooping container. Defaults: enabled, incline 20°, vibration 0.8
+  for 10 s, purge in place at the pour pose.
   Tunable via orchestrator params / `LIGHTSOUT_PURGE_*` env
   (`lightsout_purge_target` empty now; set to a taught MoveTo name later
   if a dedicated dump pose is preferred).

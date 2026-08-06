@@ -625,6 +625,7 @@ Parameters:
 * `post_lift_vibration_duration_s`
 * `post_lift_vibration_intensity`
 * `post_lift_vibration_publish_rate_hz`
+* `post_lift_vibration_settle_s`
 * `post_lift_vibration_topic`
 
 Behavior:

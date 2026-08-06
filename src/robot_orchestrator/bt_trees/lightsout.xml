@@ -13,10 +13,16 @@
             <PhaseMarker phase="scoop_start"/>
             <WeightFresh max_age_s="2.0"/>
             <CaptureBaseline/>
-            <MoveTo name="MoveToContainer" target_name="{lightsout_container_name}" use_cartesian="false"/>
-            <Precondition if="enable_scoop" else="SUCCESS">
-              <ExecuteScoop continuous="true" timeout_s="120.0"/>
-            </Precondition>
+            <!-- Retry approach+scoop once so a one-off post-vibration preempt
+                 does not end the whole session; still FAILURE after 2 attempts. -->
+            <RetryUntilSuccessful num_attempts="2">
+              <Sequence name="ApproachAndScoop">
+                <MoveTo name="MoveToContainer" target_name="{lightsout_container_name}" use_cartesian="false"/>
+                <Precondition if="enable_scoop" else="SUCCESS">
+                  <ExecuteScoop continuous="true" timeout_s="120.0"/>
+                </Precondition>
+              </Sequence>
+            </RetryUntilSuccessful>
             <PhaseMarker phase="scoop_end"/>
             <WaitSeconds seconds="3.0"/>
             <ForceSuccess>
@@ -41,17 +47,10 @@
                   <Precondition if="lightsout_purge_pose_enabled" else="SUCCESS">
                     <MoveTo name="MoveToPurge" target_name="{lightsout_purge_target}" use_cartesian="false"/>
                   </Precondition>
-                  <!-- Prefer centred tilt (lift+pre-shift+incline); fall back to joint_5-only. -->
-                  <Fallback name="TiltPurge">
-                    <Precondition if="lightsout_purge_hold_tcp" else="FAILURE">
-                      <TiltAboutTcp name="TiltPurgeHoldTcp"
-                                    degrees="{lightsout_purge_incline_deg}"/>
-                    </Precondition>
-                    <SetIncline degrees="{lightsout_purge_incline_deg}"/>
-                  </Fallback>
+                  <!-- joint_5 incline via /incline_control (working path). -->
+                  <SetIncline degrees="{lightsout_purge_incline_deg}"/>
                   <WaitSeconds seconds="1.0"/>
-                  <Vibrate value="{lightsout_purge_vibration}" duration_s="{lightsout_purge_duration_s}"/>
-                  <!-- Always untilt via joint incline; MoveBackToContainer follows. -->
+                  <Vibrate value="{lightsout_purge_vibration}" duration_s="{lightsout_purge_duration_s}" settle_s="1.0"/>
                   <SetIncline degrees="0.0"/>
                   <WaitSeconds seconds="0.5"/>
                 </Sequence>

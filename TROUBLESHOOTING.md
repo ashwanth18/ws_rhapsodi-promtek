@@ -114,3 +114,22 @@ outside the marked sections and it will be preserved.
   - Confirm `FASTDDS_BUILTIN_TRANSPORTS=UDPv4` is actually present in that container's environment - a missing or reverted env var is the most common regression.
 - _Not yet observed in a recorded incident - documented pre-emptively from the known code path._
 <!-- kb:end:dds_transport_timeout -->
+
+
+## Trajectory preempted right after a vibration burst
+
+- **Category:** Scooping / Niryo ROS1 bridge
+- **Symptom:** `ExecuteScoop` fails with `Continuous transport_ready move failed: Execution failed`. Logs show `Running post-lift shake-off ...` then immediately a `MoveTo` / FollowJointTrajectory attempt, followed by one or more:
+  - `ros2_driver: ROS1 preempt/recall without ROS2 cancel; aborting goal`
+  - `move_to_server: Direct trajectory execution failed: Trajectory execution aborted`
+  Without a BT retry, the whole lights-out session ends.
+- **Root cause:** Post-lift shake-off (and other `Vibrate` bursts) leave the arm ringing. The next trajectory goal is sent with no settle window; the Niryo ROS1 controller preempts it. Fast move_to retries can all land inside the same disturbance window.
+- **Fix (in tree / image):**
+  - `post_lift_vibration_settle_s` (default 1.5 s) on `scooping_mtc_node` — wait after shake-off before `transport_ready`.
+  - `Vibrate` BT node `settle_s` port (default 1.0 s) — wait after BT vibration before SUCCESS.
+  - Growing backoff between `move_to_server` execute retries (`0.75 s * attempt`).
+  - Lights-out wraps approach+scoop in `RetryUntilSuccessful num_attempts="2"`.
+- **If this appears again, check:**
+  - Raise `POST_LIFT_VIBRATION_SETTLE_S` (compose / `robot-prod.env`) if preempts still cluster right after shake-off.
+  - Confirm logs show `waiting ... for arm to settle` / `VibrateNode: ... settling` before the next MoveTo.
+  - Confirm retries log `waiting ... before retry` rather than firing within ~200 ms of each other.
