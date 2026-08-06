@@ -14,7 +14,7 @@ targets:
   package: robot_moveit
   path: targets/jaka_zu5.yaml
 tool:
-  mesh_resource: package://niryo_robot_description/meshes/ned3pro/stl/niryo_scoop_v4-ros.STL
+  mesh_resource: package://niryo_robot_description/meshes/stl/niryo_scoop_v4-ros.STL
   tcp_visual_offset_xyz:
   - 0.15825
   - 0.0
@@ -88,19 +88,25 @@ real:
   controllers:
     package: jaka_zu5_moveit_config
     path: config/ros2_controllers.yaml
+  move_group_controller_params:
+    package: scooping_controller
+    path: config/move_group_controller_params_jaka.yaml
   driver:
-    package: jaka_driver
-    path: launch/robot_start.launch.py
+    package: jaka_planner
+    path: launch/moveit_server.launch.py
+    launch_arguments:
+      ip: ${ROBOT_IP}
+      model: zu5
   timing:
-    move_group_delay: 5.0
-    move_to_delay: 7.0
-    target_recorder_delay: 7.2
-    task_frame_delay: 7.8
-    marker_delay: 8.0
-    container_delay: 8.5
-    collisions_delay: 8.7
-    mtc_delay: 9.0
-    rviz_delay: 10.0
+    move_group_delay: 18.0
+    move_to_delay: 19.0
+    target_recorder_delay: 19.2
+    task_frame_delay: 19.5
+    marker_delay: 19.7
+    container_delay: 20.0
+    collisions_delay: 20.2
+    mtc_delay: 20.5
+    rviz_delay: 21.0
 mock:
   scene:
     package: scooping_controller
@@ -117,7 +123,7 @@ mock:
     path: config/ros2_controllers_mock_jaka.yaml
   move_group_controller_params:
     package: scooping_controller
-    path: config/move_group_controller_params.yaml
+    path: config/move_group_controller_params_jaka.yaml
   timing:
     move_group_delay: 1.0
     move_to_delay: 2.0

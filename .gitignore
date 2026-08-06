@@ -40,6 +40,9 @@ build-timings.json
 ansible/.vault_pass
 .vault_pass
 
+# Laptop / JAKA local compose env (IPs, USB paths). Keep *.example committed.
+robot-prod.laptop.env
+
 # Data/artifacts that usually shouldn't be committed
 src/robot_data.db
 **/*.bag

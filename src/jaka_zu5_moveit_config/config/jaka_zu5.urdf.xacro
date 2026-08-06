@@ -21,7 +21,7 @@
         parent_link="Link6"
         mount_joint_name="jaka_scoop_mount_joint"
         tcp_joint_name="jaka_scoop_tcp_joint"
-        mesh_resource="file://$(find niryo_robot_description)/meshes/ned3pro/stl/niryo_scoop_v4-ros.STL"
+        mesh_resource="file://$(find niryo_robot_description)/meshes/stl/niryo_scoop_v4-ros.STL"
         mount_xyz="0 0 0.043"
         mount_rpy="3.14159265359 0 0"
         tcp_xyz="0.15825 0 -0.09356"

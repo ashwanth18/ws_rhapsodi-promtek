@@ -20,7 +20,7 @@ device_classes:
     production: false
 
   x86:
-    description: amd64 workstation / Jaka host (stub — not production)
+    description: amd64 workstation / JAKA ZU5 laptop cell (compose/devices/x86.yml)
     platform: linux/amd64
     compose_file: compose/devices/x86.yml
     production: false

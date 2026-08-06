@@ -29,6 +29,9 @@ device:
 
   # Must match a key under `robots:` in
   # src/scooping_controller/config/robots.yaml (e.g. niryo, jaka).
+  # Laptop / JAKA cells: use config/device.jaka-laptop.yaml and set
+  # RHAPSODI_DEVICE_CONFIG=/ws/config/device.jaka-laptop.yaml in
+  # robot-prod.laptop.env (see docs/jaka-laptop-networking.md).
   robot_type: niryo
 
   # Which physical site/facility this Pi is deployed at.

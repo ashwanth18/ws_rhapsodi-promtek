@@ -26,6 +26,7 @@ from launch.substitutions import (
     PathJoinSubstitution,
 )
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 from moveit_configs_utils import MoveItConfigsBuilder
 
@@ -143,7 +144,12 @@ def _robot_real_setup(context, *args, **kwargs):
     robot_description_content = Command(
         xacro_command_args(xacro_executable, real_profile["urdf"])
     )
-    robot_description = {"robot_description": robot_description_content}
+    # URDF contains YAML-significant characters; force string (same as sim launch).
+    robot_description = {
+        "robot_description": ParameterValue(
+            robot_description_content, value_type=str
+        )
+    }
 
     xacro_mappings = {}
     for xacro_arg in real_profile["urdf"].get("xacro_args", []):
@@ -154,7 +160,7 @@ def _robot_real_setup(context, *args, **kwargs):
     builder = MoveItConfigsBuilder(
         moveit_robot_name, package_name=moveit_package
     )
-    # Prefer explicit file paths when present (Niryo); Jaka uses package defaults.
+    # Prefer explicit file paths when present (Niryo); JAKA loads ZU5 MoveIt files.
     if robot_key == "niryo":
         moveit_config = (
             builder.robot_description(file_path=urdf_share)
@@ -175,6 +181,14 @@ def _robot_real_setup(context, *args, **kwargs):
     else:
         moveit_config = (
             builder.robot_description(mappings=xacro_mappings)
+            .joint_limits(file_path="config/joint_limits.yaml")
+            .robot_description_semantic(file_path="config/jaka_zu5.srdf")
+            .robot_description_kinematics(file_path="config/kinematics.yaml")
+            .trajectory_execution(file_path="config/moveit_controllers.yaml")
+            .planning_pipelines(
+                default_planning_pipeline=profile["planning_pipeline"],
+                pipelines=list(real_profile.get("planning_pipelines") or ["ompl"]),
+            )
             .planning_scene_monitor(
                 publish_robot_description=True,
                 publish_robot_description_semantic=True,
@@ -193,6 +207,14 @@ def _robot_real_setup(context, *args, **kwargs):
                 ("whitelist_params_file", whitelist_params_file),
                 ("log_level", driver_log_level),
             ]
+        # Profile-driven args (e.g. JAKA moveit_server ip/model). Expand
+        # ${ROBOT_IP} from the robot_ip launch arg or ROBOT_IP env.
+        robot_ip = LaunchConfiguration("robot_ip").perform(context).strip()
+        if not robot_ip:
+            robot_ip = os.environ.get("ROBOT_IP", "").strip()
+        for key, value in (driver_spec.get("launch_arguments") or {}).items():
+            expanded = str(value).replace("${ROBOT_IP}", robot_ip)
+            driver_launch_args.append((str(key), expanded))
         driver_launch = IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 [
@@ -601,6 +623,14 @@ def generate_launch_description():
                 "driver_log_level",
                 default_value="INFO",
                 description="Niryo driver log level",
+            ),
+            DeclareLaunchArgument(
+                "robot_ip",
+                default_value=os.environ.get("ROBOT_IP", ""),
+                description=(
+                    "Controller IP for OEM drivers that need it (JAKA "
+                    "moveit_server). Defaults to ROBOT_IP env when set."
+                ),
             ),
             OpaqueFunction(function=_robot_real_setup),
         ]

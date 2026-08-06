@@ -1,7 +1,33 @@
-# STUB — amd64 workstation / Jaka host (not production).
-# Will diverge for Jaka vendor libs and workstation peripherals.
-# Placeholder includes Pi5 compose for scaffolding only — not a supported
-# deployment path. See config/device_classes.yaml (production: false).
+# amd64 workstation / JAKA host cell stack.
+#
+# Includes the full production service set from pi5.yml. JAKA-specific
+# behavior comes from env (PROFILE_ID=prod-jaka, ROBOT_IP, TRAJ_ACTION_SERVER,
+# RHAPSODI_DEVICE_CONFIG) — see robot-prod.env.example "Laptop / JAKA" section
+# and docs/jaka-laptop-networking.md.
+#
+# selected via device_class=x86 (config/device_classes.yaml).
+#
+# Bind-mounts below overlay workspace launch/config into the ros-prod image so
+# a laptop can bring up the JAKA execution path before CI publishes an
+# IMAGE_TAG that already contains those files. Once IMAGE_TAG pins a build
+# with the moveit_server wiring, the scooping_stack volume overrides can be
+# removed.
 
 include:
-  - path: pi5.yml
+  # Path is relative to --project-directory (workspace root), not this file.
+  - path: compose/devices/pi5.yml
+
+services:
+  scooping_stack:
+    volumes:
+      - ./data:/data
+      - ./data/ros_home:/root/.ros
+      - ./config:/ws/config:ro
+      # Workspace overlays for JAKA real-execution wiring (until IMAGE_TAG catches up).
+      - ./src/scooping_controller/launch/scooping_real.launch.py:/ws/install/share/scooping_controller/launch/scooping_real.launch.py:ro
+      - ./src/scooping_controller/launch/robot_profiles.py:/ws/install/share/scooping_controller/launch/robot_profiles.py:ro
+      - ./src/scooping_controller/config/move_group_controller_params_jaka.yaml:/ws/install/share/scooping_controller/config/move_group_controller_params_jaka.yaml:ro
+      - ./src/scooping_controller/config/robots.yaml:/ws/install/share/scooping_controller/config/robots.yaml:ro
+      # Vendor SDK .so (image build omitted install(FILES); CMakeLists now installs it).
+      - ./src/jaka_planner/lib/libjakaAPI.so:/ws/install/lib/libjakaAPI.so:ro
+      - ./src/jaka_zu5_moveit_config/config/jaka_zu5.urdf.xacro:/ws/install/share/jaka_zu5_moveit_config/config/jaka_zu5.urdf.xacro:ro

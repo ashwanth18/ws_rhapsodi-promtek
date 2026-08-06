@@ -66,7 +66,8 @@ profiles:
       POSES_YAML: ""
       POSES_ENV: real
       TARGETS_YAML: /ws/install/share/robot_moveit/targets_jaka.yaml
-      CONTAINER_SCENE_YAML: /ws/install/share/scooping_controller/config/container_scene_real.yaml
+      CONTAINER_SCENE_YAML: /ws/install/share/scooping_controller/config/container_scene/jaka_real.yaml
+      TRAJ_ACTION_SERVER: /jaka_zu5_controller/follow_joint_trajectory
 
   jaka-site2-layout:
     description: Jaka with site-2 table layout (custom scoop/pour poses)

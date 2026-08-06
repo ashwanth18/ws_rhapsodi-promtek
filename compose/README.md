@@ -20,9 +20,19 @@
 
 - `devices/pi5.yml` — production Pi5 stack (`SIM_ALLOWED=0`, `DEVICE_CLASS=pi5`)
 - `devices/jetson.yml` — stub (not production)
-- `devices/x86.yml` — stub (not production)
+- `devices/x86.yml` — amd64 / JAKA laptop cell (includes `pi5.yml` + launch overlays)
 - Root `docker-compose.robot-prod.yml` — compatibility include of `pi5.yml`
 - Root `docker-compose.sim.yml` — laptop-only sim (`SIM_ALLOWED=1`, `ENVIRONMENT=sim`; see `docs/MODES.md`)
+
+Laptop / JAKA bring-up (direct ethernet to the controller):
+
+```bash
+cp robot-prod.env.example robot-prod.laptop.env   # then edit Laptop / JAKA keys
+docker compose --project-directory . --env-file robot-prod.laptop.env \
+  -f compose/devices/x86.yml up -d
+```
+
+See `docs/jaka-laptop-networking.md`.
 
 ## Project directory
 

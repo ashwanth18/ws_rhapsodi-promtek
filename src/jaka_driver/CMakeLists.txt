@@ -106,15 +106,24 @@ target_include_directories(servoj_demo
 
 # Specify where to find external libraries
 set(LIBRARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lib)
+set(JAKA_API_LIB ${LIBRARY_DIR}/libjakaAPI.so)
 
 # Add the directory to the search path
 link_directories(${LIBRARY_DIR})
 
 # Find the library and link it properly
-target_link_libraries(jaka_driver ${LIBRARY_DIR}/libjakaAPI.so)
-target_link_libraries(sdk_test ${LIBRARY_DIR}/libjakaAPI.so)
-target_link_libraries(client ${LIBRARY_DIR}/libjakaAPI.so)
-target_link_libraries(servoj_demo ${LIBRARY_DIR}/libjakaAPI.so)
+target_link_libraries(jaka_driver ${JAKA_API_LIB})
+target_link_libraries(sdk_test ${JAKA_API_LIB})
+target_link_libraries(client ${JAKA_API_LIB})
+target_link_libraries(servoj_demo ${JAKA_API_LIB})
+
+# So install/ libjaka_driver finds libjakaAPI.so without LD_LIBRARY_PATH hacks.
+foreach(_jaka_tgt IN ITEMS jaka_driver sdk_test client servoj_demo)
+  set_target_properties(${_jaka_tgt} PROPERTIES
+    BUILD_RPATH "${LIBRARY_DIR}"
+    INSTALL_RPATH "$ORIGIN/.."
+  )
+endforeach()
 
 # Install executables
 install(TARGETS
@@ -123,6 +132,11 @@ install(TARGETS
   client
   servoj_demo
   DESTINATION lib/${PROJECT_NAME}
+)
+
+# Install the vendor SDK shared library next to lib/<pkg>/
+install(FILES ${JAKA_API_LIB}
+  DESTINATION lib
 )
 
 # Install launch files

@@ -1,0 +1,17 @@
+# Laptop / JAKA ZU5 cell identity.
+#
+# Point the laptop compose env at this file:
+#   RHAPSODI_DEVICE_CONFIG=/ws/config/device.jaka-laptop.yaml
+# (see robot-prod.laptop.env / robot-prod.env.example "Laptop / JAKA").
+#
+# Keep config/device.yaml as the default Niryo/Pi identity so a shared
+# checkout does not break Pi deploy.
+
+device:
+  device_id: jaka-laptop-1
+  robot_id: jaka-laptop-1
+  robot_type: jaka
+  site_id: site-laptop
+  fleet:
+    processing_url: http://localhost:8002/process
+    ingestion_url: http://localhost:8011

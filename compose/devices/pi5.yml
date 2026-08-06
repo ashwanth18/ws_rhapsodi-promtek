@@ -240,7 +240,7 @@ services:
       --ros-args
       -p incline_topic:=/incline_control
       -p joint_state_topic:=/joint_states
-      -p traj_action_server:=/niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory
+      -p traj_action_server:=${TRAJ_ACTION_SERVER:-/niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory}
       -p tilt_joint_name:=${TILT_JOINT_NAME:-joint_5}
       -p max_incline_deg:=${MAX_INCLINE_DEG:-20.0}
       -p incline_direction:=${INCLINE_DIRECTION:--1.0}
@@ -292,7 +292,7 @@ services:
       --ros-args
       -p incline_topic:=/incline_control
       -p joint_state_topic:=/joint_states
-      -p traj_action_server:=/niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory
+      -p traj_action_server:=${TRAJ_ACTION_SERVER:-/niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory}
       -p tilt_joint_name:=${TILT_JOINT_NAME:-joint_5}
       -p max_incline_deg:=${MAX_INCLINE_DEG:-20.0}
       -p incline_direction:=${INCLINE_DIRECTION:--1.0}
