@@ -129,24 +129,35 @@ private:
       }
     }
 
-    if (!needs_update) {
-      return;
+    if (needs_update) {
+      if (planning_scene_interface_->applyCollisionObjects(desired_objects)) {
+        RCLCPP_INFO(
+          this->get_logger(),
+          "Applied %zu container collision objects to MoveIt planning scene",
+          desired_objects.size());
+      } else {
+        RCLCPP_WARN(
+          this->get_logger(),
+          "Failed to apply container collision objects to planning scene");
+        return;
+      }
     }
 
-    if (planning_scene_interface_->applyCollisionObjects(desired_objects)) {
-      RCLCPP_INFO(
-        this->get_logger(),
-        "Applied %zu container collision objects to MoveIt planning scene",
-        desired_objects.size());
-      allow_mount_table_collisions_async(desired_ids);
-    } else {
-      RCLCPP_WARN(this->get_logger(), "Failed to apply container collision objects to planning scene");
-    }
+    // Always (re)assert mount↔table ACM. On startup the first object apply often
+    // races move_group services; if ACM is skipped then and we only run it on
+    // object changes, CheckStartStateCollision keeps failing on arm_link–table.
+    allow_mount_table_collisions_async(desired_ids);
+  }
+
+  static bool is_mount_link(const std::string& name)
+  {
+    // Niryo: base_link / arm_link. Jaka/Lexium: link0 (robot root bolted to table).
+    return name == "base_link" || name == "arm_link" || name == "link0";
   }
 
   void allow_mount_table_collisions_async(const std::vector<std::string>& object_ids)
   {
-    // Robot is bolted to the table: allow base/arm AABBs vs the table box only.
+    // Robot is bolted to the table: allow mount AABBs vs the table box only.
     // Fully async — never wait_for in a timer/subscription callback.
     if (std::find(object_ids.begin(), object_ids.end(), "table") == object_ids.end()) {
       return;
@@ -172,13 +183,12 @@ private:
         if (std::find(names.begin(), names.end(), "table") == names.end()) {
           const size_t n = names.size();
           for (size_t i = 0; i < values.size(); ++i) {
-            values[i].enabled.push_back(
-              names[i] == "base_link" || names[i] == "arm_link");
+            values[i].enabled.push_back(is_mount_link(names[i]));
           }
           moveit_msgs::msg::AllowedCollisionEntry table_row;
           table_row.enabled.assign(n + 1, false);
           for (size_t i = 0; i < n; ++i) {
-            if (names[i] == "base_link" || names[i] == "arm_link") {
+            if (is_mount_link(names[i])) {
               table_row.enabled[i] = true;
             }
           }
@@ -188,7 +198,7 @@ private:
           const size_t table_i = static_cast<size_t>(
             std::distance(names.begin(), std::find(names.begin(), names.end(), "table")));
           for (size_t i = 0; i < names.size() && i < values.size(); ++i) {
-            if (names[i] == "base_link" || names[i] == "arm_link") {
+            if (is_mount_link(names[i])) {
               if (table_i < values[i].enabled.size()) {
                 values[i].enabled[table_i] = true;
               }
@@ -209,10 +219,12 @@ private:
           [this](rclcpp::Client<moveit_msgs::srv::ApplyPlanningScene>::SharedFuture apply_future) {
             const auto apply_res = apply_future.get();
             if (!apply_res || !apply_res->success) {
-              RCLCPP_WARN(this->get_logger(), "Failed to allow base/arm vs table collisions");
+              RCLCPP_WARN(this->get_logger(), "Failed to allow mount-link vs table collisions");
               return;
             }
-            RCLCPP_INFO(this->get_logger(), "Allowed base_link/arm_link collisions with table");
+            RCLCPP_INFO(
+              this->get_logger(),
+              "Allowed base_link/arm_link/link0 collisions with table");
           });
       });
   }
