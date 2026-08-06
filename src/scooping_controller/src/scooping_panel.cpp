@@ -428,6 +428,7 @@ ScoopingPanel::ScoopingPanel(QWidget* parent)
       << "STOMP"
       << "Pilz LIN"
       << "Cartesian Path");
+  // STOMP is the default for every robot profile (Niryo and Jaka/Lexium).
   planner_combo_->setCurrentIndex(2);
   for (const char* name : kPourTargetNames) {
     pour_pose_combo_->addItem(QString::fromUtf8(name));

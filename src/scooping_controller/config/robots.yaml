@@ -124,7 +124,7 @@ robots:
     base_frame: link0
     flange_link: Link6
     follow_joint_trajectory_controller: jaka_zu5_controller
-    planning_pipeline: ompl
+    planning_pipeline: stomp
     position_only_goal: false
     targets:
       package: robot_moveit
@@ -171,7 +171,7 @@ robots:
         path: config/ros2_controllers.yaml
       spawn_model_name: jaka_zu5
       publish_world_to_base_tf: false
-      planning_pipelines: [ompl]
+      planning_pipelines: [ompl, chomp, pilz_industrial_motion_planner, stomp]
     real:
       scene:
         package: scooping_controller
@@ -201,6 +201,7 @@ robots:
         path: launch/lexium_driver.launch.py
         launch_arguments:
           ip: ${ROBOT_IP}
+      planning_pipelines: [ompl, chomp, pilz_industrial_motion_planner, stomp]
       timing:
         move_group_delay: 8.0
         move_to_delay: 9.0
@@ -227,6 +228,7 @@ robots:
       move_group_controller_params:
         package: scooping_controller
         path: config/move_group_controller_params_jaka.yaml
+      planning_pipelines: [ompl, chomp, pilz_industrial_motion_planner, stomp]
       timing:
         move_group_delay: 1.0
         move_to_delay: 2.0

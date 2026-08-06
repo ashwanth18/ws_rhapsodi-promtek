@@ -37,8 +37,12 @@ sim:  ## Gazebo sim with layout-composed world (ROBOT=<id> LAYOUT=<id>)
 arm-session:  ## Real-arm authoring handoff (LAYOUT=<id>); stops Pi scooping_stack. No motion commanded.
 	$(ROOT)/scripts/dev_arm_session.sh $(LAYOUT) $(ROBOT)
 
-lexium-session:  ## Native RViz + Lexium Safety panel against laptop scooping_stack (ROBOT=jaka)
-	$(ROOT)/scripts/dev_lexium_session.sh $(ROBOT)
+# Do not pass $(ROBOT): the global default is ROBOT?=niryo, which would force
+# Niryo into RViz. The script defaults to jaka; override with e.g.
+#   make lexium-session LEXIUM_ROBOT=jaka
+LEXIUM_ROBOT ?= jaka
+lexium-session:  ## Native RViz + Lexium Safety panel against laptop scooping_stack (jaka/Lexium)
+	$(ROOT)/scripts/dev_lexium_session.sh $(LEXIUM_ROBOT)
 
 export-poses:  ## Save timestamped scoop pose set under layouts/<id>/poses/sets/ (default intact)
 	$(ROOT)/scripts/export_scoop_poses.sh

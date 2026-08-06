@@ -9,19 +9,16 @@
     <xacro:include filename="$(find scoop_description)/urdf/scoop_tool.xacro" />
 
     <!-- Scoop tool attachment.
-         The scoop poses in scooping_controller are authored for a tool TCP, not
-         for the raw robot flange. Mirror the Niryo scoop frame convention so
-         Jaka plans to the scoop tip (`tcp_link`) rather than `Link6`.
+         Plans to scoop tip (`tcp_link`), not flange `Link6`.
 
-         Mount offset is intentionally simple for now: Link6 -> tool_link uses
-         the same fixed transform Niryo uses from hand_link -> tool_link, and
-         tool_link -> tcp_link reuses the Niryo scoop TCP offset. Calibrate the
-         mount joint origin if the physical adapter differs. -->
+         Mount matches Niryo hand_tool (roll=PI, tip at +X). Keep tool_link and
+         tcp_link axes aligned (tcp_rpy=0): marker mesh offset assumes that.
+         Outward approach is authored in the layout pose seed, not here. -->
     <xacro:scoop_tool
         parent_link="Link6"
         mount_joint_name="jaka_scoop_mount_joint"
         tcp_joint_name="jaka_scoop_tcp_joint"
-        mesh_resource="file://$(find niryo_robot_description)/meshes/stl/niryo_scoop_v4-ros.STL"
+        mesh_resource="package://niryo_robot_description/meshes/stl/niryo_scoop_v4-ros.STL"
         mount_xyz="0 0 0.043"
         mount_rpy="3.14159265359 0 0"
         tcp_xyz="0.15825 0 -0.09356"
