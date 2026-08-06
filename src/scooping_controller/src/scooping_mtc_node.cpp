@@ -297,6 +297,24 @@ private:
           object.id.c_str());
       }
     }
+    // Match make_container_collision_stage / planning_scene_collision_publisher.
+    auto& acm = scene->getAllowedCollisionMatrixNonConst();
+    for (const char* link : {"base_link", "arm_link", "link0"}) {
+      acm.setEntry("table", link, true);
+    }
+    // Scoop markers enter the vessel; tool must be allowed vs task containers.
+    for (const auto& object : scooping_controller::make_container_collision_objects(
+           planning_scene_frame_id(), container_scene_specs_))
+    {
+      if (object.id == "table") {
+        continue;
+      }
+      for (const char* link :
+           {"tool_link", "tcp_link", "hand_link", "wrist_link", "forearm_link"})
+      {
+        acm.setEntry(object.id, link, true);
+      }
+    }
 
     moveit::core::RobotState seed(model);
     seed.setToDefaultValues();
@@ -846,10 +864,27 @@ private:
   mtc::Stage::pointer make_container_collision_stage() const
   {
     auto stage = std::make_unique<mtc::stages::ModifyPlanningScene>("add container collisions");
-    for (const auto& object : scooping_controller::make_container_collision_objects(
-           planning_scene_frame_id(), container_scene_specs_))
-    {
+    const auto objects = scooping_controller::make_container_collision_objects(
+      planning_scene_frame_id(), container_scene_specs_);
+    for (const auto& object : objects) {
       stage->addObject(object);
+    }
+    // Robot is bolted through the table surface. Global ACM usually covers this,
+    // but MTC's ModifyPlanningScene re-adds the table object into a local scene —
+    // allow mount links explicitly so Jaka (link0) matches Niryo (base_link).
+    stage->allowCollisions(
+      "table",
+      std::vector<std::string>{"base_link", "arm_link", "link0"},
+      true);
+    // Contact/scoop/lift enter the vessel; without this, MTC reports
+    // GOAL_STATE_INVALID on contact (rs3↔tool_link).
+    const std::vector<std::string> scoop_tool_links = {
+      "tool_link", "tcp_link", "hand_link", "wrist_link", "forearm_link"};
+    for (const auto& object : objects) {
+      if (object.id == "table") {
+        continue;
+      }
+      stage->allowCollisions(object.id, scoop_tool_links, true);
     }
     return stage;
   }
