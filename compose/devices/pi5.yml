@@ -152,11 +152,12 @@ services:
       - "${DASHBOARD_PORT:-8080}:80"
     # SPA deep links (/batches, etc.) need try_files → index.html.
     # Mount keeps hostaware/older images working without a rebuild.
-    # Bind paths are relative to THIS file (compose/devices/), not
-    # --project-directory. ./docker/... created a host directory stub when
-    # the file was missing; ../../docker/ reaches repo-root docker/.
+    # Bind paths are relative to --project-directory (workspace root).
+    # Fleet-agent/Ansible always pass --project-directory=<repo>; using
+    # ../../docker/ incorrectly resolves to /opt/docker/ and Docker may
+    # create a host *directory* stub that breaks the next start.
     volumes:
-      - ../../docker/nginx-dashboard.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker/nginx-dashboard.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - backend
     restart: unless-stopped
