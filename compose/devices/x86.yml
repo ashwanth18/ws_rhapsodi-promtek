@@ -12,6 +12,8 @@
 # image for those packages — ament_python entry points and generated msgs must
 # be installed inside the image.
 
+# Invoke from repo root with --project-directory . (or `make laptop-up`).
+# Omitting project-directory breaks ./data ./config ./docker binds in pi5.yml.
 include:
   # Path is relative to --project-directory (workspace root), not this file.
   - path: compose/devices/pi5.yml

@@ -85,9 +85,18 @@ cp robot-prod.env.example robot-prod.laptop.env
 #   ROS_PROD_IMAGE=iserenity/rhapsodi-promtek:ros-prod-lexium
 #   COMPOSE_FILE=compose/devices/x86.yml
 
+# Required: --project-directory . (workspace root). Prefer:
+make laptop-up
+# equivalent:
 docker compose --project-directory . --env-file robot-prod.laptop.env \
   -f compose/devices/x86.yml up -d
 ```
+
+Do **not** omit `--project-directory` and do **not** change
+`compose/devices/pi5.yml` dashboard binds to `../../docker/...` to work around
+a missing path. That paper-fix breaks Pi/fleet-agent deploys (paths resolve
+to `/opt/docker/...`). See [compose/README.md](../compose/README.md)
+"Project directory".
 
 Device identity: `config/device.jaka-laptop.yaml` (`robot_type: jaka`). Keep
 `config/device.yaml` as the Niryo/Pi default so a shared checkout does not
