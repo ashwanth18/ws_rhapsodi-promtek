@@ -8,6 +8,8 @@ type Props = {
   targetToleranceG: number | null
   weightStale: boolean
   webhookActive: boolean
+  /** Caption under the progress bar (default: Target band ±tol). */
+  bandCaption?: string
 }
 
 export default function WeightHero({
@@ -16,6 +18,7 @@ export default function WeightHero({
   targetToleranceG,
   weightStale,
   webhookActive,
+  bandCaption,
 }: Props) {
   const band = computeWeightBand(weight, targetWeightG, targetToleranceG)
   const fillColor = band.inBand
@@ -103,7 +106,12 @@ export default function WeightHero({
         </div>
         <div className="mt-2 flex justify-between text-xs text-[var(--text-faint)]">
           <span>0 g</span>
-          <span>Target band ±2%</span>
+          <span>
+            {bandCaption ||
+              (typeof targetToleranceG === 'number'
+                ? `Target band ±${formatNumber(targetToleranceG, 1)} g`
+                : 'Target band')}
+          </span>
           <span>
             {typeof targetWeightG === 'number'
               ? `${Math.round(targetWeightG * 1.4)} g`

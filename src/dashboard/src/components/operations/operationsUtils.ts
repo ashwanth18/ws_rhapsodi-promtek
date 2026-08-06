@@ -6,6 +6,9 @@ export const TIMELINE_PHASES = [
   'Return To Scoop',
 ]
 
+/** Lights-out BT phases: scoop → weigh scoop → pour → return (no transport_*). */
+export const LIGHTSOUT_TIMELINE_PHASES = ['Scoop', 'Weigh Scoop', 'Pour', 'Return']
+
 export function formatNumber(value: number | null | undefined, digits = 2): string {
   return typeof value === 'number' ? value.toFixed(digits) : '—'
 }
@@ -42,6 +45,48 @@ export function timelineIndexFromEvents(phases: string[], isDone: boolean): numb
     return 0
   }
   return -1
+}
+
+/**
+ * Lights-out timeline index:
+ *   scoop_start → 0 (Scoop)
+ *   scoop_end   → 1 (Weigh Scoop)
+ *   pour_start  → 2 (Pour)
+ *   pour_end    → 3 (Return)
+ *   episode_end / isDone → complete (length)
+ */
+export function lightsoutTimelineIndex(
+  phases: string[],
+  isDone: boolean,
+  episodeEnded = false
+): number {
+  if (isDone || episodeEnded) return LIGHTSOUT_TIMELINE_PHASES.length
+  if (phases.length === 0) return -1
+
+  const last = (phases[phases.length - 1] || '').toLowerCase()
+  if (last === 'scoop_start') return 0
+  if (last === 'scoop_end') return 1
+  if (last === 'pour_start') return 2
+  if (last === 'pour_end') return 3
+  if (last === 'episode_end') return LIGHTSOUT_TIMELINE_PHASES.length
+  return -1
+}
+
+export type EpisodePhaseKind = 'idle' | 'scooping' | 'weighing' | 'pouring' | 'returning' | 'done'
+
+export function episodePhaseKind(
+  livePhase: string | null | undefined,
+  phaseIndex: number,
+  timelineLen: number
+): EpisodePhaseKind {
+  const phase = (livePhase || '').toLowerCase()
+  if (phaseIndex >= timelineLen && timelineLen > 0) return 'done'
+  if (phase === 'scoop_start') return 'scooping'
+  if (phase === 'scoop_end') return 'weighing'
+  if (phase === 'pour_start') return 'pouring'
+  if (phase === 'pour_end') return 'returning'
+  if (phaseIndex < 0) return 'idle'
+  return 'idle'
 }
 
 export type WeightBand = {

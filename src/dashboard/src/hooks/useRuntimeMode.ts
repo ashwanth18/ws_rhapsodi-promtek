@@ -3,6 +3,10 @@ import { useCallback, useEffect, useState } from 'react'
 export type RuntimeMode = {
   mode: string
   environment: string
+  layout_id?: string | null
+  layout_hash?: string | null
+  robot_key?: string | null
+  layout_applied?: boolean
   active_run?: {
     id: number
     status: string

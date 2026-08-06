@@ -18,6 +18,9 @@ type Props = {
   targetWeightG: number | null
   targetToleranceG: number | null
   windowMs?: number
+  /** Absolute-scale reference line (e.g. postScoop + target during lightsout pour). */
+  referenceWeightG?: number | null
+  referenceToleranceG?: number | null
 }
 
 export default function LiveWeightChart({
@@ -25,7 +28,15 @@ export default function LiveWeightChart({
   targetWeightG,
   targetToleranceG,
   windowMs = 60000,
+  referenceWeightG,
+  referenceToleranceG,
 }: Props) {
+  const refY =
+    typeof referenceWeightG === 'number' ? referenceWeightG : targetWeightG
+  const refTol =
+    typeof referenceToleranceG === 'number'
+      ? referenceToleranceG
+      : targetToleranceG
   const [history, setHistory] = useState<Point[]>([])
 
   useEffect(() => {
@@ -84,23 +95,22 @@ export default function LiveWeightChart({
                   color: 'var(--text-primary)',
                 }}
               />
-              {typeof targetWeightG === 'number' && (
+              {typeof refY === 'number' && (
                 <ReferenceLine
-                  y={targetWeightG}
+                  y={refY}
                   stroke="var(--status-good-fg)"
                   strokeDasharray="4 4"
                 />
               )}
-              {typeof targetWeightG === 'number' &&
-                typeof targetToleranceG === 'number' && (
+              {typeof refY === 'number' && typeof refTol === 'number' && (
                   <>
                     <ReferenceLine
-                      y={targetWeightG + targetToleranceG}
+                      y={refY + refTol}
                       stroke="var(--status-warn-fg)"
                       strokeDasharray="2 6"
                     />
                     <ReferenceLine
-                      y={targetWeightG - targetToleranceG}
+                      y={refY - refTol}
                       stroke="var(--status-warn-fg)"
                       strokeDasharray="2 6"
                     />

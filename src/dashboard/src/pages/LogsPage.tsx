@@ -42,8 +42,33 @@ type Row = {
   avg_flow_rate_g_s: number | null
   total_episode_time_s: number | null
   overshoot_g: number | null
+  /** Preferred signed pour error (net − target for lightsout). */
+  signed_error_g?: number | null
+  pour_outcome?: string | null
   scoop_duration_s: number | null
   pour_duration_s: number | null
+}
+
+function rowSignedError(row: Row): number | null {
+  if (row.signed_error_g != null && Number.isFinite(row.signed_error_g)) {
+    return row.signed_error_g
+  }
+  if (row.overshoot_g != null && Number.isFinite(row.overshoot_g)) {
+    return row.overshoot_g
+  }
+  return null
+}
+
+function rowPouredForError(row: Row): number | null {
+  // Lights-out: compare net poured. MES: absolute final ≈ net when vessel is empty.
+  if (row.mode === 'lightsout') {
+    return row.net_weight_g != null && Number.isFinite(row.net_weight_g)
+      ? row.net_weight_g
+      : null
+  }
+  return row.final_weight_g != null && Number.isFinite(row.final_weight_g)
+    ? row.final_weight_g
+    : null
 }
 
 type LogsResponse = {
@@ -304,7 +329,7 @@ export default function LogsPage() {
     }))
 
   const overshootValues = plotRows
-    .map((row) => row.overshoot_g)
+    .map((row) => rowSignedError(row))
     .filter((value): value is number => value != null && Number.isFinite(value))
     .sort((a, b) => a - b)
 
@@ -366,13 +391,13 @@ export default function LogsPage() {
   const avgNet = averageOf(plotRows, (row) => row.net_weight_g)
   const avgFlow = averageOf(plotRows, (row) => row.avg_flow_rate_g_s)
   const avgDuration = averageOf(plotRows, (row) => row.total_episode_time_s)
-  const avgOvershoot = averageOf(plotRows, (row) => row.overshoot_g)
+  const avgOvershoot = averageOf(plotRows, (row) => rowSignedError(row))
 
   const overshootByBatch = plotDistinctBatches.map((batch) => {
     const batchRows = plotRows.filter((row) => row.batch_id === batch)
     return {
       batch,
-      avgOvershoot: averageOf(batchRows, (row) => row.overshoot_g) ?? 0,
+      avgOvershoot: averageOf(batchRows, (row) => rowSignedError(row)) ?? 0,
       count: batchRows.length,
     }
   })
@@ -394,12 +419,14 @@ export default function LogsPage() {
 
   const inToleranceRate = (() => {
     const eligible = plotRows.filter(
-      (row) => row.target_weight_g != null && row.final_weight_g != null
+      (row) => row.target_weight_g != null && rowPouredForError(row) != null
     )
     if (!eligible.length) return null
     const within = eligible.filter((row) => {
-      const tol = (row.target_weight_g as number) * 0.02
-      return Math.abs((row.final_weight_g as number) - (row.target_weight_g as number)) <= tol
+      const poured = rowPouredForError(row)
+      if (poured == null || row.target_weight_g == null) return false
+      const tol = row.target_weight_g * 0.02
+      return Math.abs(poured - row.target_weight_g) <= tol
     }).length
     return (within / eligible.length) * 100
   })()
@@ -526,8 +553,11 @@ export default function LogsPage() {
                   <th className="text-right">Duration (s)</th>
                   <th className="text-right">Scoop Duration (s)</th>
                   <th className="text-right">Pour Duration (s)</th>
-                  <th className="text-right" title="final minus target">
-                    Overshoot (g)
+                  <th
+                    className="text-right"
+                    title="Signed pour error: net−target (lightsout) or final−target (MES)"
+                  >
+                    Error (g)
                   </th>
                 </tr>
               </thead>
@@ -597,7 +627,12 @@ export default function LogsPage() {
                         <td className="text-right">{r.total_episode_time_s != null ? r.total_episode_time_s.toFixed(2) : '—'}</td>
                         <td className="text-right">{r.scoop_duration_s != null ? r.scoop_duration_s.toFixed(2) : '—'}</td>
                         <td className="text-right">{r.pour_duration_s != null ? r.pour_duration_s.toFixed(2) : '—'}</td>
-                        <td className="text-right">{r.overshoot_g != null ? r.overshoot_g.toFixed(2) : '—'}</td>
+                        <td className="text-right">
+                          {(() => {
+                            const err = rowSignedError(r)
+                            return err != null ? err.toFixed(2) : '—'
+                          })()}
+                        </td>
                       </tr>
                     )
                   })
@@ -642,7 +677,7 @@ export default function LogsPage() {
               <div className="text-right">{avgFlow != null ? avgFlow.toFixed(2) : '—'}</div>
               <div>Avg Duration (s)</div>
               <div className="text-right">{avgDuration != null ? avgDuration.toFixed(2) : '—'}</div>
-              <div>Avg Overshoot (g)</div>
+              <div>Avg Error (g)</div>
               <div className="text-right">{avgOvershoot != null ? avgOvershoot.toFixed(2) : '—'}</div>
             </div>
           </GlassCard>
@@ -776,7 +811,7 @@ export default function LogsPage() {
           <div className="mt-4">
             <Card>
               <CardHeader>
-                <CardTitle>Overshoot Distribution (% of Episodes)</CardTitle>
+                <CardTitle>Error Distribution (% of Episodes)</CardTitle>
               </CardHeader>
               <CardContent>
                 <div style={{ width: '100%', height: 240 }}>

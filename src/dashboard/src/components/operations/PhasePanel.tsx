@@ -9,12 +9,19 @@ import GlassCard from '../GlassCard'
 import StatusBadge from '../ui/StatusBadge'
 import { TIMELINE_PHASES, formatPhaseLabel } from './operationsUtils'
 
-const PHASE_ICONS = [
+const DEFAULT_PHASE_ICONS = [
   <Truck key="t1" className="h-4 w-4" />,
   <Package key="t2" className="h-4 w-4" />,
   <Scale key="t3" className="h-4 w-4" />,
   <Droplets key="t4" className="h-4 w-4" />,
   <ArrowLeftRight key="t5" className="h-4 w-4" />,
+]
+
+const LIGHTSOUT_PHASE_ICONS = [
+  <Package key="l1" className="h-4 w-4" />,
+  <Scale key="l2" className="h-4 w-4" />,
+  <Droplets key="l3" className="h-4 w-4" />,
+  <ArrowLeftRight key="l4" className="h-4 w-4" />,
 ]
 
 type Props = {
@@ -24,6 +31,7 @@ type Props = {
   vibrationIntensity: number | null
   inclineAngleDeg: number | null
   pourTelemetryVisible: boolean
+  timelinePhases?: string[]
 }
 
 export default function PhasePanel({
@@ -33,18 +41,29 @@ export default function PhasePanel({
   vibrationIntensity,
   inclineAngleDeg,
   pourTelemetryVisible,
+  timelinePhases = TIMELINE_PHASES,
 }: Props) {
+  const phases = timelinePhases
+  const icons =
+    phases.length === 4 ? LIGHTSOUT_PHASE_ICONS : DEFAULT_PHASE_ICONS
+  const gridCols =
+    phases.length === 4
+      ? 'grid-cols-4'
+      : phases.length === 5
+        ? 'grid-cols-5'
+        : 'grid-cols-5'
+
   const currentLabel =
     phaseIndex < 0
       ? 'Idle'
-      : phaseIndex >= TIMELINE_PHASES.length
+      : phaseIndex >= phases.length
         ? 'Complete'
-        : TIMELINE_PHASES[phaseIndex]
+        : phases[phaseIndex]
 
   const progress =
     phaseIndex < 0
       ? 0
-      : Math.max(0, Math.min(100, ((phaseIndex + 1) / TIMELINE_PHASES.length) * 100))
+      : Math.max(0, Math.min(100, ((phaseIndex + 1) / phases.length) * 100))
 
   return (
     <GlassCard>
@@ -66,8 +85,8 @@ export default function PhasePanel({
         </span>
       </div>
 
-      <div className="grid grid-cols-5 gap-2">
-        {TIMELINE_PHASES.map((phase, i) => {
+      <div className={`grid gap-2 ${gridCols}`}>
+        {phases.map((phase, i) => {
           const completed = phaseIndex > i
           const active = phaseIndex === i
           return (
@@ -82,7 +101,7 @@ export default function PhasePanel({
               }`}
             >
               <div className="mx-auto mb-1 flex justify-center text-[var(--text-secondary)]">
-                {PHASE_ICONS[i]}
+                {icons[i] ?? icons[0]}
               </div>
               <div className="text-[10px] font-medium leading-tight text-[var(--text-muted)]">
                 {phase}

@@ -70,6 +70,7 @@ from .modes.powders import get_powder, load_powders
 from .modes.target_sampler import generate_target_schedule
 from .export import router as export_router
 from .exports_dir import ensure_exports_dir, sweep_stale_exports
+from .metrics import signed_final_error_g
 from .run_spec import OperatingMode, RunLabel
 from .models import (
     Base,
@@ -245,16 +246,6 @@ def datetime_to_ns(value: datetime | None) -> int | None:
     if value is None:
         return None
     return int(value.timestamp() * 1_000_000_000)
-
-
-def signed_final_error_g(
-    target_weight_g: float | None,
-    final_weight_g: float | None,
-    fallback: float | None = None,
-) -> float | None:
-    if target_weight_g is None or final_weight_g is None:
-        return fallback
-    return final_weight_g - target_weight_g
 
 
 def ensure_webhook_weightment_columns() -> None:
@@ -1021,6 +1012,11 @@ def create_lightsout_run(payload: LightsoutRunRequest) -> dict:
         target_fractions=list(schedule.fractions),
         rng_seed=schedule.rng_seed,
     )
+    min_scooped = (
+        float(payload.min_scooped_g)
+        if payload.min_scooped_g and payload.min_scooped_g > 0
+        else float(powder.min_scooped_g)
+    )
     request_meta = {
         'powder_id': powder.id,
         'powder_name': powder.name,
@@ -1037,6 +1033,9 @@ def create_lightsout_run(payload: LightsoutRunRequest) -> dict:
         'stop_value': stop_value,
         'target_mode': schedule.target_mode,
         'target_fractions': list(schedule.fractions),
+        'min_scooped_g': min_scooped,
+        'target_min_g': float(payload.target_min_g or 0.0),
+        'target_max_g': float(payload.target_max_g or 0.0),
         'rng_seed': schedule.rng_seed,
         'label': label.model_dump(exclude_none=True),
     }
@@ -1118,6 +1117,47 @@ def create_lightsout_run(payload: LightsoutRunRequest) -> dict:
             'fractions': list(schedule.fractions),
             'rng_seed': schedule.rng_seed,
         },
+    }
+
+
+@app.get('/modes/lightsout/session')
+def get_lightsout_session_status() -> dict:
+    """Live lights-out session config for the operator dashboard.
+
+    Progress (episode index, phase, target) comes from rosbridge topics;
+    this endpoint exposes stop/config fields that only live in the session
+    file, plus a completed-episode count from lightsout_processed.
+    """
+    active = get_lightsout_session().get_active()
+    if active is None:
+        return {
+            'active': False,
+            'started_at': None,
+            'session': None,
+            'episodes': {'completed': 0},
+            'tolerance_frac': 0.02,
+        }
+    request = active.get('request') or {}
+    batch_id = request.get('batch_id')
+    completed = 0
+    if batch_id:
+        db = SessionLocal()
+        try:
+            completed = (
+                db.query(func.count(LightsOutProcessed.id))
+                .filter(LightsOutProcessed.batch_id == batch_id)
+                .scalar()
+                or 0
+            )
+        finally:
+            db.close()
+    return {
+        'active': True,
+        'started_at': active.get('started_at'),
+        'session': request,
+        'episodes': {'completed': int(completed)},
+        # Orchestrator blackboard default; see lightsout_tolerance_frac.
+        'tolerance_frac': 0.02,
     }
 
 
@@ -3291,11 +3331,22 @@ def list_lightsout_processed(
                     'net_weight_g': processed_row.net_weight_g,
                     'avg_flow_rate_g_s': processed_row.avg_flow_rate_g_s,
                     'total_episode_time_s': processed_row.total_episode_time_s,
+                    'signed_error_g': signed_final_error_g(
+                        processed_row.target_weight_g,
+                        processed_row.final_weight_g,
+                        processed_row.overshoot_g,
+                        mode=processed_row.mode,
+                        net_weight_g=processed_row.net_weight_g,
+                    ),
+                    # Alias kept for one release; prefer signed_error_g.
                     'overshoot_g': signed_final_error_g(
                         processed_row.target_weight_g,
                         processed_row.final_weight_g,
                         processed_row.overshoot_g,
+                        mode=processed_row.mode,
+                        net_weight_g=processed_row.net_weight_g,
                     ),
+                    'pour_outcome': processed_row.pour_outcome,
                     'scoop_duration_s': processed_row.scoop_duration_s,
                     'pour_duration_s': processed_row.pour_duration_s,
                     'parquet_path': processed_row.parquet_path,
@@ -3638,6 +3689,8 @@ def get_webhook_weightment_details(event_id: str) -> dict:
                             processed_row.target_weight_g,
                             processed_row.final_weight_g,
                             processed_row.overshoot_g,
+                            mode=processed_row.mode,
+                            net_weight_g=processed_row.net_weight_g,
                         )
                         if processed_row is not None
                         else None
