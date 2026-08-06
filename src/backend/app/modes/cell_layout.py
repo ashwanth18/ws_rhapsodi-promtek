@@ -209,6 +209,53 @@ def list_layouts() -> list[dict[str, Any]]:
     return items
 
 
+def scoop_poses_summary(layout: dict[str, Any]) -> dict[str, Any]:
+    """Operator-facing scoop pose source for the active (or named) layout."""
+    poses_path = Path(str(layout.get("poses_yaml") or ""))
+    summary: dict[str, Any] = {
+        "poses_yaml": str(poses_path) if poses_path else "",
+        "source_label": "",
+        "pose_set_id": None,
+        "authored_in": "",
+        "poses_hash": None,
+        "marker_count": 0,
+        "note": "",
+        "provenance_ok": False,
+    }
+    if not poses_path.is_file():
+        summary["source_label"] = "missing"
+        return summary
+
+    parts = poses_path.parts
+    if "sets" in parts:
+        summary["pose_set_id"] = poses_path.stem
+        summary["source_label"] = f"pose set · {poses_path.stem}"
+    else:
+        summary["source_label"] = "layout seed · poses.yaml"
+
+    try:
+        poses = yaml.safe_load(poses_path.read_text()) or {}
+    except (OSError, yaml.YAMLError):
+        summary["source_label"] = "unreadable"
+        return summary
+    if not isinstance(poses, dict):
+        return summary
+
+    markers = poses.get("markers") or []
+    summary["authored_in"] = str(poses.get("authored_in") or "")
+    summary["note"] = str(
+        poses.get("pose_set_note") or poses.get("note") or ""
+    )
+    summary["marker_count"] = len(markers) if isinstance(markers, list) else 0
+    summary["poses_hash"] = hashlib.sha256(poses_path.read_bytes()).hexdigest()
+    summary["provenance_ok"] = bool(
+        poses.get("layout_id") == layout.get("layout_id")
+        and poses.get("tool_id") == layout.get("tool_id")
+        and summary["authored_in"]
+    )
+    return summary
+
+
 def layout_provenance(
     layout: dict[str, Any], *, robot_key: str = ""
 ) -> dict[str, Any]:

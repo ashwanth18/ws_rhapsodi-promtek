@@ -7,6 +7,7 @@ tool_id: niryo_scoop_v4
 container_spec_hash: 6b58ecc98c303a94
 authored_in: real
 robot_key: niryo
+pose_set_note: lightsoutV3
 markers:
   - name: approach_marker
     label: Approach

@@ -351,12 +351,30 @@ export default function ControlsPage() {
     active_layout_id?: string | null
     active_layout_hash?: string | null
     preview?: boolean
+    scoop_poses?: {
+      source_label?: string
+      pose_set_id?: string | null
+      authored_in?: string
+      poses_hash?: string | null
+      marker_count?: number
+      note?: string
+      provenance_ok?: boolean
+    } | null
     detail?: {
       layout_id?: string
       tool_id?: string
       task_container_id?: string
       authoring?: Record<string, unknown>
       calibration?: Record<string, unknown>
+      scoop_poses?: {
+        source_label?: string
+        pose_set_id?: string | null
+        authored_in?: string
+        poses_hash?: string | null
+        marker_count?: number
+        note?: string
+        provenance_ok?: boolean
+      }
       objects?: Array<{
         id?: string
         enabled?: boolean
@@ -457,6 +475,15 @@ export default function ControlsPage() {
         const list = (await listRes.json()) as {
           active_layout_id?: string | null
           active_layout_hash?: string | null
+          active_scoop_poses?: {
+            source_label?: string
+            pose_set_id?: string | null
+            authored_in?: string
+            poses_hash?: string | null
+            marker_count?: number
+            note?: string
+            provenance_ok?: boolean
+          } | null
           preview?: boolean
         }
         let detail = null
@@ -473,6 +500,7 @@ export default function ControlsPage() {
         setLayoutSummary({
           active_layout_id: list.active_layout_id,
           active_layout_hash: list.active_layout_hash,
+          scoop_poses: list.active_scoop_poses || detail?.scoop_poses || null,
           preview: Boolean(list.preview || detail?.preview),
           detail,
           error: null,
@@ -912,7 +940,7 @@ export default function ControlsPage() {
           <div>
             <h3 className="font-display text-base font-semibold">Cell layout</h3>
             <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-              Read-only commissioning status. Author geometry in RViz (
+              Read-only commissioning status (layout + scoop poses). Author in RViz (
               <code className="text-[var(--text-faint)]">make author</code>).
             </p>
           </div>
@@ -959,6 +987,35 @@ export default function ControlsPage() {
                 {layoutSummary?.active_layout_hash || '—'}
               </span>
             </div>
+            <div className="flex justify-between gap-4 text-xs">
+              <span className="text-[var(--text-muted)]">Scoop poses</span>
+              <span className="font-mono text-right">
+                {layoutSummary?.scoop_poses?.note
+                  ? `${layoutSummary.scoop_poses.note} · `
+                  : ''}
+                {layoutSummary?.scoop_poses?.source_label || '—'}
+                {typeof layoutSummary?.scoop_poses?.marker_count === 'number'
+                  ? ` · ${layoutSummary.scoop_poses.marker_count} markers`
+                  : ''}
+              </span>
+            </div>
+            <div className="flex justify-between gap-4 text-xs">
+              <span className="text-[var(--text-muted)]">Poses authored in</span>
+              <span className="font-mono text-right">
+                {layoutSummary?.scoop_poses?.authored_in || '—'}
+                {layoutSummary?.scoop_poses?.provenance_ok === false
+                  ? ' · provenance warn'
+                  : ''}
+              </span>
+            </div>
+            {layoutSummary?.scoop_poses?.poses_hash && (
+              <div className="flex justify-between gap-4 text-xs">
+                <span className="text-[var(--text-muted)]">Poses hash</span>
+                <span className="font-mono break-all">
+                  {layoutSummary.scoop_poses.poses_hash.slice(0, 16)}…
+                </span>
+              </div>
+            )}
             {layoutSummary?.detail?.authoring &&
               Object.keys(layoutSummary.detail.authoring).length > 0 && (
                 <div className="flex justify-between gap-4 text-xs">

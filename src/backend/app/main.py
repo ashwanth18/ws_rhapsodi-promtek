@@ -57,6 +57,7 @@ from .modes.mock_local import (
 from .modes.batch_ids import prefix_for_mode, suggest_next_batch_id
 from .modes.cell_layout import (
     configured_layout_id,
+    scoop_poses_summary,
     layout_hash as compute_layout_hash,
     layout_path,
     layout_provenance,
@@ -538,10 +539,24 @@ def get_layouts() -> dict:
                 'active': bool(active_id) and item.get('layout_id') == active_id,
             }
         )
+    active_scoop = None
+    if active_id:
+        try:
+            active_scoop = scoop_poses_summary(load_layout(layout_path(str(active_id))))
+            # Prefer persisted hashes/authored_in from the last successful apply.
+            if active.get('poses_hash'):
+                active_scoop['poses_hash'] = active.get('poses_hash')
+            if active.get('authored_in'):
+                active_scoop['authored_in'] = active.get('authored_in')
+            if active.get('poses_provenance_ok') is not None:
+                active_scoop['provenance_ok'] = bool(active.get('poses_provenance_ok'))
+        except Exception as exc:  # noqa: BLE001
+            active_scoop = {'source_label': 'error', 'error': str(exc)}
     return {
         'layouts': layouts,
         'active_layout_id': active_id,
         'active_layout_hash': active.get('layout_hash'),
+        'active_scoop_poses': active_scoop,
         'preview': bool(active.get('preview')) or active.get('layout_hash') == 'preview',
     }
 
@@ -575,6 +590,14 @@ def get_layout_detail(layout_id: str) -> dict:
                 'calibration': obj.get('calibration') or {},
             }
         )
+    scoop = scoop_poses_summary(layout)
+    if active.get('layout_id') == layout.get('layout_id'):
+        if active.get('poses_hash'):
+            scoop['poses_hash'] = active.get('poses_hash')
+        if active.get('authored_in'):
+            scoop['authored_in'] = active.get('authored_in')
+        if active.get('poses_provenance_ok') is not None:
+            scoop['provenance_ok'] = bool(active.get('poses_provenance_ok'))
     return {
         'layout_id': layout.get('layout_id'),
         'layout_hash': compute_layout_hash(layout),
@@ -583,6 +606,7 @@ def get_layout_detail(layout_id: str) -> dict:
         'commissioned_robots': sorted((layout.get('targets_by_robot') or {}).keys()),
         'calibration': layout.get('calibration') or {},
         'authoring': layout.get('authoring') or {},
+        'scoop_poses': scoop,
         'objects': objects,
         'active': active.get('layout_id') == layout.get('layout_id'),
         'preview': bool(active.get('preview'))
