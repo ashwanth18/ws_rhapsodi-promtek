@@ -31,4 +31,11 @@ fi
 
 echo "Launching scooping RViz for robot=${ROBOT} (Lexium Safety panel in scooping_jaka.rviz)."
 echo "Ensure scooping_stack is up on ROS_DOMAIN_ID=${ROS_DOMAIN_ID}."
+echo
+echo "MoveIt / MTC / move_group run inside scooping_stack — their logs are NOT in this RViz"
+echo "terminal. In a second shell:"
+echo "  make scooping-logs"
+echo "  # or: docker compose --project-directory $ROOT --env-file robot-prod.laptop.env \\"
+echo "  #        -f compose/devices/x86.yml logs -f scooping_stack"
+echo
 exec ros2 launch scooping_controller scooping_rviz_only.launch.py "robot:=${ROBOT}"

@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help author bench sim arm-session lexium-session export-poses status \
+.PHONY: help author bench sim arm-session lexium-session scooping-logs export-poses status \
         validate-layouts layout-parity touch-off-parity gen-vscode-tasks \
         check-vscode-tasks api-sandbox-up api-sandbox-down dashboard-dev \
         console-dev deploy-jetson push-layout test-backend ros-image-local
@@ -14,6 +14,9 @@ ROBOT ?= niryo
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 ROS_IMAGE_LOCAL_TAG ?= iserenity/rhapsodi-promtek:ros-prod-lexium
 BUILDX_BUILDER ?= multiarch
+# Laptop Lexium stack; override if your env file differs.
+COMPOSE_ENV_FILE ?= $(ROOT)/robot-prod.laptop.env
+COMPOSE_FILE ?= $(ROOT)/compose/devices/x86.yml
 
 ##@ Authoring
 help:  ## List available tasks (grouped)
@@ -43,6 +46,11 @@ arm-session:  ## Real-arm authoring handoff (LAYOUT=<id>); stops Pi scooping_sta
 LEXIUM_ROBOT ?= jaka
 lexium-session:  ## Native RViz + Lexium Safety panel against laptop scooping_stack (jaka/Lexium)
 	$(ROOT)/scripts/dev_lexium_session.sh $(LEXIUM_ROBOT)
+
+scooping-logs:  ## Follow MoveIt/MTC/lexium logs from laptop scooping_stack (use beside lexium-session)
+	@test -f "$(COMPOSE_ENV_FILE)" || { echo "Missing $(COMPOSE_ENV_FILE)"; exit 1; }
+	docker compose --project-directory $(ROOT) --env-file $(COMPOSE_ENV_FILE) \
+		-f $(COMPOSE_FILE) logs -f --tail=200 scooping_stack
 
 export-poses:  ## Save timestamped scoop pose set under layouts/<id>/poses/sets/ (default intact)
 	$(ROOT)/scripts/export_scoop_poses.sh
