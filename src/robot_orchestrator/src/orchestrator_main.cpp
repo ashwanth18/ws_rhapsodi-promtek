@@ -135,6 +135,12 @@ int main(int argc, char ** argv)
   ros_node->declare_parameter<std::string>("lightsout_layout_id", "lightsout-single-vessel");
   ros_node->declare_parameter<std::string>("webhook_layout_id", "dual-container");
   ros_node->declare_parameter<std::string>("batch_layout_id", "dual-container");
+  // End-of-episode scoop residue purge (tilt + vibrate). Cell tuning, not per-run.
+  ros_node->declare_parameter<bool>("lightsout_purge_enabled", true);
+  ros_node->declare_parameter<double>("lightsout_purge_incline_deg", 20.0);
+  ros_node->declare_parameter<double>("lightsout_purge_vibration", 0.8);
+  ros_node->declare_parameter<double>("lightsout_purge_duration_s", 3.0);
+  ros_node->declare_parameter<std::string>("lightsout_purge_target", "");
   blackboard->set("poses_provenance_ok", true);
 
   // Status publisher
@@ -383,6 +389,24 @@ int main(int argc, char ** argv)
       blackboard->set("lightsout_batch_id", req->batch_id);
       blackboard->set("lightsout_episode_index", 0);
       blackboard->set("enable_scoop", static_cast<bool>(req->enable_scoop));
+
+      const bool purge_enabled =
+        ros_node->get_parameter("lightsout_purge_enabled").as_bool();
+      const std::string purge_target =
+        ros_node->get_parameter("lightsout_purge_target").as_string();
+      blackboard->set("lightsout_purge_enabled", purge_enabled);
+      blackboard->set(
+        "lightsout_purge_incline_deg",
+        ros_node->get_parameter("lightsout_purge_incline_deg").as_double());
+      blackboard->set(
+        "lightsout_purge_vibration",
+        ros_node->get_parameter("lightsout_purge_vibration").as_double());
+      blackboard->set(
+        "lightsout_purge_duration_s",
+        ros_node->get_parameter("lightsout_purge_duration_s").as_double());
+      blackboard->set("lightsout_purge_target", purge_target);
+      // Empty target => purge in place at the pour pose (no extra MoveTo).
+      blackboard->set("lightsout_purge_pose_enabled", !purge_target.empty());
 
       lightsout_active = true;
 

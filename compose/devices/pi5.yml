@@ -363,12 +363,19 @@ services:
 
   # tree_file is optional (preferred-tree hint). Orchestrator registers all
   # share/bt_trees/*.xml at startup and creates a tree per start-service run.
+  # LIGHTSOUT_PURGE_* tilt+vibrate residual powder out of the scoop after
+  # EpisodeEndMarker (outside the MCAP window). Empty PURGE_TARGET = in place.
   orchestrator:
     <<: *ros-robot-service
     command: >
       ros2 run robot_orchestrator orchestrator_node
       --ros-args
       -p tree_file:=${BT_TREE:-/ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml}
+      -p lightsout_purge_enabled:=${LIGHTSOUT_PURGE_ENABLED:-true}
+      -p lightsout_purge_incline_deg:=${LIGHTSOUT_PURGE_INCLINE_DEG:-20.0}
+      -p lightsout_purge_vibration:=${LIGHTSOUT_PURGE_VIBRATION:-0.8}
+      -p lightsout_purge_duration_s:=${LIGHTSOUT_PURGE_DURATION_S:-3.0}
+      -p lightsout_purge_target:=${LIGHTSOUT_PURGE_TARGET:-}
 
   # Development orchestrator: rebuilds a mounted source overlay at container start.
   # Opt-in only — never start on edge with plain `compose up` (crash-loops without full src/).
@@ -394,6 +401,11 @@ services:
       source /tmp/orchestrator_install/setup.bash &&
       ros2 run robot_orchestrator orchestrator_node --ros-args
       -p tree_file:=/workspace/src/robot_orchestrator/bt_trees/webhook_weightment.xml
+      -p lightsout_purge_enabled:=$${LIGHTSOUT_PURGE_ENABLED:-true}
+      -p lightsout_purge_incline_deg:=$${LIGHTSOUT_PURGE_INCLINE_DEG:-20.0}
+      -p lightsout_purge_vibration:=$${LIGHTSOUT_PURGE_VIBRATION:-0.8}
+      -p lightsout_purge_duration_s:=$${LIGHTSOUT_PURGE_DURATION_S:-3.0}
+      -p lightsout_purge_target:=$${LIGHTSOUT_PURGE_TARGET:-}
       "
 
 volumes:

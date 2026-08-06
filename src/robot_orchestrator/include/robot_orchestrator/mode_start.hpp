@@ -54,6 +54,12 @@ inline const std::vector<std::string> kLightsoutBlackboardKeys = {
   "scooped_mass_g",
   "lightsout_pour_outcome",
   "enable_scoop",
+  "lightsout_purge_enabled",
+  "lightsout_purge_incline_deg",
+  "lightsout_purge_vibration",
+  "lightsout_purge_duration_s",
+  "lightsout_purge_target",
+  "lightsout_purge_pose_enabled",
 };
 
 inline const std::vector<std::string> kBatchBlackboardKeys = {

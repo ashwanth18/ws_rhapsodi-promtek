@@ -14,7 +14,8 @@ BehaviorTree.CPP v4–based orchestrator for powder scooping → transport → p
   - `ScanQr` (action client to ScanQr server)
   - `PourToTarget` (action client to pouring_controller)
   - `ProjectContainer` (sync; projects a `ContainerSpec` to blackboard keys)
-  - `Vibrate` (sync; publishes Int32 to vibration topic for a duration)
+  - `Vibrate` (stateful; publishes Float64 0..1 to `/vibration/intensity` for a duration at ~10 Hz keepalive)
+  - `SetIncline` (sync; publishes Float64 degrees to `/incline_control`)
   - `QueueStatus` (sync; logs and publishes remaining queue count)
 
 ## Data flow
@@ -298,6 +299,31 @@ ros2 service call /bt_start_lightsout robot_common_msgs/srv/StartLightsOut "{pow
 Lights-out topics:
 - `/lightsout_training/active` (`std_msgs/Bool`)
 - `/lightsout_training/metadata` (`std_msgs/String`, JSON payload)
+
+### Scoop residue purge (end of episode)
+
+After `RecordPourOutcome` the tree closes the episode recorder
+(`EpisodeEndMarker`), then optionally dumps leftover powder from the scoop
+back into the vessel before parking:
+
+1. optional `MoveTo` to `lightsout_purge_target` (empty = purge in place at the pour pose)
+2. `SetIncline` to `lightsout_purge_incline_deg` (default 20°)
+3. `Vibrate` at `lightsout_purge_vibration` (default 0.8) for `lightsout_purge_duration_s` (default 3 s)
+4. `SetIncline` back to 0°
+5. `MoveTo` back to the scooping container
+
+Purge is wrapped in `ForceSuccess` so a purge hiccup does not abort an
+otherwise good session. Cell tuning (not per-run service fields):
+
+```
+-p lightsout_purge_enabled:=true
+-p lightsout_purge_incline_deg:=20.0
+-p lightsout_purge_vibration:=0.8
+-p lightsout_purge_duration_s:=3.0
+-p lightsout_purge_target:=   # empty, or a taught MoveTo name
+```
+
+Compose / `robot-prod.env` mirrors these as `LIGHTSOUT_PURGE_*`.
 
 ### Control services
 

@@ -33,8 +33,23 @@
             <PhaseMarker phase="pour_end"/>
             <RecordPourOutcome/>
             <WaitSeconds seconds="1.0"/>
-            <MoveTo name="MoveBackToContainer" target_name="{lightsout_container_name}" use_cartesian="false"/>
+            <!-- Close MCAP before purge so residue dump does not pollute episode metrics. -->
             <EpisodeEndMarker/>
+            <ForceSuccess>
+              <Precondition if="lightsout_purge_enabled" else="SUCCESS">
+                <Sequence name="PurgeScoop">
+                  <Precondition if="lightsout_purge_pose_enabled" else="SUCCESS">
+                    <MoveTo name="MoveToPurge" target_name="{lightsout_purge_target}" use_cartesian="false"/>
+                  </Precondition>
+                  <SetIncline degrees="{lightsout_purge_incline_deg}"/>
+                  <WaitSeconds seconds="1.0"/>
+                  <Vibrate value="{lightsout_purge_vibration}" duration_s="{lightsout_purge_duration_s}"/>
+                  <SetIncline degrees="0.0"/>
+                  <WaitSeconds seconds="0.5"/>
+                </Sequence>
+              </Precondition>
+            </ForceSuccess>
+            <MoveTo name="MoveBackToContainer" target_name="{lightsout_container_name}" use_cartesian="false"/>
             <EvaluateStopCondition/>
           </Sequence>
         </Fallback>

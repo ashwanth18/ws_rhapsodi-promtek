@@ -9,6 +9,7 @@
 #include "robot_orchestrator/fetch_batch_node.hpp"
 #include "robot_orchestrator/project_container_node.hpp"
 #include "robot_orchestrator/vibrate_node.hpp"
+#include "robot_orchestrator/set_incline_node.hpp"
 #include "robot_orchestrator/scale_weight_node.hpp"
 #include "robot_orchestrator/queue_status_node.hpp"
 #include "robot_orchestrator/compute_effective_target_node.hpp"
@@ -46,6 +47,7 @@ void RegisterNodes(BT::BehaviorTreeFactory & factory)
   factory.registerNodeType<FetchBatchNode>("FetchBatch");
   factory.registerNodeType<ProjectContainerNode>("ProjectContainer");
   factory.registerNodeType<VibrateNode>("Vibrate");
+  factory.registerNodeType<SetInclineNode>("SetIncline");
   factory.registerNodeType<ScaleWeightNode>("ScaleWeight");
   factory.registerNodeType<QueueStatusNode>("QueueStatus");
   factory.registerNodeType<ComputeEffectiveTargetNode>("ComputeEffectiveTarget");
