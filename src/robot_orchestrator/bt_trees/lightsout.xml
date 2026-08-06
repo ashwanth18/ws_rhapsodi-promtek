@@ -41,10 +41,26 @@
                   <Precondition if="lightsout_purge_pose_enabled" else="SUCCESS">
                     <MoveTo name="MoveToPurge" target_name="{lightsout_purge_target}" use_cartesian="false"/>
                   </Precondition>
-                  <SetIncline degrees="{lightsout_purge_incline_deg}"/>
+                  <!-- TCP-fixed tilt (default): tip stays put so residue falls into vessel centre. -->
+                  <Precondition if="lightsout_purge_hold_tcp" else="SUCCESS">
+                    <TiltAboutTcp name="TiltPurgeHoldTcp"
+                                  degrees="{lightsout_purge_incline_deg}"
+                                  restore_key="lightsout_purge_pretilt_pose"/>
+                  </Precondition>
+                  <!-- Legacy joint_5-only tilt (LIGHTSOUT_PURGE_HOLD_TCP=false). -->
+                  <Precondition if="lightsout_purge_use_joint_incline" else="SUCCESS">
+                    <SetIncline degrees="{lightsout_purge_incline_deg}"/>
+                  </Precondition>
                   <WaitSeconds seconds="1.0"/>
                   <Vibrate value="{lightsout_purge_vibration}" duration_s="{lightsout_purge_duration_s}"/>
-                  <SetIncline degrees="0.0"/>
+                  <Precondition if="lightsout_purge_hold_tcp" else="SUCCESS">
+                    <TiltAboutTcp name="RestorePurgeHoldTcp"
+                                  restore="true"
+                                  restore_key="lightsout_purge_pretilt_pose"/>
+                  </Precondition>
+                  <Precondition if="lightsout_purge_use_joint_incline" else="SUCCESS">
+                    <SetIncline degrees="0.0"/>
+                  </Precondition>
                   <WaitSeconds seconds="0.5"/>
                 </Sequence>
               </Precondition>

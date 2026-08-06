@@ -307,9 +307,12 @@ After `RecordPourOutcome` the tree closes the episode recorder
 back into the vessel before parking:
 
 1. optional `MoveTo` to `lightsout_purge_target` (empty = purge in place at the pour pose)
-2. `SetIncline` to `lightsout_purge_incline_deg` (default 20°)
-3. `Vibrate` at `lightsout_purge_vibration` (default 0.8) for `lightsout_purge_duration_s` (default 3 s)
-4. `SetIncline` back to 0°
+2. tilt to `lightsout_purge_incline_deg` (default 20°):
+   - `lightsout_purge_hold_tcp:=true` (default): `TiltAboutTcp` keeps
+     `tcp_link` XYZ fixed and rotates about the wrist tilt axis via `/move_to`
+   - `lightsout_purge_hold_tcp:=false`: legacy `SetIncline` → `/incline_control`
+3. `Vibrate` at `lightsout_purge_vibration` (default 0.8) for `lightsout_purge_duration_s` (default 10 s)
+4. restore upright tilt (`TiltAboutTcp restore=true` or `SetIncline 0`)
 5. `MoveTo` back to the scooping container
 
 Purge is wrapped in `ForceSuccess` so a purge hiccup does not abort an
@@ -319,7 +322,8 @@ otherwise good session. Cell tuning (not per-run service fields):
 -p lightsout_purge_enabled:=true
 -p lightsout_purge_incline_deg:=20.0
 -p lightsout_purge_vibration:=0.8
--p lightsout_purge_duration_s:=3.0
+-p lightsout_purge_duration_s:=10.0
+-p lightsout_purge_hold_tcp:=true
 -p lightsout_purge_target:=   # empty, or a taught MoveTo name
 ```
 

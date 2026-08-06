@@ -10,6 +10,10 @@ find_package(behaviortree_ros2 REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 find_package(rhapsodi_common_cpp REQUIRED)
 
 add_library(${PROJECT_NAME} SHARED
@@ -23,6 +27,7 @@ add_library(${PROJECT_NAME} SHARED
   src/compute_remaining_node.cpp
   src/fetch_batch_node.cpp
   src/project_container_node.cpp
+  src/tilt_about_tcp_node.cpp
   # header-only vibrate_node.hpp is included via register; no cpp needed
 )
 target_include_directories(${PROJECT_NAME} PUBLIC
@@ -30,7 +35,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 ament_target_dependencies(${PROJECT_NAME}
-  rclcpp rclcpp_action robot_common_msgs ament_index_cpp behaviortree_cpp behaviortree_ros2 std_srvs std_msgs
+  rclcpp rclcpp_action robot_common_msgs ament_index_cpp behaviortree_cpp
+  behaviortree_ros2 std_srvs std_msgs geometry_msgs tf2 tf2_ros tf2_geometry_msgs
 )
 
 target_link_libraries(${PROJECT_NAME}
