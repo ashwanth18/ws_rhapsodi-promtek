@@ -377,6 +377,10 @@ function App() {
       ? baselines.scoopedLiveG
       : lightsout.scoopedMassG ?? baselines.scoopedFinalG ?? baselines.scoopedLiveG
 
+  // Prefer ROS MeasureScoopedMass; fall back to client baseline before publish.
+  const lastScoopedG =
+    lightsout.scoopedMassG ?? baselines.scoopedFinalG ?? baselines.scoopedLiveG
+
   // Chart reference lines on absolute scale for scoop-return.
   const chartRefWeight = useMemo(() => {
     if (!isLightsout) return targetWeightG
@@ -729,7 +733,7 @@ function App() {
                 episodesTotal={lightsout.episodesTotal}
                 episodesCompleted={lightsout.sessionApi?.episodes.completed ?? 0}
                 totalPouredG={lightsout.totalPouredG}
-                scoopedMassG={lightsout.scoopedMassG}
+                scoopedMassG={lastScoopedG}
                 pourOutcome={lightsout.pourOutcome}
                 stopReason={lightsout.stopReason}
                 runState={runState}

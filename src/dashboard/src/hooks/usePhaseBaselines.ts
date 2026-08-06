@@ -13,6 +13,9 @@ export type PhaseBaselines = {
 /**
  * Latch scale readings at BT phase markers, mirroring CaptureBaseline /
  * MeasureScoopedMass / pour_server tare on the client.
+ *
+ * Do not consume a phase marker until a finite weight sample is available;
+ * otherwise scoop_start can be dropped when weight is briefly null.
  */
 export function usePhaseBaselines(
   weight: number | null,
@@ -22,11 +25,20 @@ export function usePhaseBaselines(
   const [postScoopG, setPostScoopG] = useState<number | null>(null)
   const [pourBaselineG, setPourBaselineG] = useState<number | null>(null)
   const lastPhaseRef = useRef<string | null>(null)
+  const weightRef = useRef<number | null>(weight)
+  const episodeBaselineRef = useRef<number | null>(null)
+  const postScoopRef = useRef<number | null>(null)
+
+  weightRef.current = weight
+  episodeBaselineRef.current = episodeBaselineG
+  postScoopRef.current = postScoopG
 
   const reset = () => {
     setEpisodeBaselineG(null)
     setPostScoopG(null)
     setPourBaselineG(null)
+    episodeBaselineRef.current = null
+    postScoopRef.current = null
     lastPhaseRef.current = null
   }
 
@@ -34,22 +46,36 @@ export function usePhaseBaselines(
     if (!livePhase) return
     const phase = livePhase.toLowerCase()
     if (phase === lastPhaseRef.current) return
+
+    const w = weightRef.current
+    if (typeof w !== 'number' || !Number.isFinite(w)) {
+      // Retry when weight arrives; do not consume the phase yet.
+      return
+    }
+
     lastPhaseRef.current = phase
 
-    if (typeof weight !== 'number' || !Number.isFinite(weight)) return
-
     if (phase === 'scoop_start') {
-      setEpisodeBaselineG(weight)
+      setEpisodeBaselineG(w)
+      episodeBaselineRef.current = w
       setPostScoopG(null)
+      postScoopRef.current = null
       setPourBaselineG(null)
     } else if (phase === 'scoop_end') {
-      setPostScoopG(weight)
-      if (episodeBaselineG == null) setEpisodeBaselineG(weight)
+      setPostScoopG(w)
+      postScoopRef.current = w
+      if (episodeBaselineRef.current == null) {
+        setEpisodeBaselineG(w)
+        episodeBaselineRef.current = w
+      }
     } else if (phase === 'pour_start') {
-      setPourBaselineG(weight)
-      if (postScoopG == null) setPostScoopG(weight)
+      setPourBaselineG(w)
+      if (postScoopRef.current == null) {
+        setPostScoopG(w)
+        postScoopRef.current = w
+      }
     }
-  }, [livePhase, weight, episodeBaselineG, postScoopG])
+  }, [livePhase, weight])
 
   const scoopedLiveG = useMemo(() => {
     if (typeof weight !== 'number' || episodeBaselineG == null) return null

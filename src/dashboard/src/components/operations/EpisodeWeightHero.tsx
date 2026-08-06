@@ -45,10 +45,9 @@ export default function EpisodeWeightHero({
   let fillColor = 'bg-[var(--accent)]'
   let secondaryCards: { label: string; value: string }[] = []
 
-  if (targetPending && (scooping || weighing)) {
-    headlineLabel = 'Episode target'
-    reason = 'Sampling after scoop'
-  } else if (scooping || weighing) {
+  if (scooping || weighing) {
+    // Scooped is always the headline during scoop/weigh. targetPending only
+    // annotates that the pour target is sampled after scoop (non-fixed modes).
     headlineLabel = scooping ? 'Scooped' : 'Scooped (settled)'
     if (typeof scoopedG === 'number') {
       headline = Math.round(scoopedG)
@@ -72,12 +71,33 @@ export default function EpisodeWeightHero({
               : 'Building',
         },
         {
+          label: 'Pour target',
+          value: targetPending
+            ? 'After scoop'
+            : typeof targetWeightG === 'number'
+              ? `${Math.round(targetWeightG)} g`
+              : '—',
+        },
+      ]
+      if (targetPending) {
+        reason = 'Pour target sampled after scoop'
+      }
+    } else {
+      reason = 'Waiting for scoop baseline'
+      secondaryCards = [
+        {
+          label: 'Min scoop floor',
+          value: typeof minScoopedG === 'number' ? `${Math.round(minScoopedG)} g` : '—',
+        },
+        {
+          label: 'Pour target',
+          value: targetPending ? 'After scoop' : '—',
+        },
+        {
           label: 'Scale',
           value: 'Falls during scoop',
         },
       ]
-    } else {
-      reason = 'Waiting for scoop baseline'
     }
   } else if (pouring) {
     headlineLabel = 'Poured'
@@ -103,6 +123,22 @@ export default function EpisodeWeightHero({
               : '—',
         },
         {
+          label: 'Scooped',
+          value: typeof scoopedG === 'number' ? `${Math.round(scoopedG)} g` : '—',
+        },
+      ]
+    } else {
+      reason = 'Waiting for pour baseline'
+      secondaryCards = [
+        {
+          label: 'Target',
+          value: typeof targetWeightG === 'number' ? `${Math.round(targetWeightG)} g` : '—',
+        },
+        {
+          label: 'Scooped',
+          value: typeof scoopedG === 'number' ? `${Math.round(scoopedG)} g` : '—',
+        },
+        {
           label: 'Tolerance',
           value:
             typeof targetToleranceG === 'number'
@@ -110,8 +146,6 @@ export default function EpisodeWeightHero({
               : '—',
         },
       ]
-    } else {
-      reason = 'Waiting for pour baseline'
     }
   } else if (!runActive) {
     headlineLabel = 'Live weight'
@@ -124,7 +158,10 @@ export default function EpisodeWeightHero({
         label: 'Target',
         value: typeof targetWeightG === 'number' ? `${Math.round(targetWeightG)} g` : '—',
       },
-      { label: 'Error', value: '—' },
+      {
+        label: 'Scooped',
+        value: typeof scoopedG === 'number' ? `${Math.round(scoopedG)} g` : '—',
+      },
       {
         label: 'Tolerance',
         value:
