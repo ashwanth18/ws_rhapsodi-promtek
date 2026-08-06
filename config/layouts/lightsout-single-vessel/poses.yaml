@@ -4,7 +4,9 @@ layout_id: lightsout-single-vessel
 task_container_id: rs3
 frame_id: scooping_container_frame
 tool_id: niryo_scoop_v4
-container_spec_hash: 6b58ecc98c303a94
+# Must match cell_layout_manager FNV-1a of the layout YAML (active.layout_hash).
+# Restamp after any lightsout-single-vessel.yaml geometry/object change.
+container_spec_hash: 8e58f492b10b2fa1
 authored_in: real
 robot_key: niryo
 pose_set_note: lightsoutV3

@@ -24,9 +24,8 @@ public:
     pose_fault_sub_ = node_->create_subscription<std_msgs::msg::String>(
       "/cell_layout/pose_fault", rclcpp::QoS(1).transient_local().reliable(),
       [bb](const std_msgs::msg::String::SharedPtr msg) {
-        if (!msg->data.empty()) {
-          bb->set("poses_provenance_ok", false);
-        }
+        // Empty payload clears a prior latched fault after a successful reload.
+        bb->set("poses_provenance_ok", msg->data.empty());
       });
   }
 

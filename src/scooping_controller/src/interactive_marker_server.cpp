@@ -1590,6 +1590,13 @@ private:
 
       push_poses_to_rviz_markers();
       this->set_parameter(rclcpp::Parameter("poses_provenance_ok", true));
+      // Clear any latched pose_fault so VerifyCellLayout can pass after a
+      // prior cache/seed refuse in the same apply (transient_local QoS).
+      {
+        std_msgs::msg::String cleared;
+        cleared.data = "";
+        pose_fault_pub_->publish(cleared);
+      }
       message = "Loaded " + std::to_string(updated) + " scoop poses from " + path;
       if (updated > 0 && !poses_.empty()) {
         message += " (approach xyz=" +
