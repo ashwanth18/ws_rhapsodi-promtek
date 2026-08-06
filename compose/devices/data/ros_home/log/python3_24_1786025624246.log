@@ -1,0 +1,1 @@
+[INFO] [1786025624.399271025] [uplink_daemon]: Uplink daemon started. manifest=/data/runs/manifest.sqlite ingestion_url=http://localhost:8011 check_interval_seconds=30.0

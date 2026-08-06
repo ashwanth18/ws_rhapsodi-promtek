@@ -1,0 +1,4 @@
+1786041324.0875025 [INFO] [launch]: All log files can be found below /root/.ros/log/2026-08-06-18-35-24-086986-ashwanth-Legion-Pro-7-16IAX10H-1
+1786041324.0875764 [INFO] [launch]: Default logging verbosity is set to INFO
+1786041324.1026816 [INFO] [weighing_scale_node-1]: process started with pid [23]
+1786041324.2010946 [ERROR] [weighing_scale_node-1]: process has died [pid 23, exit code -6, cmd '/ws/install/lib/weighing_scale_driver/weighing_scale_node --ros-args -r __node:=weighing_scale_node --params-file /tmp/launch_params_di4be2_j'].
