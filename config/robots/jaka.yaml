@@ -1,0 +1,136 @@
+canonical_name: jaka_zu5
+aliases:
+- jaka
+- jaka_zu5
+moveit_robot_name: jaka_zu5
+planning_group: jaka_zu5
+eef_link: tcp_link
+base_frame: link0
+flange_link: Link6
+follow_joint_trajectory_controller: jaka_zu5_controller
+planning_pipeline: ompl
+position_only_goal: false
+targets:
+  package: robot_moveit
+  path: targets/jaka_zu5.yaml
+tool:
+  mesh_resource: package://niryo_robot_description/meshes/stl/niryo_scoop_v4-ros.STL
+  tcp_visual_offset_xyz:
+  - 0.15825
+  - 0.0
+  - -0.09356
+telemetry:
+  proprioception:
+    joint_states:
+      topic: /joint_states
+      type: sensor_msgs/msg/JointState
+  actions:
+    follow_joint_trajectory:
+      topic: /jaka_zu5_controller/follow_joint_trajectory
+      type: control_msgs/action/FollowJointTrajectory
+  pour_phase:
+    weight:
+      topic: /weight
+      type: std_msgs/msg/Float64
+    vibration_intensity:
+      topic: /vibration/intensity
+      type: std_msgs/msg/Float64
+    incline_control:
+      topic: /incline_control
+      type: std_msgs/msg/Float64
+    valve_control:
+      topic: /valve_control
+      type: std_msgs/msg/Float64
+    pour_status:
+      topic: /pour_status
+      type: std_msgs/msg/String
+  scoop_phase:
+    rgb:
+      topic: /camera/color/image_raw/compressed
+      type: sensor_msgs/msg/CompressedImage
+    depth:
+      topic: /camera/depth/image_rect_raw
+      type: sensor_msgs/msg/Image
+    camera_info:
+      topic: /camera/color/camera_info
+      type: sensor_msgs/msg/CameraInfo
+  health:
+    events:
+      topic: /system/health_events
+      type: robot_common_msgs/msg/HealthEvent
+sim:
+  scene:
+    package: scooping_controller
+    path: config/container_scene/jaka_sim.yaml
+  moveit_package: jaka_zu5_moveit_config
+  urdf:
+    package: jaka_zu5_moveit_config
+    path: config/jaka_zu5.urdf.xacro
+    xacro_args:
+    - use_gazebo:=true
+  controllers:
+    package: jaka_zu5_moveit_config
+    path: config/ros2_controllers.yaml
+  spawn_model_name: jaka_zu5
+  publish_world_to_base_tf: false
+  planning_pipelines:
+  - ompl
+real:
+  scene:
+    package: scooping_controller
+    path: config/container_scene/jaka_real.yaml
+  moveit_package: jaka_zu5_moveit_config
+  urdf:
+    package: jaka_zu5_moveit_config
+    path: config/jaka_zu5.urdf.xacro
+    xacro_args:
+    - use_rviz_sim:=true
+  controllers:
+    package: jaka_zu5_moveit_config
+    path: config/ros2_controllers.yaml
+  move_group_controller_params:
+    package: scooping_controller
+    path: config/move_group_controller_params_jaka.yaml
+  driver:
+    package: jaka_planner
+    path: launch/moveit_server.launch.py
+    launch_arguments:
+      ip: ${ROBOT_IP}
+      model: zu5
+  timing:
+    move_group_delay: 18.0
+    move_to_delay: 19.0
+    target_recorder_delay: 19.2
+    task_frame_delay: 19.5
+    marker_delay: 19.7
+    container_delay: 20.0
+    collisions_delay: 20.2
+    mtc_delay: 20.5
+    rviz_delay: 21.0
+mock:
+  scene:
+    package: scooping_controller
+    path: config/container_scene/jaka_real.yaml
+  moveit_package: jaka_zu5_moveit_config
+  urdf:
+    package: jaka_zu5_moveit_config
+    path: config/jaka_zu5.urdf.xacro
+    xacro_args:
+    - use_rviz_sim:=true
+    - use_gazebo:=false
+  controllers:
+    package: scooping_controller
+    path: config/ros2_controllers_mock_jaka.yaml
+  move_group_controller_params:
+    package: scooping_controller
+    path: config/move_group_controller_params_jaka.yaml
+  timing:
+    move_group_delay: 1.0
+    move_to_delay: 2.0
+    target_recorder_delay: 2.2
+    task_frame_delay: 1.5
+    marker_delay: 1.5
+    container_delay: 1.7
+    collisions_delay: 1.8
+    mtc_delay: 2.0
+    rviz_delay: 2.5

@@ -1,0 +1,36 @@
+# Production scoop seed for lightsout-single-vessel.
+# Promoted from poses/sets/20260805T185843Z_lightsoutv3.yaml (note: lightsoutV3).
+layout_id: lightsout-single-vessel
+task_container_id: rs3
+frame_id: scooping_container_frame
+tool_id: niryo_scoop_v4
+container_spec_hash: 6b58ecc98c303a94
+authored_in: real
+robot_key: niryo
+pose_set_note: lightsoutV3
+markers:
+  - name: approach_marker
+    label: Approach
+    pose:
+      position: {x: 0.0676, y: 0.0, z: 0.136}
+      orientation: {x: -0.13052619222, y: 0.0, z: 0.991444861374, w: 0.0}
+  - name: contact_marker
+    label: Contact
+    pose:
+      position: {x: 0.05604749172925949, y: 0.0, z: 0.030298978090286258}
+      orientation: {x: -0.26717209815979004, y: 7.627980913582633e-09, z: 0.9636488556861877, w: 1.4523954261491667e-09}
+  - name: scoop_marker
+    label: Scoop
+    pose:
+      position: {x: -0.060095250606536865, y: 0.0, z: 0.018425103276968}
+      orientation: {x: -0.16682738065719604, y: 0.0023006312549114227, z: 0.985889732837677, w: -0.013595938682556152}
+  - name: lift_marker
+    label: Lift
+    pose:
+      position: {x: -0.029739350080490112, y: 0.0, z: 0.16108196973800659}
+      orientation: {x: 0.13052618503570557, y: 0.0, z: 0.9914448857307434, w: 0.0}
+  - name: transport_ready_marker
+    label: Transport Ready
+    pose:
+      position: {x: 0.016585905104875565, y: 0.0, z: 0.1726110577583313}
+      orientation: {x: 0.1736481785774231, y: 0.0, z: 0.9848077297210693, w: 0.0}
