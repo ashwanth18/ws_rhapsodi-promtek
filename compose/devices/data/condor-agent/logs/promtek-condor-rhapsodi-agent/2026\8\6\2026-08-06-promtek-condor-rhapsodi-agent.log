@@ -1,0 +1,82 @@
+2026-08-06T14:13:43.4619472+00:00: Promtek Condor Rhapsodi Agent v2026.8.6.28
+2026-08-06T14:13:43.4623870+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-08-06T14:13:43.4624351+00:00: Application location: /opt/condor-agent/
+2026-08-06T14:13:43.4624445+00:00: Config locations:
+2026-08-06T14:13:43.4624586+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-08-06T14:13:43.5007183+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "15de0997-1508-4f2e-91de-14745f295d9e",
+    "AgentName": "ROBOT-JAKA-LAPTOP-1-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://webhook_service:5000",
+    "Port": 5002,
+    "AuthorisationToken": "woVRoC2-Io35_wrMGejiTDeWVFd8Rw1-lGzKKaIq3_o",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-08-06T14:13:43.5154848+00:00: Config:Verifying configuration ...
+2026-08-06T14:13:43.5174780+00:00: Config:Configuration OK
+2026-08-06T14:13:43.5188552+00:00: Register:Registration required
+2026-08-06T14:13:43.5188879+00:00: Register:Registering against https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app ...
+2026-08-06T14:13:44.8419201+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-08-06T14:13:53.9070614+00:00: Promtek Condor Rhapsodi Agent v2026.8.6.28
+2026-08-06T14:13:53.9073029+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-08-06T14:13:53.9073253+00:00: Application location: /opt/condor-agent/
+2026-08-06T14:13:53.9073310+00:00: Config locations:
+2026-08-06T14:13:53.9073357+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-08-06T14:13:53.9266452+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "15de0997-1508-4f2e-91de-14745f295d9e",
+    "AgentName": "ROBOT-JAKA-LAPTOP-1-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://webhook_service:5000",
+    "Port": 5002,
+    "AuthorisationToken": "woVRoC2-Io35_wrMGejiTDeWVFd8Rw1-lGzKKaIq3_o",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-08-06T14:13:53.9340713+00:00: Config:Verifying configuration ...
+2026-08-06T14:13:53.9350032+00:00: Config:Configuration OK
+2026-08-06T14:13:53.9355871+00:00: Register:Registration required
+2026-08-06T14:13:53.9356020+00:00: Register:Registering against https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app ...
+2026-08-06T14:13:57.4321789+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-08-06T14:14:18.0629374+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-08-06T14:14:21.8096184+00:00: Promtek Condor Rhapsodi Agent v2026.8.6.28
+2026-08-06T14:14:21.8098435+00:00: Running as Console Application. To install this as a Windows Service run the windows-service.bat as Administrator
+2026-08-06T14:14:21.8098666+00:00: Application location: /opt/condor-agent/
+2026-08-06T14:14:21.8098726+00:00: Config locations:
+2026-08-06T14:14:21.8098784+00:00:  1. c:\promtek/config/promtek-condor-rhapsodi-agent/appsettings.json (config for just this app)
+2026-08-06T14:14:21.8294991+00:00: Current config: {
+  "promtek-condor-rhapsodi-agent": {
+    "OrganisationId": "6647a41a-8feb-4082-86f4-3d14964161ad",
+    "SiteId": "76454da2-683c-4706-a88e-4e2fc6773685",
+    "UserId": "15de0997-1508-4f2e-91de-14745f295d9e",
+    "AgentName": "ROBOT-PI-1-AGENT",
+    "CondorUrl": "https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app",
+    "RhapsodiUrl": "http://webhook_service:5000",
+    "Port": 5002,
+    "AuthorisationToken": "woVRoC2-Io35_wrMGejiTDeWVFd8Rw1-lGzKKaIq3_o",
+    "ActiveIntervalSeconds": 120,
+    "PingIntervalSeconds": 120,
+    "LogConnectionInfoIntervalSeconds": 120,
+    "AgentReconnectDelaySeconds": 5
+  }
+}
+2026-08-06T14:14:21.8369645+00:00: Config:Verifying configuration ...
+2026-08-06T14:14:21.8379283+00:00: Config:Configuration OK
+2026-08-06T14:14:21.8385262+00:00: Register:Registration required
+2026-08-06T14:14:21.8385507+00:00: Register:Registering against https://promtek-gwy-rhapsodi-prod-ukwest-001.promtek.app ...
+2026-08-06T14:14:22.2785552+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-08-06T14:14:42.5140687+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-08-06T14:15:02.8098134+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons
+2026-08-06T14:15:24.1052995+00:00: REGISTER_ERROR:ERROR:View Agent Logs within Condor to see potential reasons

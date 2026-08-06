@@ -1,0 +1,4 @@
+[INFO] [1786041932.192276275] [weighing_scale_node]: Connected to weighing scale on /dev/ttyUSB0 at 9600 baud
+[INFO] [1786041932.192364231] [weighing_scale_node]: Publishing scale readings on /weight
+[WARN] [1786041937.192462104] [weighing_scale_node]: No weight reading for 5.0s
+[WARN] [1786042815.192469039] [weighing_scale_node]: No weight reading for 6.0s

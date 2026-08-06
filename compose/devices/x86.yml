@@ -1,0 +1,46 @@
+# amd64 workstation / Lexium (JAKA ZU5 kinematic twin) host cell stack.
+#
+# Includes the full production service set from pi5.yml. Jaka/Lexium-specific
+# behavior comes from env (PROFILE_ID=prod-jaka, ROBOT_IP, TRAJ_ACTION_SERVER,
+# RHAPSODI_DEVICE_CONFIG) — see robot-prod.env.example "Laptop / Lexium" section
+# and docs/lexium-laptop-networking.md.
+#
+# selected via device_class=x86 (config/device_classes.yaml).
+#
+# Point ROS_PROD_IMAGE at a locally built tag that includes lexium_driver /
+# lexium_msgs (see `make ros-image-local`). Do not bind-mount source over the
+# image for those packages — ament_python entry points and generated msgs must
+# be installed inside the image.
+
+# Invoke from repo root with --project-directory . (or `make laptop-up`).
+# Omitting project-directory breaks ./data ./config ./docker binds in pi5.yml.
+include:
+  # Path is relative to --project-directory (workspace root), not this file.
+  - path: compose/devices/pi5.yml
+
+services:
+  scooping_stack:
+    volumes:
+      - ./data:/data
+      - ./data/ros_home:/root/.ros
+      - ./config:/ws/config:ro
+
+  # Volumes in included pi5.yml resolve relative to compose/devices/ (include
+  # file dir), not --project-directory. Override data/config/nginx onto repo root
+  # so Controls /integrations/status reads the same Condor logs the agent writes.
+  backend:
+    volumes:
+      - ./data:/data
+      - ./config:/ws/config:ro
+    # Laptop/Jaka may override mode→layout mapping without touching the
+    # shared profiles.yaml used by the Pi (see MODE_LAYOUTS in robot-prod.laptop.env).
+    environment:
+      MODE_LAYOUTS: ${MODE_LAYOUTS:-}
+
+  condor_agent:
+    volumes:
+      - ./data:/data
+
+  dashboard:
+    volumes:
+      - ./docker/nginx-dashboard.conf:/etc/nginx/conf.d/default.conf:ro

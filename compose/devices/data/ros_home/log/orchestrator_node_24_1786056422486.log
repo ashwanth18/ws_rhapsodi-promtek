@@ -1,0 +1,2 @@
+[INFO] [1786056422.507163101] [bt_tree_loader]: Registered BehaviorTrees (4): LightsOut, Main, ScoopWeighPour, WebhookWeightment
+[INFO] [1786056422.517590388] [robot_orchestrator]: Orchestrator idle; preferred_tree_id=WebhookWeightment (tree_file=/ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml). Trees created per run.

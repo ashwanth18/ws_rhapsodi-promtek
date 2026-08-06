@@ -1,0 +1,7 @@
+[INFO] [1786056423.029825068] [rosbridge_websocket]: Rosbridge WebSocket server started on port 9090
+[INFO] [1786056480.671462984] [rosbridge_websocket]: Calling services in new thread
+[INFO] [1786056480.671925426] [rosbridge_websocket]: Sending action goals in new thread
+[INFO] [1786056480.672722234] [rosbridge_websocket]: Client connected. 1 clients total.
+[INFO] [1786056480.701979085] [rosbridge_websocket]: [Client 98429ea7-875b-4100-8c85-32d9dba48a21] Subscribed to /orchestrator/run_state
+[INFO] [1786056480.705794356] [rosbridge_websocket]: [Client 98429ea7-875b-4100-8c85-32d9dba48a21] Subscribed to /weight
+[INFO] [1786056480.723197172] [rosbridge_websocket]: [Client 98429ea7-875b-4100-8c85-32d9dba48a21] Subscribed to /joint_states

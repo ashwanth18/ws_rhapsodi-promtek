@@ -1,0 +1,4 @@
+1786025624.0356176 [INFO] [launch]: All log files can be found below /root/.ros/log/2026-08-06-14-13-44-034607-ashwanth-Legion-Pro-7-16IAX10H-1
+1786025624.0357614 [INFO] [launch]: Default logging verbosity is set to INFO
+1786025624.1032622 [INFO] [rosbridge_websocket-1]: process started with pid [24]
+1786025624.1034229 [INFO] [rosapi_node-2]: process started with pid [25]

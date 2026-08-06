@@ -1,0 +1,1 @@
+[INFO] [1786056422.516856995] [incline_control_node]: InclineControlNode: topic=/incline_control joint=joint_5 action=/jaka_zu5_controller/follow_joint_trajectory max=20.00deg direction=-1

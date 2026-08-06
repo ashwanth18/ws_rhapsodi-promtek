@@ -1,0 +1,17 @@
+# Provenance seed for the Schneider scoop on Jaka.
+# Marker positions carried from the prior niryo_scoop_v4 Jaka set; TCP moved
+# ~103 mm further out with schneider_scoop_v1, so re-author in RViz before
+# any real scoop run. layout_id/hashes are stamped by scooping_marker_server
+# on save.
+layout_id: dual-container-jaka
+task_container_id: rs6
+frame_id: scooping_container_frame
+tool_id: schneider_scoop_v1
+container_spec_hash: ""
+authored_in: ""
+markers:
+  - {name: approach_marker, label: Approach, pose: {position: {x: 0.1439, y: -0.119, z: 0.0971}, orientation: {x: -0.300705799504, y: 0.0, z: 0.953716950748, w: 0.0}}}
+  - {name: contact_marker, label: Contact, pose: {position: {x: 0.07, y: -0.119, z: 0.0341}, orientation: {x: -0.300705799504, y: 0.0, z: 0.953716950748, w: 0.0}}}
+  - {name: scoop_marker, label: Scoop, pose: {position: {x: -0.0683, y: -0.119, z: 0.0405}, orientation: {x: -0.087155742748, y: 0.0, z: 0.996194698092, w: 0.0}}}
+  - {name: lift_marker, label: Lift, pose: {position: {x: -0.1054, y: -0.119, z: 0.1876}, orientation: {x: 0.13052619222, y: 0.0, z: 0.991444861374, w: 0.0}}}
+  - {name: transport_ready_marker, label: Transport Ready, pose: {position: {x: -0.0627, y: -0.119, z: 0.2438}, orientation: {x: 0.173648177667, y: 0.0, z: 0.984807753012, w: 0.0}}}
