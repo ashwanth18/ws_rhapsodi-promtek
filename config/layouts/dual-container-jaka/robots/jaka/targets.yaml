@@ -1,0 +1,9 @@
+# Layout-local Jaka targets seeded from robot_moveit/config/targets_jaka.yaml.
+# Frame must match the Jaka URDF root link (link0). Re-record from RViz Save
+# buttons before a Condor run — named BT targets (ReturnHome, pour poses)
+# are not yet authored for this cell.
+targets:
+  jaka_home:
+    frame_id: link0
+    position: {x: 0.0, y: 0.0, z: 0.30}
+    orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}

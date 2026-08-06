@@ -24,3 +24,23 @@ services:
       - ./data:/data
       - ./data/ros_home:/root/.ros
       - ./config:/ws/config:ro
+
+  # Volumes in included pi5.yml resolve relative to compose/devices/ (include
+  # file dir), not --project-directory. Override data/config/nginx onto repo root
+  # so Controls /integrations/status reads the same Condor logs the agent writes.
+  backend:
+    volumes:
+      - ./data:/data
+      - ./config:/ws/config:ro
+    # Laptop/Jaka may override mode→layout mapping without touching the
+    # shared profiles.yaml used by the Pi (see MODE_LAYOUTS in robot-prod.laptop.env).
+    environment:
+      MODE_LAYOUTS: ${MODE_LAYOUTS:-}
+
+  condor_agent:
+    volumes:
+      - ./data:/data
+
+  dashboard:
+    volumes:
+      - ./docker/nginx-dashboard.conf:/etc/nginx/conf.d/default.conf:ro

@@ -11,21 +11,25 @@
     <!-- Scoop tool attachment.
          Plans to scoop tip (`tcp_link`), not flange `Link6`.
 
-         Mount matches Niryo hand_tool (roll=PI, tip at +X). Keep tool_link and
-         tcp_link axes aligned (tcp_rpy=0): marker mesh offset assumes that.
-         Outward approach is authored in the layout pose seed, not here. -->
+         Schneider scoop: the 63 mm Jaka/Lexium flange adapter is in the mesh,
+         so mount_xyz is zero (no Niryo-style spacer). roll=PI hangs the scoop
+         outward along Link6 +Z. Keep tool_link and tcp_link axes aligned
+         (tcp_rpy=0): marker mesh offset assumes that. TCP is the front-lip
+         height, ~16.75 mm behind the tip (same convention as niryo_scoop_v4).
+         Mass/inertia are mesh-derived placeholders (old density * volume). -->
     <xacro:scoop_tool
         parent_link="Link6"
         mount_joint_name="jaka_scoop_mount_joint"
         tcp_joint_name="jaka_scoop_tcp_joint"
-        mesh_resource="package://niryo_robot_description/meshes/stl/niryo_scoop_v4-ros.STL"
-        mount_xyz="0 0 0.043"
+        mesh_resource="package://scoop_description/meshes/schneider_scoop-ros.STL"
+        mount_xyz="0 0 0"
         mount_rpy="3.14159265359 0 0"
-        tcp_xyz="0.15825 0 -0.09356"
-        mass="0.01083"
-        ixx="0.00000138319"
-        iyy="0.00000138107"
-        izz="0.00000040812" />
+        tcp_xyz="0.26134 0 -0.1594"
+        mass="0.0706"
+        ixx="0.00136873"
+        iyy="0.00207090"
+        izz="0.00082686"
+        ixz="0.00076098" />
 
     <!-- Import control_xacro -->
     <xacro:include filename="jaka_zu5.ros2_control.xacro" />

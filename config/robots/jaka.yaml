@@ -17,11 +17,11 @@ rviz:
   package: scooping_controller
   path: config/scooping_jaka.rviz
 tool:
-  mesh_resource: package://niryo_robot_description/meshes/stl/niryo_scoop_v4-ros.STL
+  mesh_resource: package://scoop_description/meshes/schneider_scoop-ros.STL
   tcp_visual_offset_xyz:
-  - 0.15825
+  - 0.26134
   - 0.0
-  - -0.09356
+  - -0.1594
 telemetry:
   proprioception:
     joint_states:
