@@ -67,7 +67,10 @@ services:
       # Sim is laptop-only; never enable on a Pi5 cell (see docs/MODES.md).
       SIM_ALLOWED: ${SIM_ALLOWED:-0}
       ENVIRONMENT: ${ENVIRONMENT:-real}
-      RHAPSODI_DEVICE_CONFIG: /ws/config/device.yaml
+      # Laptop/Jaka cells point this at device.jaka-laptop.yaml; the backend
+      # robot_type must match the layout's commissioned robot or the run-gate
+      # poses provenance check fails. Pi keeps device.yaml (Niryo) by default.
+      RHAPSODI_DEVICE_CONFIG: ${RHAPSODI_DEVICE_CONFIG:-/ws/config/device.yaml}
       # Host metrics for Controls /host_info (node_exporter on Pi, else /host/proc)
       NODE_EXPORTER_URL: ${NODE_EXPORTER_URL:-http://host.docker.internal:9100/metrics}
       HOST_PROC: /host/proc
@@ -205,11 +208,14 @@ services:
   scale_launcher:
     <<: *ros-robot-service
     privileged: true
+    # Host SCALE_DEVICE may be a by-id symlink (stable across hot-swap);
+    # always expose it inside the container as /dev/scale so the launch
+    # port does not depend on ttyUSB numbering or symlink path layout.
     devices:
-      - ${SCALE_DEVICE:-/dev/ttyUSB0}:${SCALE_DEVICE:-/dev/ttyUSB0}
+      - ${SCALE_DEVICE:-/dev/ttyUSB0}:/dev/scale
     command: >
       ros2 launch weighing_scale_driver weighing_scale.launch.py
-      port:=${SCALE_DEVICE:-/dev/ttyUSB0}
+      port:=/dev/scale
       baud:=${SCALE_BAUD:-9600}
       topic:=/weight
 

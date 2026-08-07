@@ -1,9 +1,74 @@
-# Layout-local Jaka targets seeded from robot_moveit/config/targets_jaka.yaml.
-# Frame must match the Jaka URDF root link (link0). Re-record from RViz Save
-# buttons before a Condor run — named BT targets (ReturnHome, pour poses)
-# are not yet authored for this cell.
 targets:
-  jaka_home:
+  # Taught on the real cell via RViz Save Target (Jaka + Schneider scoop).
+  MoveToScoopingContainer:
     frame_id: link0
-    position: {x: 0.0, y: 0.0, z: 0.30}
-    orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}
+    position:
+      x: 0.77829999999999999
+      y: -0.13730000000000001
+      z: 0.26429999999999998
+    orientation:
+      x: -0.016416708009686615
+      y: -0.21581612122313693
+      z: -0.074050984421430419
+      w: 0.97348361322856503
+  MoveToWeighingContainer:
+    frame_id: link0
+    position:
+      x: 0.5111
+      y: -0.47889999999999999
+      z: 0.25740000000000002
+    orientation:
+      x: -0.066649950747445327
+      y: -0.20592204968637556
+      z: -0.30063849960515893
+      w: 0.9288543406118549
+  PourStartAtWeighingContainer:
+    frame_id: link0
+    position:
+      x: 0.49349999999999999
+      y: -0.4662
+      z: 0.19109999999999999
+    orientation:
+      x: 0
+      y: 0
+      z: -0.30793785635981502
+      w: 0.95140647287083469
+  # Post-pour recovery: come back upright over the weighing container. Both
+  # steps of RecoverFromPourSequence in webhook_weightment.xml intentionally
+  # reuse the MoveToWeighingContainer pose, so the arm untilts in place
+  # instead of traversing while the scoop may still hold powder.
+  PostPourTiltbackAtWeighingContainer:
+    frame_id: link0
+    position:
+      x: 0.5111
+      y: -0.47889999999999999
+      z: 0.25740000000000002
+    orientation:
+      x: -0.066649950747445327
+      y: -0.20592204968637556
+      z: -0.30063849960515893
+      w: 0.9288543406118549
+  PourDoneAtWeighingContainer:
+    frame_id: link0
+    position:
+      x: 0.5111
+      y: -0.47889999999999999
+      z: 0.25740000000000002
+    orientation:
+      x: -0.066649950747445327
+      y: -0.20592204968637556
+      z: -0.30063849960515893
+      w: 0.9288543406118549
+  # safe_retreat_target for this layout, and the tree ends on
+  # ReturnToScoopingContainer, so home is the scooping-container standoff.
+  ReturnHome:
+    frame_id: link0
+    position:
+      x: 0.77829999999999999
+      y: -0.13730000000000001
+      z: 0.26429999999999998
+    orientation:
+      x: -0.016416708009686615
+      y: -0.21581612122313693
+      z: -0.074050984421430419
+      w: 0.97348361322856503
