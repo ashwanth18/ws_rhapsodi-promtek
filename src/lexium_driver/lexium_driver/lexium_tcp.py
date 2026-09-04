@@ -64,13 +64,20 @@ class LexiumClient:
     # Lifecycle
     # ------------------------------------------------------------------ #
     def start(self) -> None:
-        """Open both channels and start the feedback reader thread."""
+        """Open both channels and start the feedback reader thread.
+
+        Safe to call again after a failed connect: a previous partial start
+        leaves ``_running`` true with no sockets; we reconnect command and
+        (re)start the feedback thread if needed.
+        """
         self._running = True
-        self._connect_command()
-        self._fb_thread = threading.Thread(
-            target=self._feedback_loop, name="lexium_feedback", daemon=True
-        )
-        self._fb_thread.start()
+        if self._cmd_sock is None:
+            self._connect_command()
+        if self._fb_thread is None or not self._fb_thread.is_alive():
+            self._fb_thread = threading.Thread(
+                target=self._feedback_loop, name="lexium_feedback", daemon=True
+            )
+            self._fb_thread.start()
 
     def stop(self) -> None:
         self._running = False

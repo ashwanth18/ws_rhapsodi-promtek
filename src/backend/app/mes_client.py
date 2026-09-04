@@ -32,6 +32,12 @@ TIMESERIES_URL = os.environ.get(
 TIMESERIES_TIMEOUT_SECONDS = float(
     os.environ.get('TIMESERIES_TIMEOUT_SECONDS', '60')
 )
+# Condor→Promtek gateway often exceeds 10s on weighment/batch-end; the
+# agent can still return 200 after the backend client has already timed out,
+# leaving runs stuck in awaiting_processing with MES already updated.
+WEIGHMENT_TIMEOUT_SECONDS = float(
+    os.environ.get('WEIGHMENT_TIMEOUT_SECONDS', '30')
+)
 
 
 def post_json(url: str, payload: dict, timeout_seconds: float = 10) -> dict:
@@ -84,6 +90,21 @@ def post_json(url: str, payload: dict, timeout_seconds: float = 10) -> dict:
         raise HTTPException(
             status_code=502, detail=f'Downstream request failed ({url}): {exc}'
         ) from exc
+    except TimeoutError as exc:
+        # urlopen can raise bare TimeoutError (not wrapped in URLError).
+        logger.error(
+            'Downstream JSON timed out: url=%s elapsed=%.2fs timeout=%.2fs',
+            url,
+            time.monotonic() - started_at,
+            timeout_seconds,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f'Downstream request timed out ({url}) after '
+                f'{timeout_seconds:.0f}s'
+            ),
+        ) from exc
 
 
 @runtime_checkable
@@ -112,17 +133,27 @@ class CondorMesClient:
         batch_end_url: str = BATCH_END_URL,
         timeseries_url: str = TIMESERIES_URL,
         timeseries_timeout_seconds: float = TIMESERIES_TIMEOUT_SECONDS,
+        weighment_timeout_seconds: float = WEIGHMENT_TIMEOUT_SECONDS,
     ) -> None:
         self.weighment_url = weighment_url
         self.batch_end_url = batch_end_url
         self.timeseries_url = timeseries_url
         self.timeseries_timeout_seconds = timeseries_timeout_seconds
+        self.weighment_timeout_seconds = weighment_timeout_seconds
 
     def post_weighment(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return post_json(self.weighment_url, payload)
+        return post_json(
+            self.weighment_url,
+            payload,
+            timeout_seconds=self.weighment_timeout_seconds,
+        )
 
     def post_batch_end(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return post_json(self.batch_end_url, payload)
+        return post_json(
+            self.batch_end_url,
+            payload,
+            timeout_seconds=self.weighment_timeout_seconds,
+        )
 
     def post_timeseries(
         self,

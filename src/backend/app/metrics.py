@@ -13,16 +13,18 @@ def signed_final_error_g(
 ) -> float | None:
     """Signed pour error (g): poured − target.
 
-    Lights-out is a closed scoop-and-return loop on one vessel, so the
-    comparable quantity is net poured mass (final − baseline), not the
-    absolute scale reading. MES/mock rows keep the absolute formula.
+    Prefer net poured mass (final − baseline) whenever processing computed
+    it — residual powder in the destination vessel must not inflate
+    overshoot. Lights-out requires net (absolute scale readings are not
+    comparable). When net is unavailable, fall back to absolute final for
+    MES/mock rows that never recorded a baseline.
     """
     if target_weight_g is None:
         return fallback
-    if mode == 'lightsout':
-        if net_weight_g is None:
-            return fallback
+    if net_weight_g is not None:
         return net_weight_g - target_weight_g
+    if mode == 'lightsout':
+        return fallback
     if final_weight_g is None:
         return fallback
     return final_weight_g - target_weight_g

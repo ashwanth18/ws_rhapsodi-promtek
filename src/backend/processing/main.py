@@ -334,11 +334,14 @@ def _compute_features(
         if final_weight is not None and baseline is not None
         else None
     )
-    overshoot = (
-        final_weight - target_weight
-        if final_weight is not None and target_weight is not None
-        else None
-    )
+    # Overshoot is net poured vs target. Using absolute final here wrongly
+    # treats residual mass already in the vessel as overshoot.
+    if net_weight is not None and target_weight is not None:
+        overshoot = net_weight - target_weight
+    elif final_weight is not None and target_weight is not None:
+        overshoot = final_weight - target_weight
+    else:
+        overshoot = None
 
     avg_flow = None
     if (

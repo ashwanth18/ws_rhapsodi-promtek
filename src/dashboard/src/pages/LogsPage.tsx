@@ -60,12 +60,14 @@ function rowSignedError(row: Row): number | null {
 }
 
 function rowPouredForError(row: Row): number | null {
-  // Lights-out: net poured (final − baseline). MES/mock: absolute final ≈ net
-  // when the destination vessel starts empty/baselined.
+  // Prefer net poured (final − baseline) whenever processing computed it —
+  // residual mass in the destination vessel must not count as achieved pour.
+  // Fall back to absolute final for rows that never recorded a baseline.
+  if (row.net_weight_g != null && Number.isFinite(row.net_weight_g)) {
+    return row.net_weight_g
+  }
   if (row.mode === 'lightsout') {
-    return row.net_weight_g != null && Number.isFinite(row.net_weight_g)
-      ? row.net_weight_g
-      : null
+    return null
   }
   return row.final_weight_g != null && Number.isFinite(row.final_weight_g)
     ? row.final_weight_g

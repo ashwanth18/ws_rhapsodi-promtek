@@ -3,9 +3,9 @@ targets:
   MoveToScoopingContainer:
     frame_id: link0
     position:
-      x: 0.77829999999999999
-      y: -0.13730000000000001
-      z: 0.26429999999999998
+      x: 0.81540000000000001
+      y: -0.14299999999999999
+      z: 0.33739999999999998
     orientation:
       x: -0.016416708009686615
       y: -0.21581612122313693
@@ -33,21 +33,31 @@ targets:
       y: 0
       z: -0.30793785635981502
       w: 0.95140647287083469
-  # Post-pour recovery: come back upright over the weighing container. Both
-  # steps of RecoverFromPourSequence in webhook_weightment.xml intentionally
-  # reuse the MoveToWeighingContainer pose, so the arm untilts in place
-  # instead of traversing while the scoop may still hold powder.
+  # Same TCP as PourStart, pitch +32° about tool Y (TCP-fixed pour tilt).
+  # Dosing uses vibration only; joint incline would swing the lip out.
+  PourTiltAtWeighingContainer:
+    frame_id: link0
+    position:
+      x: 0.49349999999999999
+      y: -0.4662
+      z: 0.19109999999999999
+    orientation:
+      x: 0.084879176482974314
+      y: 0.26224316448929441
+      z: -0.29600886604804622
+      w: 0.91455059963851271
+  # Untilt in place before lifting (copy of PourStart).
   PostPourTiltbackAtWeighingContainer:
     frame_id: link0
     position:
-      x: 0.5111
-      y: -0.47889999999999999
-      z: 0.25740000000000002
+      x: 0.49349999999999999
+      y: -0.4662
+      z: 0.19109999999999999
     orientation:
-      x: -0.066649950747445327
-      y: -0.20592204968637556
-      z: -0.30063849960515893
-      w: 0.9288543406118549
+      x: 0
+      y: 0
+      z: -0.30793785635981502
+      w: 0.95140647287083469
   PourDoneAtWeighingContainer:
     frame_id: link0
     position:
@@ -59,14 +69,13 @@ targets:
       y: -0.20592204968637556
       z: -0.30063849960515893
       w: 0.9288543406118549
-  # safe_retreat_target for this layout, and the tree ends on
-  # ReturnToScoopingContainer, so home is the scooping-container standoff.
+  # safe_retreat_target; tree ends on ReturnToScoopingContainer.
   ReturnHome:
     frame_id: link0
     position:
-      x: 0.77829999999999999
-      y: -0.13730000000000001
-      z: 0.26429999999999998
+      x: 0.81540000000000001
+      y: -0.14299999999999999
+      z: 0.33739999999999998
     orientation:
       x: -0.016416708009686615
       y: -0.21581612122313693

@@ -18,8 +18,8 @@
           <MoveTo name="MoveToScoopingContainer"
                   target_name="MoveToScoopingContainer"
                   use_cartesian="false"
-                  velocity_scaling="0.20"
-                  acceleration_scaling="0.20" />
+                  velocity_scaling="0.70"
+                  acceleration_scaling="0.70" />
           <PhaseMarker phase="transport_end"/>
           <WaitSeconds seconds="1.0"/>
           <PhaseMarker phase="scoop_start"/>
@@ -45,8 +45,8 @@
           <MoveTo name="MoveToWeighingContainer"
                   target_name="MoveToWeighingContainer"
                   use_cartesian="false"
-                  velocity_scaling="0.45"
-                  acceleration_scaling="0.15" />
+                  velocity_scaling="0.70"
+                  acceleration_scaling="0.70" />
           <PhaseMarker phase="transport_end"/>
           <WaitSeconds seconds="2.5"/>
           <ForceSuccess>
@@ -66,12 +66,21 @@
                       velocity_scaling="0.15"
                        acceleration_scaling="0.15" /> -->
               <PhaseMarker phase="pre_pour"/> 
+              <!-- Approach upright, then MoveIt to a taught TCP-fixed ~32° tilt.
+                   Dosing is vibration-only (COARSE_TILT_DEG=0); joint incline
+                   would swing the scoop lip out of the vessel. -->
               <MoveTo name="MoveToPourStartAtWeighingContainer"
                       target_name="PourStartAtWeighingContainer"
                       use_cartesian="false"
                       planning_pipeline="stomp"
-                      velocity_scaling="0.15"
-                      acceleration_scaling="0.15" />
+                      velocity_scaling="0.70"
+                      acceleration_scaling="0.70" />
+              <MoveTo name="MoveToPourTiltAtWeighingContainer"
+                      target_name="PourTiltAtWeighingContainer"
+                      use_cartesian="false"
+                      planning_pipeline="stomp"
+                      velocity_scaling="0.70"
+                      acceleration_scaling="0.70" />
               <PhaseMarker phase="pour_start"/>
               <PourToTarget target_weight="{remaining_weight}"
                             tolerance="{webhook_tolerance_g}"
@@ -79,19 +88,20 @@
               <PhaseMarker phase="pour_end"/>
               <ForceSuccess>
                 <Sequence name="RecoverFromPourSequence">
+                  <!-- Untilt in place (same TCP as PourStart), then lift. -->
                   <MoveTo name="MoveToPostPourTiltback"
                           target_name="PostPourTiltbackAtWeighingContainer"
                           use_cartesian="false"
                           planning_pipeline="stomp"
-                          velocity_scaling="0.15"
-                          acceleration_scaling="0.15" />
+                          velocity_scaling="0.70"
+                          acceleration_scaling="0.70" />
                   <PhaseMarker phase="post_pour"/>
                   <MoveTo name="MoveToPourDone"
                           target_name="PourDoneAtWeighingContainer"
                           use_cartesian="false"
                           planning_pipeline="stomp"
-                          velocity_scaling="0.15"
-                          acceleration_scaling="0.15" />
+                          velocity_scaling="0.70"
+                          acceleration_scaling="0.70" />
                   <PhaseMarker phase="pour_done"/>
                 </Sequence>
               </ForceSuccess>
@@ -124,8 +134,8 @@
       <MoveTo name="ReturnToScoopingContainer"
               target_name="MoveToScoopingContainer"
               use_cartesian="false"
-              velocity_scaling="0.20"
-              acceleration_scaling="0.20" />
+              velocity_scaling="0.70"
+              acceleration_scaling="0.70" />
       <PhaseMarker phase="transport_end"/>
     </Sequence>
   </BehaviorTree>

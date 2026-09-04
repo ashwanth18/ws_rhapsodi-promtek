@@ -192,3 +192,10 @@ MoveIt trajectory:
   approximated by `move_speed_deg` / `move_acc_deg`; the path is preserved, the
   velocity profile is not exact.
 - Plain TCP `Connect` is used; TLS (`ConnectTLS`) is not yet implemented.
+
+## Troubleshooting
+
+If the Lexium Safety panel sticks on **Waiting for /lexium/status…**, see
+[docs/lexium-laptop-networking.md §6](../../docs/lexium-laptop-networking.md)
+(eth must be up before / while the driver connects; the driver retries connect
+and recovers a dropped command channel).

@@ -14,6 +14,8 @@ export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-0}"
 export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
 export ROS_AUTOMATIC_DISCOVERY_RANGE="${ROS_AUTOMATIC_DISCOVERY_RANGE:-SUBNET}"
 export FASTDDS_BUILTIN_TRANSPORTS="${FASTDDS_BUILTIN_TRANSPORTS:-UDPv4}"
+# Host RViz Save Target / Save Pour write locally; map container /ws/config → git tree.
+export RHAPSODI_CONFIG_DIR="${RHAPSODI_CONFIG_DIR:-$ROOT/config}"
 
 set +u
 # shellcheck disable=SC1091

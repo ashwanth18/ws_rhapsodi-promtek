@@ -12,6 +12,19 @@ def test_signed_final_error_g_mes_uses_absolute() -> None:
     assert signed_final_error_g(None, 100.0, fallback=-1.0) == -1.0
 
 
+def test_signed_final_error_g_prefers_net_when_present() -> None:
+    # Residual powder in vessel: final 203.5g, net poured 101g, target 100g.
+    assert (
+        signed_final_error_g(
+            100.0,
+            203.5,
+            mode='webhook',
+            net_weight_g=101.0,
+        )
+        == 1.0
+    )
+
+
 def test_signed_final_error_g_lightsout_uses_net() -> None:
     # Absolute final would be ~800g on a full vessel; net poured is the truth.
     assert (

@@ -217,26 +217,27 @@ class LexiumDriver(Node):
         self._make_state_trigger(
             "power_on",
             "power_on",
-            lambda fb: bool(int(fb.get("powered_on", 0))),
+            self._fb_powered,
             cb_group,
             settle_after=self.power_on_settle_sec,
         )
         self._make_state_trigger(
             "power_off",
             "power_off",
-            lambda fb: not bool(int(fb.get("powered_on", 0))),
+            lambda fb: not self._fb_powered(fb),
             cb_group,
         )
         self._make_state_trigger(
             "enable",
             "enable_robot",
-            lambda fb: bool(int(fb.get("enabled", 0))),
+            self._fb_enabled,
             cb_group,
+            stable_for=1.0,
         )
         self._make_state_trigger(
             "disable",
             "disable_robot",
-            lambda fb: not bool(int(fb.get("enabled", 0))),
+            lambda fb: not self._fb_enabled(fb),
             cb_group,
         )
         self._make_trigger("clear_error", lambda: self._cmd("clear_error"), cb_group)
@@ -256,11 +257,23 @@ class LexiumDriver(Node):
     # Startup / connection
     # ------------------------------------------------------------------ #
     def _startup(self) -> None:
-        try:
-            self.client.start()
-        except OSError as exc:
-            self.get_logger().error(f"Failed to connect to {self.ip}: {exc}")
-            return
+        # Retry forever: laptop eth / controller power often come up *after*
+        # scooping_stack starts. A single timed-out connect used to leave the
+        # node up but never connected — RViz then stuck on
+        # "Waiting for /lexium/status..." or Bring Up disabled forever.
+        backoff = 1.0
+        while rclpy.ok():
+            try:
+                self.client.start()
+                break
+            except OSError as exc:
+                self.get_logger().error(
+                    f"Failed to connect to {self.ip}: {exc}; "
+                    f"retrying in {backoff:.1f}s "
+                    "(bring eth up: bash scripts/switch_arm_ethernet.sh jaka|lexium)"
+                )
+                time.sleep(backoff)
+                backoff = min(backoff * 1.5, 10.0)
 
         # Wait for the first feedback so we know the channel is live.
         deadline = time.monotonic() + 5.0
@@ -296,7 +309,7 @@ class LexiumDriver(Node):
             reply = self.client.send_command({"cmdName": "get_control_source"})
             self._control_source = int(reply.get("control_source", 0))
             return self._control_source
-        except (LexiumError, OSError) as exc:
+        except (LexiumError, OSError, TimeoutError) as exc:
             self.get_logger().warn(f"get_control_source failed: {exc}")
             return None
 
@@ -307,8 +320,10 @@ class LexiumDriver(Node):
         with self._goal_lock:
             if self._active_goal is not None:
                 return
-        if self.client.command_connected:
-            self._query_control_source()
+        # Always attempt: send_command() reconnects the command socket if the
+        # controller dropped it. Guarding on command_connected left connected
+        # stuck false after "command channel closed by controller".
+        self._query_control_source()
 
     # ------------------------------------------------------------------ #
     # Feedback -> ROS
@@ -327,17 +342,19 @@ class LexiumDriver(Node):
 
         status = LexiumStatus()
         status.header.stamp = now
-        status.connected = self.client.command_connected
+        # Command socket can flap while feedback stays live; treat either as
+        # "link up" so the Safety panel leaves "Waiting..." / enables Bring Up.
+        status.connected = self.client.command_connected or fresh
         status.feedback_fresh = fresh
         status.control_source = self._control_source
         if fb is not None:
-            status.powered_on = bool(int(fb.get("powered_on", 0)))
-            status.enabled = bool(int(fb.get("enabled", 0)))
+            status.powered_on = self._fb_powered(fb)
+            status.enabled = self._fb_enabled(fb)
             status.in_position = bool(fb.get("in_position", False))
-            status.protective_stop = bool(int(fb.get("protective_stop", 0)))
-            status.emergency_stop = bool(int(fb.get("emergency_stop", 0)))
-            status.collision_stop = bool(int(fb.get("collision_stop", 0)))
-            status.on_soft_limit = bool(int(fb.get("on_soft_limit", 0)))
+            status.protective_stop = self._fb_flag(fb, "protective_stop")
+            status.emergency_stop = self._fb_flag(fb, "emergency_stop")
+            status.collision_stop = self._fb_flag(fb, "collision_stop")
+            status.on_soft_limit = self._fb_flag(fb, "on_soft_limit")
             status.error_code = str(fb.get("error_code", ""))
             status.error_msg = str(fb.get("error_msg", ""))
             status.command_id = int(fb.get("command_id", 0))
@@ -393,9 +410,9 @@ class LexiumDriver(Node):
                 src = self._control_source
             if src != CONTROL_SOURCE_REMOTE:
                 return f"control source is not Remote(3), got {src}"
-        if not bool(int(fb.get("powered_on", 0))):
+        if not self._fb_powered(fb):
             return "arm not powered on"
-        if not bool(int(fb.get("enabled", 0))):
+        if not self._fb_enabled(fb):
             return "arm not enabled"
         faults = self._active_faults(fb)
         if faults:
@@ -803,23 +820,59 @@ class LexiumDriver(Node):
     # ------------------------------------------------------------------ #
     # Services / parameters
     # ------------------------------------------------------------------ #
-    def _wait_for_feedback(self, predicate, timeout: float = 8.0) -> bool:
-        """Wait until feedback satisfies predicate(fb), or timeout."""
+    def _wait_for_feedback(
+        self,
+        predicate,
+        timeout: float = 8.0,
+        stable_for: float = 0.0,
+    ) -> bool:
+        """Wait until feedback satisfies predicate(fb), or timeout.
+
+        If ``stable_for`` > 0, the predicate must hold continuously for that
+        many seconds (Lexium can ACK enable_robot while feedback ``enabled``
+        only pulses true briefly — or never sticks).
+        """
         deadline = time.monotonic() + timeout
+        hold_start: Optional[float] = None
         while time.monotonic() < deadline:
             fb = self.client.get_feedback()
             if fb is not None and predicate(fb):
-                return True
+                if stable_for <= 0.0:
+                    return True
+                if hold_start is None:
+                    hold_start = time.monotonic()
+                elif time.monotonic() - hold_start >= stable_for:
+                    return True
+            else:
+                hold_start = None
             time.sleep(0.05)
         return False
 
     @staticmethod
-    def _fb_powered(fb: Dict) -> bool:
-        return bool(int(fb.get("powered_on", 0)))
+    def _fb_flag(fb: Dict, key: str) -> bool:
+        """Normalize Lexium feedback flags (bool, int, or numeric string)."""
+        value = fb.get(key, 0)
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "1", "yes", "on"}:
+                return True
+            if normalized in {"false", "0", "no", "off", ""}:
+                return False
+        try:
+            return bool(int(value))
+        except (TypeError, ValueError):
+            # Never use bare bool(str): bool("False") is True in Python.
+            return False
 
-    @staticmethod
-    def _fb_enabled(fb: Dict) -> bool:
-        return bool(int(fb.get("enabled", 0)))
+    @classmethod
+    def _fb_powered(cls, fb: Dict) -> bool:
+        return cls._fb_flag(fb, "powered_on")
+
+    @classmethod
+    def _fb_enabled(cls, fb: Dict) -> bool:
+        return cls._fb_flag(fb, "enabled")
 
     def _run_state_step(
         self,
@@ -827,27 +880,46 @@ class LexiumDriver(Node):
         cmd_name: str,
         predicate,
         settle_after: float = 0.0,
+        stable_for: float = 0.0,
     ) -> tuple[bool, str]:
         """Send one state command and wait for feedback confirmation."""
+        reply: Optional[Dict] = None
         try:
-            self._cmd(cmd_name, timeout=self.state_command_timeout)
+            reply = self._cmd(cmd_name, timeout=self.state_command_timeout)
             if settle_after > 0.0:
                 time.sleep(settle_after)
         except LexiumError as exc:
             self.get_logger().warn(f"{label}: controller rejected command ({exc})")
-            if self._wait_for_feedback(predicate, timeout=2.0):
+            if self._wait_for_feedback(
+                predicate, timeout=2.0, stable_for=stable_for
+            ):
                 return True, f"confirmed via feedback despite: {exc}"
             return False, str(exc)
         except (OSError, TimeoutError) as exc:
             self.get_logger().warn(
                 f"{label}: command ack not received ({exc}); checking feedback"
             )
-            if self._wait_for_feedback(predicate, timeout=self.state_feedback_timeout):
+            if self._wait_for_feedback(
+                predicate,
+                timeout=self.state_feedback_timeout,
+                stable_for=stable_for,
+            ):
                 return True, f"confirmed via feedback (command ack: {exc})"
             return False, str(exc)
 
-        if self._wait_for_feedback(predicate, timeout=self.state_feedback_timeout):
+        if self._wait_for_feedback(
+            predicate,
+            timeout=self.state_feedback_timeout,
+            stable_for=stable_for,
+        ):
             return True, "ok"
+
+        # Lexium often returns errorCode=0 with "enabled status":"True" while
+        # the feedback stream never (or only briefly) shows enabled=true.
+        if reply is not None:
+            self.get_logger().warn(
+                f"{label}: command ack={reply} but feedback never confirmed"
+            )
         return False, f"{label}: feedback did not confirm the new state"
 
     def _safe_clear_error(self) -> None:
@@ -859,8 +931,13 @@ class LexiumDriver(Node):
     def _try_enable(self) -> tuple[bool, str]:
         last_msg = "enable failed"
         for attempt in range(1, self.enable_retry_count + 1):
+            # Require enabled to hold ~1s — ACK "enabled status: True" alone
+            # is not trustworthy on this firmware.
             ok, msg = self._run_state_step(
-                "enable", "enable_robot", self._fb_enabled
+                "enable",
+                "enable_robot",
+                self._fb_enabled,
+                stable_for=1.0,
             )
             if ok:
                 return True, msg
@@ -920,8 +997,12 @@ class LexiumDriver(Node):
                     if ok:
                         self.get_logger().info("Bring up complete (enabled).")
                         return True, "enabled"
+                    self.get_logger().warn(
+                        f"enable did not stick while powered ({msg}); "
+                        "power-cycling then retrying enable"
+                    )
 
-                # Full power cycle (handles stale powered_on after shut_down).
+                # Full power cycle (handles stale powered_on / false enable ACK).
                 ok, msg = self._full_power_cycle()
                 if not ok:
                     return False, f"bring_up failed during power cycle: {msg}"
@@ -929,7 +1010,11 @@ class LexiumDriver(Node):
                 time.sleep(self.pre_enable_settle_sec)
                 ok, msg = self._try_enable()
                 if not ok:
-                    return False, f"bring_up failed at enable: {msg}"
+                    return False, (
+                        f"bring_up failed at enable: {msg}. "
+                        "Close EcoStruxure Cobot Expert / other TCP clients, "
+                        "confirm Remote control, then retry Bring Up."
+                    )
 
                 self._query_control_source()
                 self.get_logger().info("Bring up complete (powered on + enabled).")
@@ -990,6 +1075,7 @@ class LexiumDriver(Node):
         predicate,
         cb_group,
         settle_after: float = 0.0,
+        stable_for: float = 0.0,
     ) -> None:
         """Trigger service that waits for the expected feedback state."""
 
@@ -1006,7 +1092,11 @@ class LexiumDriver(Node):
                 )
 
             self._query_control_source()
-            if self._wait_for_feedback(predicate, timeout=self.state_feedback_timeout):
+            if self._wait_for_feedback(
+                predicate,
+                timeout=self.state_feedback_timeout,
+                stable_for=stable_for,
+            ):
                 response.success = True
                 if cmd_error is None:
                     response.message = "ok"
@@ -1016,16 +1106,18 @@ class LexiumDriver(Node):
                     )
                 return response
 
+            # Do not report success when feedback never confirms — Lexium often
+            # ACKs enable_robot with enabled status True while the arm stays
+            # disabled in the feedback stream.
+            response.success = False
             if cmd_error is not None:
-                response.success = False
                 response.message = str(cmd_error)
                 self.get_logger().error(f"{name} failed: {cmd_error}")
             else:
-                response.success = True
                 response.message = (
-                    f"{name} sent; feedback has not confirmed the new state yet"
+                    f"{name} sent but feedback did not confirm the new state"
                 )
-                self.get_logger().warn(response.message)
+                self.get_logger().error(response.message)
             return response
 
         self.create_service(Trigger, f"~/{name}", _cb, callback_group=cb_group)

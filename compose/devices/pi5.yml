@@ -372,13 +372,16 @@ services:
   # LIGHTSOUT_PURGE_* joint_5 incline + vibrate residual powder out of the
   # scoop after EpisodeEndMarker (outside the MCAP window). Empty
   # PURGE_TARGET = in place (omit -p; rcl rejects empty `:=` values).
+  # webhook_layout_id / batch_layout_id feed VerifyCellLayout on MES starts.
+  # Prefer WEBHOOK_LAYOUT_ID / BATCH_LAYOUT_ID, else DEFAULT_LAYOUT_ID, else
+  # dual-container (Pi/Niryo). Laptop sets DEFAULT_LAYOUT_ID=dual-container-jaka.
   orchestrator:
     <<: *ros-robot-service
     command:
       [
         "bash",
         "-lc",
-        "extra=''; if [ -n \"${LIGHTSOUT_PURGE_TARGET:-}\" ]; then extra=\"-p lightsout_purge_target:=${LIGHTSOUT_PURGE_TARGET}\"; fi; exec ros2 run robot_orchestrator orchestrator_node --ros-args -p tree_file:=${BT_TREE:-/ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml} -p lightsout_purge_enabled:=${LIGHTSOUT_PURGE_ENABLED:-true} -p lightsout_purge_incline_deg:=${LIGHTSOUT_PURGE_INCLINE_DEG:-20.0} -p lightsout_purge_vibration:=${LIGHTSOUT_PURGE_VIBRATION:-0.8} -p lightsout_purge_duration_s:=${LIGHTSOUT_PURGE_DURATION_S:-10.0} $$extra",
+        "wl='${WEBHOOK_LAYOUT_ID:-}'; if [ -z \"$$wl\" ]; then wl='${DEFAULT_LAYOUT_ID:-}'; fi; if [ -z \"$$wl\" ]; then wl=dual-container; fi; bl='${BATCH_LAYOUT_ID:-}'; if [ -z \"$$bl\" ]; then bl=\"$$wl\"; fi; extra=''; if [ -n \"${LIGHTSOUT_PURGE_TARGET:-}\" ]; then extra=\"-p lightsout_purge_target:=${LIGHTSOUT_PURGE_TARGET}\"; fi; exec ros2 run robot_orchestrator orchestrator_node --ros-args -p tree_file:=${BT_TREE:-/ws/install/share/robot_orchestrator/bt_trees/webhook_weightment.xml} -p lightsout_purge_enabled:=${LIGHTSOUT_PURGE_ENABLED:-true} -p lightsout_purge_incline_deg:=${LIGHTSOUT_PURGE_INCLINE_DEG:-20.0} -p lightsout_purge_vibration:=${LIGHTSOUT_PURGE_VIBRATION:-0.8} -p lightsout_purge_duration_s:=${LIGHTSOUT_PURGE_DURATION_S:-10.0} -p webhook_layout_id:=$$wl -p batch_layout_id:=$$bl $$extra",
       ]
 
   # Development orchestrator: rebuilds a mounted source overlay at container start.
@@ -403,6 +406,8 @@ services:
       --packages-select robot_common_msgs robot_orchestrator
       --symlink-install &&
       source /tmp/orchestrator_install/setup.bash &&
+      wl=\"$${WEBHOOK_LAYOUT_ID:-}\"; if [ -z \"$$wl\" ]; then wl=\"$${DEFAULT_LAYOUT_ID:-}\"; fi; if [ -z \"$$wl\" ]; then wl=dual-container; fi;
+      bl=\"$${BATCH_LAYOUT_ID:-}\"; if [ -z \"$$bl\" ]; then bl=\"$$wl\"; fi;
       extra=''; if [ -n \"$${LIGHTSOUT_PURGE_TARGET:-}\" ]; then extra=\"-p lightsout_purge_target:=$${LIGHTSOUT_PURGE_TARGET}\"; fi;
       ros2 run robot_orchestrator orchestrator_node --ros-args
       -p tree_file:=/workspace/src/robot_orchestrator/bt_trees/webhook_weightment.xml
@@ -410,6 +415,8 @@ services:
       -p lightsout_purge_incline_deg:=$${LIGHTSOUT_PURGE_INCLINE_DEG:-20.0}
       -p lightsout_purge_vibration:=$${LIGHTSOUT_PURGE_VIBRATION:-0.8}
       -p lightsout_purge_duration_s:=$${LIGHTSOUT_PURGE_DURATION_S:-10.0}
+      -p webhook_layout_id:=$$wl
+      -p batch_layout_id:=$$bl
       $$extra
       "
 

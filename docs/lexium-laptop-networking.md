@@ -158,3 +158,123 @@ Do **not** command motion until those look healthy. Layout apply for
 `mes-condor` (`dual-container`) still needs `targets_by_robot.jaka`
 commissioned — that is a separate milestone. Verify `joint_sign` /
 `joint_offset_deg` with slow jogs before trusting scoop trajectories.
+
+## 6. Troubleshooting: RViz stuck on “Waiting for /lexium/status…”
+
+### Symptoms
+
+- Ethernet ping to `192.168.88.82` works; TCP `10000` / `10001` open.
+- Lexium Safety panel never leaves **Waiting for /lexium/status…**, or
+  shows `connected: no` with Bring Up greyed out.
+- `scooping_stack` log contains:
+  `Failed to connect to 192.168.88.82: timed out`
+- Later (after a brief successful connect):  
+  `command channel error (command channel closed by controller); reconnecting`  
+  then `/lexium/status.connected` stays `false` even though feedback is fresh.
+
+### Root cause (two layers)
+
+1. **Bring-up order / one-shot connect**  
+   `network_mode: host` means the container uses the laptop NIC. If
+   `make laptop-up` starts `lexium_driver` while `enp129s0` has no
+   `192.168.88.x` address (NM profile not up yet), the driver’s first TCP
+   connect to `:10001` times out. Older code logged the error and **gave up
+   forever** — no reconnect — so the Safety panel never got a healthy
+   session. Workaround that unblocked the cell: recreate the stack after eth
+   was up:
+
+   ```bash
+   bash scripts/switch_arm_ethernet.sh jaka   # or lexium
+   ping -c 2 192.168.88.82
+   docker compose --project-directory . --env-file robot-prod.laptop.env \
+     -f compose/devices/x86.yml up -d --force-recreate scooping_stack
+   ```
+
+2. **Command-channel flap + poll guard**  
+   The controller sometimes closes the **command** socket (`:10001`) while
+   the **feedback** stream (`:10000`) keeps running. Status used
+   `connected = (command socket is open)`. The 1 Hz control-source poll
+   only ran when that socket was already open, so it never called
+   `send_command()` (which would reconnect). Result: feedback live,
+   `connected: false`, Bring Up disabled.
+
+### Proper fix (in tree)
+
+`lexium_driver` now:
+
+- **Retries** `client.start()` with backoff until the controller is
+  reachable (so late eth / late controller power self-heals).
+- **Polls** `get_control_source` even when the command socket is down so
+  `send_command()` can reconnect.
+- Treats **feedback-fresh OR command socket** as `status.connected` so the
+  Safety panel is usable while the command channel is reopening.
+
+After pulling these changes into the image the laptop runs
+(`make ros-image-local` then recreate `scooping_stack`), a late eth bring-up
+should recover without a manual recreate.
+
+### Correct operator order
+
+```bash
+bash scripts/switch_arm_ethernet.sh jaka    # eth first
+ping -c 2 -I enp129s0 192.168.88.82
+make laptop-up                              # then stack
+make lexium-session                         # then RViz + Safety panel
+# In Cobot Expert: control source = Remote (3)
+# In RViz: Bring Up
+```
+
+### Quick health check
+
+```bash
+ros2 topic echo /lexium/status --once
+# want: connected: true, feedback_fresh: true, control_source: 3
+#       powered_on / enabled as expected after Bring Up
+
+docker compose --project-directory . --env-file robot-prod.laptop.env \
+  -f compose/devices/x86.yml logs --tail=50 scooping_stack | grep lexium_driver
+```
+
+## 7. Troubleshooting: Bring Up says OK but Enabled stays no
+
+### Symptoms
+
+- Safety panel / `ros2 service call …/bring_up` returns **success**.
+- `/lexium/status` still shows `powered_on: true`, `enabled: false`.
+- Arm ring does not go green; motion is refused (`arm not enabled`).
+
+### What’s going on
+
+On this Lexium firmware, `enable_robot` often returns:
+
+```json
+{"errorCode":"0","enabled status":"True","cmdName":"enable_robot"}
+```
+
+while the **feedback stream** (`:10000`) keeps `enabled: false` (or only pulses true). Older driver code treated the ACK / a brief feedback blip as success, so Bring Up lied.
+
+A second TCP client (EcoStruxure Cobot Expert, a debug script, a second driver) on `:10001` also makes `enable_robot` fail with `errorCode=2` / `enable robot failed` after ~20 s.
+
+### What to do now
+
+1. Quit Cobot Expert (or any other tool talking to `192.168.88.82:10001`).
+2. Confirm control source is **Remote (3)** on the pendant / Expert before closing it.
+3. In RViz: **Shut Down**, wait a few seconds, then **Bring Up** again (or call the services).
+4. Trust **`/lexium/status.enabled`**, not the service message alone.
+
+### Proper fix (in tree)
+
+`lexium_driver` now:
+
+- Requires feedback `enabled` to hold for ~1 s before treating enable as success.
+- If enable does not stick while powered, **power-cycles** then retries enable.
+- Returns **failure** from power/enable Trigger services when feedback never confirms.
+- Parses string `"False"` / `"True"` flags safely (`bool("False")` is true in Python — that was another footgun).
+
+Rebuild/recreate the laptop image to pick this up:
+
+```bash
+make ros-image-local
+docker compose --project-directory . --env-file robot-prod.laptop.env \
+  -f compose/devices/x86.yml up -d --force-recreate scooping_stack
+```

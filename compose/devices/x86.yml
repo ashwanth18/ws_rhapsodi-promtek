@@ -24,6 +24,9 @@ services:
       - ./data:/data
       - ./data/ros_home:/root/.ros
       - ./config:/ws/config:ro
+      # Laptop authoring: RViz Save Target / pose sets must write layout YAML.
+      # More-specific rw mount overrides the ro config bind for layouts/.
+      - ./config/layouts:/ws/config/layouts:rw
 
   # Volumes in included pi5.yml resolve relative to compose/devices/ (include
   # file dir), not --project-directory. Override data/config/nginx onto repo root
@@ -44,3 +47,13 @@ services:
   dashboard:
     volumes:
       - ./docker/nginx-dashboard.conf:/etc/nginx/conf.d/default.conf:ro
+
+  # Laptop authoring: edit BT trees on the host without rebuilding ros-prod.
+  # Pair with BT_TREE=/ws/bt_trees/webhook_weightment.xml in robot-prod.laptop.env.
+  # Pi keeps the image install-share tree (BT_TREE unset).
+  orchestrator:
+    volumes:
+      - ./data:/data
+      - ./data/ros_home:/root/.ros
+      - ./config:/ws/config:ro
+      - ./src/robot_orchestrator/bt_trees:/ws/bt_trees:ro

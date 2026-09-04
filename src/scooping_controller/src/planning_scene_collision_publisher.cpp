@@ -48,6 +48,10 @@ public:
       "/cell_layout/active", rclcpp::QoS(1).transient_local().reliable(),
       [this](const robot_common_msgs::msg::CellLayoutActive::SharedPtr msg) {
         try {
+          // Drop every previously applied container id first. MoveIt ADD on an
+          // existing id often leaves the old mesh pose in place, so RViz can
+          // show boot-time container_scene poses beside the layout markers.
+          clear_known_collision_objects();
           scene_specs_ = scooping_controller::load_container_scene_specs_from_yaml(msg->scene_yaml_path);
           planning_scene_interface_->removeCollisionObjects(
             scooping_controller::disabled_container_scene_ids(scene_specs_));
@@ -103,6 +107,25 @@ private:
     return true;
   }
 
+  void clear_known_collision_objects()
+  {
+    std::vector<std::string> ids;
+    ids.reserve(known_object_ids_.size());
+    for (const auto& id : known_object_ids_) {
+      ids.push_back(id);
+    }
+    // Also clear the common boot-time ids in case we restarted mid-layout.
+    for (const char* id : {"rs6", "rs3", "table"}) {
+      if (std::find(ids.begin(), ids.end(), id) == ids.end()) {
+        ids.emplace_back(id);
+      }
+    }
+    if (!ids.empty()) {
+      planning_scene_interface_->removeCollisionObjects(ids);
+      known_object_ids_.clear();
+    }
+  }
+
   void sync_collision_objects(bool force)
   {
     const auto desired_objects = scooping_controller::make_container_collision_objects(
@@ -130,7 +153,12 @@ private:
     }
 
     if (needs_update) {
+      // REMOVE+ADD: plain ADD frequently fails to relocate existing mesh objects.
+      if (!desired_ids.empty()) {
+        planning_scene_interface_->removeCollisionObjects(desired_ids);
+      }
       if (planning_scene_interface_->applyCollisionObjects(desired_objects)) {
+        known_object_ids_.assign(desired_ids.begin(), desired_ids.end());
         RCLCPP_INFO(
           this->get_logger(),
           "Applied %zu container collision objects to MoveIt planning scene",
@@ -231,6 +259,7 @@ private:
 
   std::string frame_id_;
   std::vector<scooping_controller::ContainerSceneSpec> scene_specs_;
+  std::vector<std::string> known_object_ids_;
   std::shared_ptr<moveit::planning_interface::PlanningSceneInterface> planning_scene_interface_;
   rclcpp::CallbackGroup::SharedPtr client_cb_group_;
   rclcpp::Client<moveit_msgs::srv::GetPlanningScene>::SharedPtr get_planning_scene_;

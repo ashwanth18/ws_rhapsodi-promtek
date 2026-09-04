@@ -110,6 +110,10 @@ def _robot_real_setup(context, *args, **kwargs):
     legacy_targets = PathJoinSubstitution(
         [FindPackageShare("robot_moveit"), "targets.yaml"]
     ).perform(context)
+    # Do NOT replace TARGETS_YAML from the layout here. Pi/Niryo still boots on
+    # install-share targets.yaml (full named set). Layout apply / laptop env
+    # point MoveTo at layout-local files when commissioned; forcing it in launch
+    # would drop install-only names on any Pi that passes layout_id.
     if targets_yaml.perform(context) == legacy_targets:
         targets_yaml = default_targets_path(profile)
 

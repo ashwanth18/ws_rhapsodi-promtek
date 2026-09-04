@@ -23,6 +23,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <string>
@@ -1230,6 +1231,7 @@ void ScoopingPanel::onInitialize()
     [this](const robot_common_msgs::msg::CellLayoutActive::SharedPtr msg) {
       layout_preview_active_ = msg->preview;
       active_layout_scene_yaml_ = msg->scene_yaml_path;
+      active_layout_targets_yaml_ = msg->targets_yaml;
       const QString mode = msg->preview ? "PREVIEW" : "applied";
       layout_status_label_->setText(
         QString("Layout %1 (%2) hash=%3")
@@ -1237,6 +1239,9 @@ void ScoopingPanel::onInitialize()
           .arg(mode)
           .arg(QString::fromStdString(msg->layout_hash)));
       refreshLayoutObjectList();
+      if (!active_layout_targets_yaml_.empty()) {
+        QTimer::singleShot(0, this, [this]() { refreshTargetsFromYaml(); });
+      }
     });
   layout_status_sub_ = node_->create_subscription<std_msgs::msg::String>(
     "/cell_layout/editor_status",
@@ -2752,8 +2757,63 @@ void ScoopingPanel::publishPourPreviewMarkers()
 
 bool ScoopingPanel::tryGetTargetsYamlPath(std::string& yaml_path)
 {
-  return tryGetTargetsYamlPathFromClient(move_to_params_client_, yaml_path) ||
-         tryGetTargetsYamlPathFromClient(record_target_params_client_, yaml_path);
+  // Prefer the active layout path (authoritative) over launch-time install defaults
+  // that may still be stuck on move_to_server / target_recorder after a race.
+  if (!active_layout_targets_yaml_.empty()) {
+    yaml_path = resolveAuthoringFilesystemPath(active_layout_targets_yaml_);
+    return !yaml_path.empty();
+  }
+  if (tryGetTargetsYamlPathFromClient(move_to_params_client_, yaml_path) ||
+      tryGetTargetsYamlPathFromClient(record_target_params_client_, yaml_path))
+  {
+    yaml_path = resolveAuthoringFilesystemPath(yaml_path);
+    return !yaml_path.empty();
+  }
+  return false;
+}
+
+std::string ScoopingPanel::resolveAuthoringFilesystemPath(const std::string& path) const
+{
+  if (path.empty()) {
+    return path;
+  }
+  namespace fs = std::filesystem;
+  const fs::path requested(path);
+  if (fs::exists(requested) || fs::exists(requested.parent_path())) {
+    return path;
+  }
+
+  constexpr const char* kContainerConfigPrefix = "/ws/config/";
+  if (path.rfind(kContainerConfigPrefix, 0) != 0) {
+    return path;
+  }
+  const std::string suffix = path.substr(std::char_traits<char>::length(kContainerConfigPrefix));
+
+  std::vector<fs::path> config_roots;
+  if (const char* env = std::getenv("RHAPSODI_CONFIG_DIR"); env && env[0] != '\0') {
+    config_roots.emplace_back(env);
+  }
+  if (const char* env = std::getenv("CELL_LAYOUTS_DIR"); env && env[0] != '\0') {
+    fs::path layouts(env);
+    if (layouts.filename() == "layouts") {
+      config_roots.push_back(layouts.parent_path());
+    }
+  }
+  config_roots.emplace_back("config");
+  if (const char* home = std::getenv("HOME"); home && home[0] != '\0') {
+    config_roots.push_back(fs::path(home) / "ws_rhapsodi-promtek-dev" / "config");
+  }
+
+  for (const auto& root : config_roots) {
+    if (root.empty()) {
+      continue;
+    }
+    const fs::path candidate = (root / suffix).lexically_normal();
+    if (fs::exists(candidate) || fs::exists(candidate.parent_path())) {
+      return candidate.string();
+    }
+  }
+  return path;
 }
 
 bool ScoopingPanel::tryGetTargetsYamlPathFromClient(
@@ -3835,7 +3895,8 @@ void ScoopingPanel::refreshLayoutObjectList()
   QSignalBlocker blocker(layout_object_combo_);
   layout_object_combo_->clear();
   try {
-    const auto root = YAML::LoadFile(active_layout_scene_yaml_);
+    const auto root = YAML::LoadFile(
+      resolveAuthoringFilesystemPath(active_layout_scene_yaml_));
     for (const auto& object : root["objects"]) {
       if (!object["enabled"] || !object["enabled"].as<bool>()) {
         continue;

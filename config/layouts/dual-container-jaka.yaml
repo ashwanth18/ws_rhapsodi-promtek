@@ -11,10 +11,21 @@ poses_yaml: dual-container-jaka/poses.yaml
 scoop_cartesian_avoid_collisions: false
 safe_retreat_target: ReturnHome
 scoop_envelope: {x_min: -0.20, x_max: 0.20, y_min: -0.20, y_max: 0.20, z_min: 0.00, z_max: 0.35}
-calibration: {source: container_scene/jaka_real.yaml, frame_id: link0}
+calibration:
+  source: container_scene/jaka_real.yaml
+  frame_id: link0
+  note: >
+    Measured laptop/Jaka cell (2026-08-07). Robot base is 5.5 cm above the
+    table (containers dropped by 0.055 m in link0). RS6 was posed with its
+    back 0.80 m from the physical Jaka base front (link0 +X ≈ 0.130 m →
+    pose_x ≈ 0.775), then shifted +0.08 m in +X (further from robot) to
+    pose_x ≈ 0.855. RS3 is on the operator-left of RS6 when facing the
+    robot (link0 -Y); yaw ≈ 143.5° so the open face points at the robot
+    (radial approach) while keeping the measured position. RS3 Z keeps the
+    prior 0.105 m scale-platform offset relative to the table.
 sim: {overlay: {mass: 0.2, friction: 0.8}}
 objects:
-  - {id: rs6, enabled: true, geometry_type: mesh, mesh_resource: package://scooping_controller/models/scooping_container/meshes/rs6_container.STL, mesh_units: mm, position_xyz: [0.460, -0.119, 0.0], orientation: {rpy_deg: [0, 0, 180]}, scale_xyz: [1, 1, 1], dimensions_xyz: [0, 0, 0], color_rgb: [0.7, 0.7, 0.7]}
-  - {id: rs3, enabled: true, geometry_type: mesh, mesh_resource: package://scooping_controller/models/weighing_container/meshes/rs3_container.STL, mesh_units: mm, position_xyz: [0.0, -0.4218, 0.105], orientation: {rpy_deg: [0, 0, 90]}, scale_xyz: [1, 1, 1], dimensions_xyz: [0, 0, 0], color_rgb: [0.4, 0.8, 0.4]}
-  # Table top at z=-0.01 (was flush at z=0 with base_link collision AABB).
-  - {id: table, enabled: true, geometry_type: box, position_xyz: [0, 0, -0.025], orientation: {quat_xyzw: [0, 0, 0, 1]}, scale_xyz: [1, 1, 1], dimensions_xyz: [1.02, 0.61, 0.03], color_rgb: [0.55, 0.39, 0.22]}
+  - {id: rs6, enabled: true, geometry_type: mesh, mesh_resource: package://scooping_controller/models/scooping_container/meshes/rs6_container.STL, mesh_units: mm, position_xyz: [0.855, -0.119, -0.055], orientation: {rpy_deg: [0, 0, 180]}, scale_xyz: [1, 1, 1], dimensions_xyz: [0, 0, 0], color_rgb: [0.7, 0.7, 0.7]}
+  - {id: rs3, enabled: true, geometry_type: mesh, mesh_resource: package://scooping_controller/models/weighing_container/meshes/rs3_container.STL, mesh_units: mm, position_xyz: [0.695, -0.514, 0.050], orientation: {rpy_deg: [0, 0, 143.51]}, scale_xyz: [1, 1, 1], dimensions_xyz: [0, 0, 0], color_rgb: [0.4, 0.8, 0.4]}
+  # Table top ≈ RS6 floor (z=-0.055); box thickness 0.03 → center z=-0.070.
+  - {id: table, enabled: true, geometry_type: box, position_xyz: [0.742, 0.0, -0.070], orientation: {quat_xyzw: [0, 0, 0, 1]}, scale_xyz: [1, 1, 1], dimensions_xyz: [1.02, 0.61, 0.03], color_rgb: [0.55, 0.39, 0.22]}

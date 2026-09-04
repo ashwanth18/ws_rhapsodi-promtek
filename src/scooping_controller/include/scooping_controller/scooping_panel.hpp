@@ -151,6 +151,8 @@ private:
   bool tryGetTargetsYamlPathFromClient(
     const rclcpp::AsyncParametersClient::SharedPtr& client,
     std::string& yaml_path);
+  // Map container paths (/ws/config/...) to the host git tree for RViz-local I/O.
+  std::string resolveAuthoringFilesystemPath(const std::string& path) const;
   bool loadNamedTargetsFromYaml(const std::string& yaml_path, QString& error_message);
   bool saveNamedTargetToYaml(
     const std::string& yaml_path,
@@ -366,6 +368,7 @@ private:
   std::string latest_scoop_frame_id_;
   std::string targets_yaml_path_;
   std::string active_layout_scene_yaml_;
+  std::string active_layout_targets_yaml_;
   std::string catalog_yaml_path_;
   QString loaded_pose_set_id_;
   geometry_msgs::msg::PoseStamped latest_target_goal_pose_;

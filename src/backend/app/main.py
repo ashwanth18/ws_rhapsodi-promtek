@@ -1812,31 +1812,38 @@ def _parse_condor_websocket(log_path: Path | None) -> dict[str, Any]:
             'age_s': None,
         }
 
-    lower = tail.lower()
-    # Prefer the most recent decisive line.
+    # Prefer the most recent decisive line (do not let an older REGISTER_ERROR
+    # in the same tail override a later WebSocket:Connected OK).
     lines = [ln.strip() for ln in tail.splitlines() if ln.strip()]
     last_ws = None
+    status = 'unknown'
+    detail = 'no WebSocket lines in recent log'
     for line in reversed(lines):
-        if 'websocket' in line.lower() or 'register' in line.lower():
-            last_ws = line
-            break
-
-    if re.search(r'register[_ ]?error|registration failed|unauthorized', lower):
-        status = 'disconnected'
-        detail = last_ws or 'registration error in log'
-    elif re.search(
-        r'websocket:\s*(waiting for messages|connected|connection established)',
-        lower,
-    ):
-        # Stale "Waiting" lines after a long gap mean the process may be hung.
-        status = 'connected' if age_s is not None and age_s < 90 else 'stale'
-        detail = last_ws or 'WebSocket healthy'
-    elif re.search(r'websocket:\s*(disconnected|closed|error)', lower):
-        status = 'disconnected'
-        detail = last_ws or 'WebSocket disconnected'
+        lower_line = line.lower()
+        if not ('websocket' in lower_line or 'register' in lower_line):
+            continue
+        last_ws = line
+        if re.search(
+            r'register[_ ]?error|registration failed|unauthorized',
+            lower_line,
+        ):
+            status = 'disconnected'
+            detail = line
+        elif re.search(
+            r'websocket:\s*(waiting for messages|connected|connection established)',
+            lower_line,
+        ):
+            # Stale "Waiting" lines after a long gap mean the process may be hung.
+            status = 'connected' if age_s is not None and age_s < 90 else 'stale'
+            detail = line
+        elif re.search(r'websocket:\s*(disconnected|closed|error)', lower_line):
+            status = 'disconnected'
+            detail = line
+        else:
+            continue
+        break
     else:
-        status = 'unknown'
-        detail = last_ws or 'no WebSocket lines in recent log'
+        detail = last_ws or detail
 
     return {
         'status': status,

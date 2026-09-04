@@ -58,11 +58,18 @@ public:
       this, "scooping_marker_server", rmw_qos_profile_parameters, client_cb_group_);
     move_params_ = std::make_shared<rclcpp::AsyncParametersClient>(
       this, "move_to_server", rmw_qos_profile_parameters, client_cb_group_);
+    recorder_params_ = std::make_shared<rclcpp::AsyncParametersClient>(
+      this, "target_recorder", rmw_qos_profile_parameters, client_cb_group_);
     load_poses_client_ = create_client<std_srvs::srv::Trigger>(
       "/load_scoop_poses", rmw_qos_profile_services_default, client_cb_group_);
     const auto initial = get_parameter("initial_layout_id").as_string();
     if (!initial.empty()) {
-      apply_layout(initial, false);
+      // Defer until peer param services exist — constructor runs before the
+      // executor spins and before move_to_server / target_recorder are up.
+      pending_initial_layout_id_ = initial;
+      init_timer_ = create_wall_timer(
+        std::chrono::milliseconds(500),
+        std::bind(&CellLayoutManager::try_initial_layout, this));
     }
   }
 
@@ -77,6 +84,47 @@ private:
     std::ostringstream stream;
     stream << std::hex << hash;
     return stream.str();
+  }
+
+  void try_initial_layout()
+  {
+    if (pending_initial_layout_id_.empty()) {
+      if (init_timer_) {
+        init_timer_->cancel();
+      }
+      return;
+    }
+    const bool peers_ready =
+      move_params_->service_is_ready() &&
+      recorder_params_->service_is_ready() &&
+      marker_params_->service_is_ready();
+    if (!peers_ready) {
+      if (++init_wait_ticks_ % 10 == 0) {
+        RCLCPP_INFO(
+          get_logger(),
+          "Waiting for layout peer param services before applying '%s'",
+          pending_initial_layout_id_.c_str());
+      }
+      if (init_wait_ticks_ > 120) {
+        RCLCPP_WARN(
+          get_logger(),
+          "Applying initial layout '%s' without all peer param services ready",
+          pending_initial_layout_id_.c_str());
+      } else {
+        return;
+      }
+    }
+    const auto layout_id = pending_initial_layout_id_;
+    pending_initial_layout_id_.clear();
+    if (init_timer_) {
+      init_timer_->cancel();
+    }
+    const auto result = apply_layout(layout_id, false);
+    if (!result.success) {
+      RCLCPP_ERROR(get_logger(), "Initial layout apply failed: %s", result.message.c_str());
+    } else {
+      RCLCPP_INFO(get_logger(), "%s", result.message.c_str());
+    }
   }
 
   void apply(const std::shared_ptr<Apply::Request> request, std::shared_ptr<Apply::Response> response)
@@ -141,7 +189,13 @@ private:
     }
   }
 
-  struct Result { bool success{false}; bool preflight_ok{false}; std::string message; std::string hash; };
+  struct Result
+  {
+    bool success{false};
+    bool preflight_ok{false};
+    std::string message;
+    std::string hash;
+  };
 
   static std::string resolve_targets_path(
     const std::filesystem::path& layout_path,
@@ -203,6 +257,38 @@ private:
     return true;
   }
 
+  void sync_peer_params(
+    const std::string& targets,
+    const std::string& poses,
+    const std::string& robot_key,
+    bool scoop_cartesian_avoid_collisions)
+  {
+    const std::vector<rclcpp::Parameter> move_params = {
+      rclcpp::Parameter("targets_yaml", targets),
+      rclcpp::Parameter("cartesian_avoid_collisions", scoop_cartesian_avoid_collisions)};
+    const std::vector<rclcpp::Parameter> recorder_params = {
+      rclcpp::Parameter("targets_yaml", targets)};
+    const std::vector<rclcpp::Parameter> marker_params = {
+      rclcpp::Parameter("poses_yaml", poses),
+      rclcpp::Parameter("robot_key", robot_key)};
+
+    if (move_params_->service_is_ready()) {
+      move_params_->set_parameters(move_params);
+    } else {
+      RCLCPP_WARN(get_logger(), "move_to_server param service not ready; targets_yaml not synced");
+    }
+    if (recorder_params_->service_is_ready()) {
+      recorder_params_->set_parameters(recorder_params);
+    } else {
+      RCLCPP_WARN(get_logger(), "target_recorder param service not ready; targets_yaml not synced");
+    }
+    if (marker_params_->service_is_ready()) {
+      marker_params_->set_parameters(marker_params);
+    } else {
+      RCLCPP_WARN(get_logger(), "scooping_marker_server param service not ready; poses_yaml not synced");
+    }
+  }
+
   Result apply_layout(const std::string& layout_id, bool preflight)
   {
     Result result;
@@ -225,6 +311,9 @@ private:
       }
       const auto poses = (path.parent_path() / root["poses_yaml"].as<std::string>())
         .lexically_normal().string();
+      const bool scoop_cartesian_avoid_collisions =
+        root["scoop_cartesian_avoid_collisions"] ?
+        root["scoop_cartesian_avoid_collisions"].as<bool>() : false;
       robot_common_msgs::msg::CellLayoutActive active;
       active.layout_id = layout_id;
       active.layout_hash = hash;
@@ -233,22 +322,13 @@ private:
       active.poses_yaml = poses;
       active.task_container_id = root["task_container_id"].as<std::string>();
       active.tool_id = root["tool_id"].as<std::string>();
-      active.scoop_cartesian_avoid_collisions =
-        root["scoop_cartesian_avoid_collisions"] ?
-        root["scoop_cartesian_avoid_collisions"].as<bool>() : false;
+      active.scoop_cartesian_avoid_collisions = scoop_cartesian_avoid_collisions;
       active.authored_in_required = true;
       active.preview = false;
       active_pub_->publish(active);
       last_active_ = active;
       has_active_layout_ = true;
-      move_params_->set_parameters({
-        rclcpp::Parameter("targets_yaml", targets),
-        rclcpp::Parameter("cartesian_avoid_collisions",
-          root["scoop_cartesian_avoid_collisions"] ?
-            root["scoop_cartesian_avoid_collisions"].as<bool>() : false)});
-      marker_params_->set_parameters({
-        rclcpp::Parameter("poses_yaml", poses),
-        rclcpp::Parameter("robot_key", robot_key)});
+      sync_peer_params(targets, poses, robot_key, scoop_cartesian_avoid_collisions);
       if (load_poses_client_->wait_for_service(std::chrono::seconds(2))) {
         load_poses_client_->async_send_request(std::make_shared<std_srvs::srv::Trigger::Request>());
       }
@@ -323,10 +403,13 @@ private:
   }
 
   std::string run_state_{"idle"};
+  std::string pending_initial_layout_id_;
+  int init_wait_ticks_{0};
   bool has_active_layout_{false};
   robot_common_msgs::msg::CellLayoutActive last_active_;
   rclcpp::CallbackGroup::SharedPtr service_cb_group_;
   rclcpp::CallbackGroup::SharedPtr client_cb_group_;
+  rclcpp::TimerBase::SharedPtr init_timer_;
   rclcpp::Publisher<robot_common_msgs::msg::CellLayoutActive>::SharedPtr active_pub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr run_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseArray>::SharedPtr scoop_pose_sub_;
@@ -334,7 +417,7 @@ private:
   rclcpp::Service<Apply>::SharedPtr apply_srv_;
   rclcpp::Service<Preview>::SharedPtr preview_srv_;
   rclcpp_action::Client<MoveTo>::SharedPtr move_to_client_;
-  rclcpp::AsyncParametersClient::SharedPtr marker_params_, move_params_;
+  rclcpp::AsyncParametersClient::SharedPtr marker_params_, move_params_, recorder_params_;
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr load_poses_client_;
 };
 
