@@ -370,6 +370,18 @@ def _setup(context, *args, **kwargs):
         ],
         condition=with_flow,
     )
+    draft_yaml = os.path.join(
+        get_package_share_directory("isaac_twin"), "config", "draft_targets", f"{layout_id}_niryo.yaml"
+    )
+    draft = Node(
+        package="isaac_twin",
+        executable="draft_targets_node",
+        output="screen",
+        parameters=[{"draft_yaml": draft_yaml}],
+        condition=IfCondition(
+            "true" if context.launch_configurations["draft_targets"] == "true" and os.path.isfile(draft_yaml) else "false"
+        ),
+    )
     rviz = Node(
         package="rviz2",
         executable="rviz2",
@@ -397,7 +409,7 @@ def _setup(context, *args, **kwargs):
         TimerAction(period=float(timing.get("task_frame_delay", 2.5)), actions=[task_frame, marker_server]),
         TimerAction(period=float(timing.get("container_delay", 2.7)), actions=[container_marker, collisions]),
         TimerAction(period=float(timing.get("collisions_delay", 2.8)) + 0.2, actions=[layout_manager]),
-        TimerAction(period=float(timing.get("move_to_delay", 5.0)), actions=[move_to, target_recorder]),
+        TimerAction(period=float(timing.get("move_to_delay", 5.0)), actions=[move_to, target_recorder, draft]),
         TimerAction(period=float(timing.get("mtc_delay", 5.5)), actions=[mtc]),
         TimerAction(period=float(timing.get("vision_delay", 6.0)), actions=[vision]),
         TimerAction(period=float(timing.get("mtc_delay", 5.5)) + 1.0, actions=[incline, pour, orchestrator]),
@@ -422,6 +434,11 @@ def generate_launch_description() -> LaunchDescription:
                 "with_flow",
                 default_value="true",
                 description="Pouring controller + orchestrator (bt_start_webhook_weightment)",
+            ),
+            DeclareLaunchArgument(
+                "draft_targets",
+                default_value="true",
+                description="move_to uses config/draft_targets/<layout>_niryo.yaml over the layout targets",
             ),
             DeclareLaunchArgument(
                 "allow_any_domain",

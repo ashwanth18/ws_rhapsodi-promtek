@@ -14,6 +14,7 @@ setup(
         ("share/" + package_name, ["package.xml", "README.md"]),
         (os.path.join("share", package_name, "launch"), glob("launch/*.launch.py")),
         (os.path.join("share", package_name, "config"), glob("config/*.yaml")),
+        (os.path.join("share", package_name, "config", "draft_targets"), glob("config/draft_targets/*.yaml")),
         (os.path.join("share", package_name, "urdf"), glob("urdf/*.xacro")),
         (os.path.join("share", package_name, "scripts"), glob("scripts/*")),
     ],
@@ -27,6 +28,7 @@ setup(
     entry_points={
         "console_scripts": [
             "depth_to_mm_node = isaac_twin.depth_to_mm_node:main",
+            "draft_targets_node = isaac_twin.draft_targets_node:main",
             "sim_camera_tf = isaac_twin.sim_camera_tf:main",
             "twin_scale_node = isaac_twin.twin_scale_node:main",
             "scoop_env_compare = isaac_twin.gym.compare:main",

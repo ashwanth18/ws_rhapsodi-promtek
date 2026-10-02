@@ -1,0 +1,13 @@
+# DRAFT, twin only. Merged over the layout's Niryo targets by draft_targets_node
+# (launch draft_targets:=true). Move it into
+# config/layouts/dual-container/robots/niryo/targets.yaml only after the
+# operator has checked it on the real cell.
+#
+# webhook_weightment.xml moves to PourTiltAtWeighingContainer after PourStart;
+# the Niryo layout has no such target. As on the Jaka layout, it keeps
+# PourStart's TCP and pitches about tool Y in the pour direction: +10 deg, so
+# 15 deg total (the RecoverFromPour orientation). The Jaka's 32 deg is out of
+# reach here: joint_5 passes its -1.92 rad limit beyond ~17 deg (at 15 deg it
+# is -1.86).
+targets:
+  PourTiltAtWeighingContainer: {frame_id: base_link, position: {x: -0.0103, y: -0.3471, z: 0.2633}, orientation: {x: 0.092296, y: 0.092296, z: -0.701057, w: 0.701057}}

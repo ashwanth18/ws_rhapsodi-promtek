@@ -130,8 +130,19 @@ ros2 run isaac_twin scoop_env_compare --episodes 2 --max-scoops 12 --json /tmp/s
 ## Known gaps
 
 - The Niryo dual-container targets (`config/layouts/dual-container/robots/niryo/targets.yaml`)
-  have no `PourTiltAtWeighingContainer`. `webhook_weightment.xml` needs it, so the twin BT
-  stops at that MoveTo; the real cell will too.
+  have no `PourTiltAtWeighingContainer`, which `webhook_weightment.xml` needs; the real cell
+  stops at that MoveTo.
+  - The twin uses a **draft** from `config/draft_targets/dual-container_niryo.yaml`:
+    PourStart's TCP pitched +10° about tool Y (15° total). `draft_targets_node` merges it over
+    the layout targets into `~/.cache/isaac_twin/` and points `move_to` there
+    (`draft_targets:=false` to disable).
+  - Copy it into `config/layouts` only after checking it on the real cell.
+- Powder dumps when the scoop tips toward the lip: the bowl is modelled like water (level
+  capacity × `heap_factor`), with no angle of repose. A full scoop empties into RS3 on
+  arrival at PourStart (5° forward holds ~7 g). `pour_server` then sees no progress and
+  asks for a rescoop.
+- The BT's `ComputeRemaining` clamps the remaining weight at 0, so an overshoot (37.5 g for a
+  20 g target in the twin) ends the weightment as SUCCESS.
 - The powder parameters are unfitted; fit them from real scoop logs before trusting absolute
   grams. In the twin a scoop carves about 98 g, and over half slides off as the scoop leaves
   the bed lip-down. The shake-off then leaves the level fill at the lift tilt: about 40 g

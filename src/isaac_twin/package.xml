@@ -32,6 +32,7 @@
   <exec_depend>niryo_ned3pro_moveit_config</exec_depend>
   <exec_depend>scooping_controller</exec_depend>
   <exec_depend>robot_moveit</exec_depend>
+  <exec_depend>robot_common_msgs</exec_depend>
   <exec_depend>scoop_vision</exec_depend>
   <exec_depend>camera_robot_calibration</exec_depend>
   <exec_depend>pouring_controller</exec_depend>
