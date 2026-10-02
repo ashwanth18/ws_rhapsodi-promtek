@@ -130,3 +130,30 @@ mock:
     collisions_delay: 1.8
     mtc_delay: 4.5
     rviz_delay: 2.5
+isaac:
+  scene:
+    package: scooping_controller
+    path: config/container_scene/niryo_real.yaml
+  moveit_package: niryo_ned3pro_moveit_config
+  urdf:
+    package: isaac_twin
+    path: urdf/niryo_ned3pro_isaac.urdf.xacro
+    xacro_args: []
+  controllers:
+    package: isaac_twin
+    path: config/ros2_controllers_isaac.yaml
+  move_group_controller_params:
+    package: scooping_controller
+    path: config/move_group_controller_params.yaml
+  use_sim_time: true
+  timing:
+    move_group_delay: 2.0
+    move_to_delay: 5.0
+    target_recorder_delay: 5.2
+    task_frame_delay: 2.5
+    marker_delay: 2.5
+    container_delay: 2.7
+    collisions_delay: 2.8
+    mtc_delay: 5.5
+    vision_delay: 6.0
+    rviz_delay: 4.0

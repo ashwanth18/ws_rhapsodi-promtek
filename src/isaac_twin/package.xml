@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>isaac_twin</name>
+  <version>0.1.0</version>
+  <description>
+    Isaac Sim 5.1 digital twin of the Niryo + D455 + RS6/RS3 scooping cell.
+    Isaac replaces the hardware (arm, camera, scale); MoveIt, scooping_mtc_node,
+    scoop_vision and the BT run unchanged on an isolated ROS domain.
+  </description>
+
+  <maintainer email="ashwanth@todo.todo">ashwanth</maintainer>
+  <license>Apache-2.0</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>joint_state_broadcaster</exec_depend>
+  <exec_depend>joint_trajectory_controller</exec_depend>
+  <exec_depend>topic_based_ros2_control</exec_depend>
+  <exec_depend>moveit_ros_move_group</exec_depend>
+  <exec_depend>moveit_configs_utils</exec_depend>
+  <exec_depend>niryo_robot_description</exec_depend>
+  <exec_depend>niryo_ned3pro_moveit_config</exec_depend>
+  <exec_depend>scooping_controller</exec_depend>
+  <exec_depend>robot_moveit</exec_depend>
+  <exec_depend>scoop_vision</exec_depend>
+  <exec_depend>camera_robot_calibration</exec_depend>
+  <exec_depend>pouring_controller</exec_depend>
+  <exec_depend>robot_orchestrator</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-scipy</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

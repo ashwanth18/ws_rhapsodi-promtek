@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<!-- Niryo Ned3 Pro + scoop with ros2_control on Isaac Sim topics (TopicBasedSystem). -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="niryo_ned3pro">
+    <xacro:arg name="joint_states_topic" default="/isaac_joint_states" />
+    <xacro:arg name="joint_commands_topic" default="/isaac_joint_commands" />
+    <!-- TopicBasedSystem publishes its command buffer (seeded from initial_value)
+         even with no controller active, so the launch passes Isaac's current pose. -->
+    <xacro:arg name="initial_joint_1" default="0.0" />
+    <xacro:arg name="initial_joint_2" default="0.0" />
+    <xacro:arg name="initial_joint_3" default="0.0" />
+    <xacro:arg name="initial_joint_4" default="0.0" />
+    <xacro:arg name="initial_joint_5" default="0.0" />
+    <xacro:arg name="initial_joint_6" default="0.0" />
+
+    <xacro:include filename="$(find niryo_robot_description)/urdf/ned3pro/niryo_ned3pro.urdf.xacro" />
+
+    <xacro:macro name="isaac_joint" params="name initial">
+        <joint name="${name}">
+            <command_interface name="position"/>
+            <state_interface name="position">
+                <param name="initial_value">${initial}</param>
+            </state_interface>
+            <state_interface name="velocity"/>
+        </joint>
+    </xacro:macro>
+
+    <ros2_control name="IsaacSystem" type="system">
+        <hardware>
+            <plugin>topic_based_ros2_control/TopicBasedSystem</plugin>
+            <param name="joint_commands_topic">$(arg joint_commands_topic)</param>
+            <param name="joint_states_topic">$(arg joint_states_topic)</param>
+            <param name="sum_wrapped_joint_states">false</param>
+        </hardware>
+        <xacro:isaac_joint name="joint_1" initial="$(arg initial_joint_1)"/>
+        <xacro:isaac_joint name="joint_2" initial="$(arg initial_joint_2)"/>
+        <xacro:isaac_joint name="joint_3" initial="$(arg initial_joint_3)"/>
+        <xacro:isaac_joint name="joint_4" initial="$(arg initial_joint_4)"/>
+        <xacro:isaac_joint name="joint_5" initial="$(arg initial_joint_5)"/>
+        <xacro:isaac_joint name="joint_6" initial="$(arg initial_joint_6)"/>
+    </ros2_control>
+</robot>

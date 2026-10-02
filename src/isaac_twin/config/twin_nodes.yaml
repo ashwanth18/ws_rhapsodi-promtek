@@ -1,0 +1,62 @@
+depth_to_mm:
+  ros__parameters:
+    use_sim_time: true
+    input_depth_topic: /isaac/camera/depth/image_raw
+    input_info_topic: /isaac/camera/depth/camera_info
+    output_depth_topic: /camera/depth/image_rect_raw
+    output_info_topic: /camera/depth/camera_info
+    min_range_m: 0.4
+    max_range_m: 6.0
+    # D455-like noise: sigma = noise_base_m + noise_quadratic * z^2.
+    noise_base_m: 0.0008
+    noise_quadratic: 0.002
+    # Fraction of valid pixels dropped to 0 (stereo holes).
+    hole_fraction: 0.01
+    seed: 0
+    # /camera/depth/color/points for RViz (decimated).
+    publish_cloud: true
+    cloud_stride: 4
+    cloud_rate_hz: 2.0
+
+twin_scale:
+  ros__parameters:
+    use_sim_time: true
+    input_topic: /isaac_twin/rs3_mass_g
+    output_topic: /weight
+    rate_hz: 20.0
+    lag_tau_s: 0.4
+    noise_std_g: 0.05
+    resolution_g: 0.01
+
+sim_camera_tf:
+  ros__parameters:
+    use_sim_time: true
+
+# Pouring controller: Niryo values from compose/devices/pi5.yml (fleet defaults).
+incline_control_node:
+  ros__parameters:
+    use_sim_time: true
+    incline_topic: /incline_control
+    joint_state_topic: /joint_states
+    traj_action_server: /niryo_robot_follow_joint_trajectory_controller/follow_joint_trajectory
+    tilt_joint_name: joint_5
+    max_incline_deg: 20.0
+    incline_direction: -1.0
+    joint_move_time_s: 0.5
+
+pour_server:
+  ros__parameters:
+    use_sim_time: true
+    weight_topic: /weight
+    vibration_topic: /vibration/intensity
+    joint_state_topic: /joint_states
+    control_law_type: bangbang
+
+# Overrides merged onto scoop_vision/config/scoop_vision.yaml for the twin.
+scoop_vision:
+  ros__parameters:
+    use_sim_time: true
+    planner:
+      # The twin camera sits exactly at the calibration, so the cell's
+      # temporary hand-eye workaround would only make sim scoops shallow.
+      surface_correction_m: 0.0

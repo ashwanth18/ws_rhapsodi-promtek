@@ -30,3 +30,11 @@ repositories:
     url: https://github.com/marcoesposito1988/easy_handeye2.git
     version: 29bd50a7939e853d768d203d2abc61eb6e50facc
 
+  # Isaac twin ros2_control hardware. Source build: the NVIDIA isaac-ros apt
+  # package (99.99.1) segfaults against hardware_interface 4.42; this commit
+  # has the current on_init(HardwareComponentInterfaceParams) API.
+  topic_based_ros2_control:
+    type: git
+    url: https://github.com/PickNikRobotics/topic_based_ros2_control.git
+    version: aa9f9ef9525a60f8becea322537dd1d6d1bf9123
+
