@@ -1,4 +1,7 @@
 #include "robot_orchestrator/move_to_node.hpp"
+
+#include "robot_orchestrator/last_failure.hpp"
+
 #include <sstream>
 
 using namespace std::chrono_literals;
@@ -171,6 +174,7 @@ BT::NodeStatus MoveToNode::onRunning()
       goal_handle_ = send_future_.get();
       if (!goal_handle_) {
         RCLCPP_ERROR(node_->get_logger(), "MoveToNode: goal_handle is null after send_goal");
+        setLastFailureReason(config().blackboard, "MoveTo: goal rejected by action server");
         return BT::NodeStatus::FAILURE;
       }
       result_future_ = client_->async_get_result(goal_handle_);
@@ -196,7 +200,17 @@ BT::NodeStatus MoveToNode::onRunning()
       RCLCPP_INFO(node_->get_logger(), "MoveToNode: result ready success=%s msg=%s",
                   res.result->success ? "true" : "false", res.result->message.c_str());
     }
-    return (res.result && res.result->success) ? BT::NodeStatus::SUCCESS : BT::NodeStatus::FAILURE;
+    if (res.result && res.result->success) {
+      return BT::NodeStatus::SUCCESS;
+    }
+    std::string detail;
+    if (res.result && !res.result->message.empty()) {
+      detail = res.result->message;
+    } else {
+      detail = "MoveTo failed (" + code + ")";
+    }
+    setLastFailureReason(config().blackboard, "MoveTo: " + detail);
+    return BT::NodeStatus::FAILURE;
   }
   rclcpp::spin_some(node_);
   return BT::NodeStatus::RUNNING;

@@ -70,8 +70,8 @@ public:
     this->declare_parameter<double>("current_state_timeout", 20.0);
     this->declare_parameter<std::string>("planning_pipeline", "ompl");
     this->declare_parameter<std::string>("planner_id", "");
-    this->declare_parameter<double>("velocity_scaling", 0.2);
-    this->declare_parameter<double>("acceleration_scaling", 0.2);
+    this->declare_parameter<double>("velocity_scaling", 0.4);
+    this->declare_parameter<double>("acceleration_scaling", 0.4);
     this->declare_parameter<double>("pattern_offset_x", 0.0);
     this->declare_parameter<double>("pattern_offset_y", 0.0);
     this->declare_parameter<double>("pattern_offset_z", 0.0);
@@ -84,8 +84,8 @@ public:
     this->declare_parameter<double>("post_lift_vibration_publish_rate_hz", 10.0);
     this->declare_parameter<double>("post_lift_vibration_settle_s", 1.5);
     this->declare_parameter<std::string>("post_lift_vibration_topic", "/vibration/intensity");
-    this->declare_parameter<double>("cartesian_velocity_scaling", 0.15);
-    this->declare_parameter<double>("cartesian_acceleration_scaling", 0.15);
+    this->declare_parameter<double>("cartesian_velocity_scaling", 0.35);
+    this->declare_parameter<double>("cartesian_acceleration_scaling", 0.35);
     this->declare_parameter<double>("cartesian_step", 0.005);
     this->declare_parameter<bool>("cartesian_avoid_collisions", false);
     this->declare_parameter<double>("orientation_constraint_tolerance", 0.12);
@@ -989,7 +989,11 @@ private:
 
     const auto wrapped_result = result_future.get();
     if (wrapped_result.code != rclcpp_action::ResultCode::SUCCEEDED || !wrapped_result.result) {
-      message = "MoveTo waypoint-style goal was aborted";
+      if (wrapped_result.result && !wrapped_result.result->message.empty()) {
+        message = "MoveTo waypoint-style goal aborted: " + wrapped_result.result->message;
+      } else {
+        message = "MoveTo waypoint-style goal was aborted";
+      }
       return false;
     }
 
@@ -1077,7 +1081,12 @@ private:
 
       const auto wrapped_result = result_future.get();
       if (wrapped_result.code != rclcpp_action::ResultCode::SUCCEEDED || !wrapped_result.result) {
-        message = "Trajectory execution aborted for segment " + std::to_string(i + 1);
+        if (wrapped_result.result && !wrapped_result.result->error_string.empty()) {
+          message = "Trajectory execution aborted for segment " +
+            std::to_string(i + 1) + ": " + wrapped_result.result->error_string;
+        } else {
+          message = "Trajectory execution aborted for segment " + std::to_string(i + 1);
+        }
         return false;
       }
 
@@ -1378,7 +1387,11 @@ private:
 
     const auto wrapped_result = result_future.get();
     if (wrapped_result.code != rclcpp_action::ResultCode::SUCCEEDED || !wrapped_result.result) {
-      message = "Continuous scoop goal was aborted";
+      if (wrapped_result.result && !wrapped_result.result->error_string.empty()) {
+        message = "Continuous scoop aborted: " + wrapped_result.result->error_string;
+      } else {
+        message = "Continuous scoop goal was aborted";
+      }
       return false;
     }
 

@@ -5,4 +5,10 @@
     base_class_type="rviz_common::Panel">
     <description>Panel for saving, loading, and executing scooping poses.</description>
   </class>
+  <class
+    name="scooping_controller/ScoopVisionPanel"
+    type="scooping_controller::ScoopVisionPanel"
+    base_class_type="rviz_common::Panel">
+    <description>D455 scoop_vision: container calibration, powder capture, next-scoop plan, preview and run.</description>
+  </class>
 </library>

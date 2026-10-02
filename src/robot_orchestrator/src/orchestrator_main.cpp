@@ -19,6 +19,7 @@
 #include <thread>
 #include "robot_orchestrator/register.hpp"
 #include "robot_orchestrator/mode_start.hpp"
+#include "robot_orchestrator/last_failure.hpp"
 #include <std_msgs/msg/float32.hpp>
 #include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/bool.hpp>
@@ -176,6 +177,9 @@ int main(int argc, char ** argv)
   auto webhook_meta_pub = ros_node->create_publisher<std_msgs::msg::String>("/webhook_run/metadata", latched_qos);
   auto run_state_pub = ros_node->create_publisher<std_msgs::msg::String>("/orchestrator/run_state", latched_qos);
   auto active_mode_pub = ros_node->create_publisher<std_msgs::msg::String>("/orchestrator/active_mode", latched_qos);
+  auto failure_reason_pub = ros_node->create_publisher<std_msgs::msg::String>(
+    "/orchestrator/failure_reason", latched_qos);
+  publishString(failure_reason_pub, "");
   publishString(run_state_pub, "idle");
   publishString(active_mode_pub, "idle");
   RCLCPP_INFO(
@@ -481,12 +485,12 @@ int main(int argc, char ** argv)
       }
 
       const double target_g = static_cast<double>(req->target_weight_g);
-      // Honor caller-supplied tolerance when > 0; otherwise 2% of target
-      // (floor 0.1 g) so a zero/unset float32 still gets a usable band.
+      // Honor caller-supplied tolerance when > 0. The backend sends 1 g.
+      // A zero/unset float32 falls back to that same 1 g band.
       const double tolerance_g =
         (static_cast<double>(req->tolerance_g) > 0.0)
           ? static_cast<double>(req->tolerance_g)
-          : std::max(0.1, target_g * 0.02);
+          : 1.0;
       if (!ros_node->has_parameter("robot_id")) {
         ros_node->declare_parameter<std::string>("robot_id", "robot-1");
       }
@@ -653,6 +657,9 @@ int main(int argc, char ** argv)
         "Failed to create behavior tree tree_id=" + this_run.tree_id,
         "{\"tree_id\":\"" + this_run.tree_id + "\",\"run_mode\":\"" +
           this_run.active_mode + "\"}");
+      publishString(
+        failure_reason_pub,
+        "Failed to create behavior tree tree_id=" + this_run.tree_id + ": " + e.what());
       publishString(run_state_pub, "failed");
       publishString(active_mode_pub, "idle");
       lightsout_active = false;
@@ -672,6 +679,8 @@ int main(int argc, char ** argv)
       this_run.active_mode.c_str(),
       this_run.phase_topic.c_str());
 
+    robot_orchestrator::clearLastFailureReason(blackboard);
+    publishString(failure_reason_pub, "");
     publishString(run_state_pub, "running");
     publishString(active_mode_pub, this_run.active_mode);
 
@@ -740,17 +749,26 @@ int main(int argc, char ** argv)
       std::string run_state;
       if (stopped) {
         run_state = "stopped";
+        publishString(failure_reason_pub, "Run stopped by operator");
       } else if (status == BT::NodeStatus::SUCCESS) {
         run_state = "succeeded";
+        publishString(failure_reason_pub, "");
       } else if (status == BT::NodeStatus::FAILURE) {
         run_state = "failed";
+        std::string reason = robot_orchestrator::getLastFailureReason(blackboard);
+        if (reason.empty()) {
+          reason = "Behavior tree returned FAILURE for tree_id=" + this_run.tree_id;
+        }
         health.error(
           "bt_tree_failure",
-          "Behavior tree returned FAILURE for tree_id=" + this_run.tree_id,
+          reason,
           "{\"tree_id\":\"" + this_run.tree_id + "\",\"run_mode\":\"" +
             completed_run_mode + "\"}");
+        // Publish concrete reason before run_state so subscribers see it first.
+        publishString(failure_reason_pub, reason);
       } else {
         run_state = "idle";
+        publishString(failure_reason_pub, "");
       }
       publishString(run_state_pub, run_state);
     }

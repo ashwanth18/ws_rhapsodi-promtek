@@ -1,0 +1,40 @@
+# Optional D455 scoop vision (powder height map → next scoop shift).
+# Not started by default — use Compose profile `vision`.
+#
+# Example (Pi):
+#   docker compose -f compose/devices/pi5.yml -f compose/devices/scoop-vision.yml \
+#     --profile vision --project-directory <workspace> --env-file robot-prod.env \
+#     up -d scoop_vision
+#
+# Needs a ros-prod image rebuilt with scoop_vision + camera_robot_calibration
+# (and the PlanScoop srv in robot_common_msgs) and the checked-in
+# niryo_d455_eob.calib. Without this service the BT trees fall back to the
+# authored scoop, so it is safe to leave down.
+
+services:
+  scoop_vision:
+    profiles: ["vision"]
+    image: ${ROS_PROD_IMAGE:-iserenity/rhapsodi-promtek:ros-prod}
+    network_mode: host
+    ipc: host
+    privileged: true
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+      FASTDDS_BUILTIN_TRANSPORTS: ${FASTDDS_BUILTIN_TRANSPORTS:-UDPv4}
+      HOME: /root
+    volumes:
+      - ./data:/data
+      - ./data/ros_home:/root/.ros
+      # Same /ws/config path as scooping_stack: /cell_layout/active points here.
+      - ./config:/ws/config:ro
+    command:
+      [
+        "bash",
+        "-lc",
+        "extra=''; sn='${SCOOP_VISION_SERIAL_NO:-}'; if [ -n \"$$sn\" ]; then extra=\"serial_no:=$$sn\"; fi; exec ros2 launch scoop_vision scoop_vision.launch.py calibration_name:=${SCOOP_VISION_CALIBRATION:-niryo_d455_eob} $$extra",
+      ]
+    restart: unless-stopped

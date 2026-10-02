@@ -1,5 +1,7 @@
 #include "robot_orchestrator/execute_scoop_node.hpp"
 
+#include "robot_orchestrator/last_failure.hpp"
+
 using namespace std::chrono_literals;
 
 namespace robot_orchestrator {
@@ -9,6 +11,10 @@ BT::PortsList ExecuteScoopNode::providedPorts()
   return {
     BT::InputPort<bool>("continuous", true, "Use /execute_scoop_continuous"),
     BT::InputPort<double>("pattern_offset_y", 0.0, "scoop task-frame Y offset applied by scooping_mtc_node"),
+    // X/Z are only written when the tree sets them (scoop_vision); otherwise
+    // the MTC node keeps whatever value it already has.
+    BT::InputPort<double>("pattern_offset_x", "optional scoop task-frame X offset"),
+    BT::InputPort<double>("pattern_offset_z", "optional scoop task-frame Z offset"),
     BT::InputPort<double>("timeout_s", 120.0, "timeout while waiting for scoop execution"),
   };
 }
@@ -31,18 +37,40 @@ BT::NodeStatus ExecuteScoopNode::onStart()
 
   if (!params_client_->wait_for_service(2s)) {
     RCLCPP_WARN(node_->get_logger(), "ExecuteScoopNode: parameter service for /scooping_mtc_node unavailable");
+    setLastFailureReason(
+      config().blackboard, "ExecuteScoop: scooping_mtc parameter service unavailable");
     return BT::NodeStatus::FAILURE;
   }
 
-  const auto results = params_client_->set_parameters(
-    {rclcpp::Parameter("pattern_offset_y", pattern_offset_y)});
-  if (results.empty() || !results.front().successful) {
-    const std::string reason = results.empty() ? "no response" : results.front().reason;
+  std::vector<rclcpp::Parameter> offsets{rclcpp::Parameter("pattern_offset_y", pattern_offset_y)};
+  double pattern_offset_x = 0.0;
+  double pattern_offset_z = 0.0;
+  const bool has_x = static_cast<bool>(getInput<double>("pattern_offset_x"));
+  const bool has_z = static_cast<bool>(getInput<double>("pattern_offset_z"));
+  if (has_x) {
+    pattern_offset_x = getInput<double>("pattern_offset_x").value();
+    offsets.emplace_back("pattern_offset_x", pattern_offset_x);
+  }
+  if (has_z) {
+    pattern_offset_z = getInput<double>("pattern_offset_z").value();
+    offsets.emplace_back("pattern_offset_z", pattern_offset_z);
+  }
+
+  const auto results = params_client_->set_parameters(offsets);
+  for (std::size_t i = 0; i < offsets.size(); ++i) {
+    if (i < results.size() && results[i].successful) {
+      continue;
+    }
+    const std::string reason = i < results.size() ? results[i].reason : "no response";
     RCLCPP_ERROR(
       node_->get_logger(),
-      "ExecuteScoopNode: failed to set pattern_offset_y=%.4f (%s)",
-      pattern_offset_y,
+      "ExecuteScoopNode: failed to set %s=%.4f (%s)",
+      offsets[i].get_name().c_str(),
+      offsets[i].as_double(),
       reason.c_str());
+    setLastFailureReason(
+      config().blackboard,
+      "ExecuteScoop: failed to set " + offsets[i].get_name() + " (" + reason + ")");
     return BT::NodeStatus::FAILURE;
   }
 
@@ -52,6 +80,10 @@ BT::NodeStatus ExecuteScoopNode::onStart()
       node_->get_logger(),
       "ExecuteScoopNode: scoop service %s unavailable",
       continuous ? "/execute_scoop_continuous" : "/execute_scoop");
+    setLastFailureReason(
+      config().blackboard,
+      std::string("ExecuteScoop: scoop service unavailable (") +
+        (continuous ? "/execute_scoop_continuous" : "/execute_scoop") + ")");
     return BT::NodeStatus::FAILURE;
   }
 
@@ -59,11 +91,15 @@ BT::NodeStatus ExecuteScoopNode::onStart()
   result_future_ = client->async_send_request(request).future.share();
   start_time_ = node_->now();
 
+  const std::string x_text = has_x ? std::to_string(pattern_offset_x) : "unchanged";
+  const std::string z_text = has_z ? std::to_string(pattern_offset_z) : "unchanged";
   RCLCPP_INFO(
     node_->get_logger(),
-    "ExecuteScoopNode: requested scoop execution (continuous=%s, pattern_offset_y=%.4f m)",
+    "ExecuteScoopNode: requested scoop execution (continuous=%s, pattern_offset x=%s y=%.4f z=%s m)",
     continuous ? "true" : "false",
-    pattern_offset_y);
+    x_text.c_str(),
+    pattern_offset_y,
+    z_text.c_str());
   return BT::NodeStatus::RUNNING;
 }
 
@@ -73,6 +109,7 @@ BT::NodeStatus ExecuteScoopNode::onRunning()
     const auto response = result_future_.get();
     if (!response) {
       RCLCPP_ERROR(node_->get_logger(), "ExecuteScoopNode: empty service response");
+      setLastFailureReason(config().blackboard, "ExecuteScoop: empty scoop service response");
       return BT::NodeStatus::FAILURE;
     }
 
@@ -81,7 +118,14 @@ BT::NodeStatus ExecuteScoopNode::onRunning()
       "ExecuteScoopNode: scoop response success=%s msg=%s",
       response->success ? "true" : "false",
       response->message.c_str());
-    return response->success ? BT::NodeStatus::SUCCESS : BT::NodeStatus::FAILURE;
+    if (!response->success) {
+      const std::string detail = response->message.empty()
+        ? "scoop execution failed"
+        : response->message;
+      setLastFailureReason(config().blackboard, "ExecuteScoop: " + detail);
+      return BT::NodeStatus::FAILURE;
+    }
+    return BT::NodeStatus::SUCCESS;
   }
 
   if ((node_->now() - start_time_).seconds() > timeout_s_) {
@@ -89,6 +133,9 @@ BT::NodeStatus ExecuteScoopNode::onRunning()
       node_->get_logger(),
       "ExecuteScoopNode: timed out waiting for scoop execution after %.1f s",
       timeout_s_);
+    setLastFailureReason(
+      config().blackboard,
+      "ExecuteScoop: timed out after " + std::to_string(static_cast<int>(timeout_s_)) + "s");
     return BT::NodeStatus::FAILURE;
   }
 

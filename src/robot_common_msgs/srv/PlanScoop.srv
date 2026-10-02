@@ -1,0 +1,23 @@
+# Next scoop from the latest powder height map (scoop_vision).
+# The authored scoop poses are only shifted (pattern_offset_x/y/z on
+# scooping_mtc_node), never reshaped.
+
+# Reject height maps older than this (s). 0 = node default.
+float64 max_heightmap_age_s
+---
+bool success
+string message
+float64 pattern_offset_x
+float64 pattern_offset_y
+float64 pattern_offset_z
+# fill_efficiency * engaged volume / bowl capacity (can exceed 1.0)
+float64 predicted_fill_ratio
+float64 predicted_volume_m3
+float64 capacity_m3
+float64 max_penetration_m
+# Mean powder height under the sweep, scooping_container_frame
+float64 surface_height_m
+float64 min_clearance_m
+float64 heightmap_age_s
+# Best reachable scoop is below empty_fill_ratio (success is false)
+bool container_empty

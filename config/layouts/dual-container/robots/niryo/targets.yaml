@@ -11,3 +11,9 @@ targets:
   PourDoneAtWeighingContainer: {frame_id: base_link, position: {x: -0.0103, y: -0.3904, z: 0.3107}, orientation: {x: -0.122787804, y: -0.122787804, z: -0.6963642403, w: 0.6963642403}}
   MoveToScoopingContainer: {frame_id: base_link, position: {x: 0.4278, y: -0.0094, z: 0.1856}, orientation: {x: 0, y: 0, z: 0, w: 1}}
   ReturnHome: {frame_id: base_link, position: {x: 0.4229, y: -0.0123, z: 0.2064}, orientation: {x: 0, y: 0, z: 0, w: 1}}
+  # Out of the D455's view of the RS6 bin, for scoop_vision capture / container
+  # fit (Scoop Vision panel "Arm to camera-clear"). Chosen by IK/FK search
+  # 2026-10-01: all joints >= 0.52 rad from limits (joint_2 = -0.08, not on its
+  # 0.44 limit like MoveToWeighingContainer), arm >= 15 cm outside the camera's
+  # view of the bin, scoop level at z ~0.34 m, collision-free.
+  CameraClear: {frame_id: base_link, position: {x: 0.25, y: 0.35, z: 0.25}, orientation: {x: 0.0, y: 0.0, z: 0.4576, w: 0.8892}}

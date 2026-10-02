@@ -2,6 +2,9 @@
   <BehaviorTree ID="ScoopWeighPour">
     <Sequence name="ScoopWeighPourFlow">
       <WaitSeconds seconds="0.5"/>
+      <ForceSuccess>
+        <CaptureScoopSurface/>
+      </ForceSuccess>
       <Repeat num_cycles="{lightsout_episodes}">
         <Sequence name="ScoopWeighPourEpisode">
           <EpisodeMarker/>
@@ -14,7 +17,17 @@
                   acceleration_scaling="0.20" />
           <WaitSeconds seconds="1.0"/>
 
-          <ExecuteScoop continuous="true" timeout_s="120.0"/>
+          <!-- scoop_vision shift of the authored scoop; authored scoop if no fresh map. -->
+          <Fallback name="ChooseScoop">
+            <PlanScoopFromVision pattern_offset_x="{scoop_pattern_offset_x}"
+                                 pattern_offset_y="{scoop_pattern_offset_y}"
+                                 pattern_offset_z="{scoop_pattern_offset_z}"/>
+            <Script code="scoop_pattern_offset_x:=0.0; scoop_pattern_offset_y:=0.0; scoop_pattern_offset_z:=0.0"/>
+          </Fallback>
+          <ExecuteScoop continuous="true" timeout_s="120.0"
+                        pattern_offset_x="{scoop_pattern_offset_x}"
+                        pattern_offset_y="{scoop_pattern_offset_y}"
+                        pattern_offset_z="{scoop_pattern_offset_z}"/>
           <PhaseMarker phase="scoop_end"/>
           <WaitSeconds seconds="1.0"/>
 
@@ -26,13 +39,27 @@
                   velocity_scaling="0.15"
                   acceleration_scaling="0.15" />
           <PhaseMarker phase="transport_end"/>
-          <WaitSeconds seconds="2.5"/>
+          <!-- Arm is clear of the D455's view of the scoop bin: map the powder
+               for the next scoop while the scale settles. -->
+          <Parallel success_count="2" failure_count="1" name="SettleAndCaptureSurface">
+            <WaitSeconds seconds="2.5"/>
+            <ForceSuccess>
+              <CaptureScoopSurface/>
+            </ForceSuccess>
+          </Parallel>
 
           <PhaseMarker phase="pour_start"/>
-          <PourToTarget target_weight="{lightsout_target_weight_g}"
-                        tolerance="{lightsout_tolerance_g}"
-                        max_time_s="30"/>
-          <PhaseMarker phase="pour_end"/>
+          <Fallback name="PourThenMarkEnd">
+            <Sequence>
+              <PourToTarget target_weight="{lightsout_target_weight_g}"
+                            tolerance="{lightsout_tolerance_g}"
+                            max_time_s="30"/>
+              <PhaseMarker phase="pour_end"/>
+            </Sequence>
+            <ForceFailure>
+              <PhaseMarker phase="pour_end"/>
+            </ForceFailure>
+          </Fallback>
           <WaitSeconds seconds="1.0"/>
 
           <MoveTo name="ReturnHome"

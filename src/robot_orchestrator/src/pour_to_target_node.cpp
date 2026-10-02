@@ -1,5 +1,7 @@
 #include "robot_orchestrator/pour_to_target_node.hpp"
 
+#include "robot_orchestrator/last_failure.hpp"
+
 using namespace std::chrono_literals;
 
 namespace robot_orchestrator {
@@ -25,7 +27,10 @@ PourToTargetNode::PourToTargetNode(const std::string& name, const BT::NodeConfig
 BT::NodeStatus PourToTargetNode::onStart()
 {
   double target=0, tol=0.01, max_time=30.0;
-  if (!getInput("target_weight", target)) return BT::NodeStatus::FAILURE;
+  if (!getInput("target_weight", target)) {
+    setLastFailureReason(config().blackboard, "PourToTarget: missing target_weight input");
+    return BT::NodeStatus::FAILURE;
+  }
   getInput("tolerance", tol);
   getInput("max_time_s", max_time);
 
@@ -39,6 +44,8 @@ BT::NodeStatus PourToTargetNode::onStart()
   RCLCPP_INFO(node_->get_logger(), "PourToTargetNode: waiting for action server /pour_to_target");
   if (!client_->wait_for_action_server(2s)) {
     RCLCPP_WARN(node_->get_logger(), "PourToTargetNode: action server /pour_to_target not available");
+    setLastFailureReason(
+      config().blackboard, "PourToTarget: action server /pour_to_target unavailable");
     return BT::NodeStatus::FAILURE;
   }
 
@@ -71,6 +78,7 @@ BT::NodeStatus PourToTargetNode::onRunning()
       goal_handle_ = send_future_.get();
       if (!goal_handle_) {
         RCLCPP_WARN(node_->get_logger(), "PourToTargetNode: goal rejected by server");
+        setLastFailureReason(config().blackboard, "PourToTarget: goal rejected by action server");
         return BT::NodeStatus::FAILURE;
       }
       RCLCPP_INFO(node_->get_logger(), "PourToTargetNode: goal accepted by server");
@@ -111,7 +119,13 @@ BT::NodeStatus PourToTargetNode::onRunning()
       if (res.result->achieved || res.result->overshoot) {
         return BT::NodeStatus::SUCCESS;
       }
+      const std::string detail = res.result->message.empty()
+        ? "pour did not achieve target"
+        : res.result->message;
+      setLastFailureReason(config().blackboard, "PourToTarget: " + detail);
+      return BT::NodeStatus::FAILURE;
     }
+    setLastFailureReason(config().blackboard, "PourToTarget: empty pour result");
     return BT::NodeStatus::FAILURE;
   }
   // Client-side watchdog to avoid indefinite stall if server never responds
@@ -120,6 +134,7 @@ BT::NodeStatus PourToTargetNode::onRunning()
     if (goal_handle_) {
       (void)client_->async_cancel_goal(goal_handle_);
     }
+    setLastFailureReason(config().blackboard, "PourToTarget: client watchdog timeout");
     return BT::NodeStatus::FAILURE;
   }
   rclcpp::spin_some(node_);

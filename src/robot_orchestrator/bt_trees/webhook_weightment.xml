@@ -5,6 +5,12 @@
       <VerifyCellLayout/>
       <WeightFresh max_age_s="2.0"/>
       <CaptureBaseline/>
+      <!-- First scoop of a run: map now if the arm is out of the camera's
+           view; otherwise the previous run's map (if still fresh) or the
+           authored scoop is used. -->
+      <ForceSuccess>
+        <CaptureScoopSurface/>
+      </ForceSuccess>
       <RetryIfNeedRescoop num_attempts="-1"
                            flag_key="pour_need_rescoop"
                            attempt_index="{rescoop_attempt_index}">
@@ -23,15 +29,28 @@
           <PhaseMarker phase="transport_end"/>
           <WaitSeconds seconds="1.0"/>
           <PhaseMarker phase="scoop_start"/>
-          <ComputeScoopOffset attempt_index="{rescoop_attempt_index}"
-                              base_offset_y="0.0"
-                              step_y="-0.06"
-                              min_offset_y="-0.18"
-                              max_offset_y="0.0"
-                              pattern_offset_y="{scoop_pattern_offset_y}"/>
+          <!-- scoop_vision shifts the authored scoop onto the powder (lane +
+               depth). Without a fresh height map it fails and the blind
+               Y raster below runs exactly as before. -->
+          <Fallback name="ChooseScoop">
+            <PlanScoopFromVision pattern_offset_x="{scoop_pattern_offset_x}"
+                                 pattern_offset_y="{scoop_pattern_offset_y}"
+                                 pattern_offset_z="{scoop_pattern_offset_z}"/>
+            <Sequence name="AuthoredScoopRaster">
+              <Script code="scoop_pattern_offset_x:=0.0; scoop_pattern_offset_z:=0.0"/>
+              <ComputeScoopOffset attempt_index="{rescoop_attempt_index}"
+                                  base_offset_y="0.0"
+                                  step_y="0.06"
+                                  min_offset_y="0.0"
+                                  max_offset_y="0.18"
+                                  pattern_offset_y="{scoop_pattern_offset_y}"/>
+            </Sequence>
+          </Fallback>
           <ExecuteScoop continuous="true"
                         timeout_s="120.0"
-                        pattern_offset_y="{scoop_pattern_offset_y}"/>
+                        pattern_offset_x="{scoop_pattern_offset_x}"
+                        pattern_offset_y="{scoop_pattern_offset_y}"
+                        pattern_offset_z="{scoop_pattern_offset_z}"/>
           <PhaseMarker phase="scoop_end"/>
           <WaitSeconds seconds="1.0"/>
 
@@ -48,7 +67,14 @@
                   velocity_scaling="0.70"
                   acceleration_scaling="0.70" />
           <PhaseMarker phase="transport_end"/>
-          <WaitSeconds seconds="2.5"/>
+          <!-- Arm is clear of the D455's view of the scoop bin here: map the
+               powder for the next scoop while the scale settles. -->
+          <Parallel success_count="2" failure_count="1" name="SettleAndCaptureSurface">
+            <WaitSeconds seconds="2.5"/>
+            <ForceSuccess>
+              <CaptureScoopSurface/>
+            </ForceSuccess>
+          </Parallel>
           <ForceSuccess>
             <ComputeRemaining batch_target="{webhook_target_weight_g}"
                               tolerance="{webhook_tolerance_g}"
@@ -82,10 +108,20 @@
                       velocity_scaling="0.70"
                       acceleration_scaling="0.70" />
               <PhaseMarker phase="pour_start"/>
-              <PourToTarget target_weight="{remaining_weight}"
-                            tolerance="{webhook_tolerance_g}"
-                            max_time_s="30"/>
-              <PhaseMarker phase="pour_end"/>
+              <!-- pour_end runs on success and on scoop-empty. A failed
+                   PourToTarget must still mark the end, then fail so the
+                   rescoop retry sees the failure. -->
+              <Fallback name="PourThenMarkEnd">
+                <Sequence>
+                  <PourToTarget target_weight="{remaining_weight}"
+                                tolerance="{webhook_tolerance_g}"
+                                max_time_s="90"/>
+                  <PhaseMarker phase="pour_end"/>
+                </Sequence>
+                <ForceFailure>
+                  <PhaseMarker phase="pour_end"/>
+                </ForceFailure>
+              </Fallback>
               <ForceSuccess>
                 <Sequence name="RecoverFromPourSequence">
                   <!-- Untilt in place (same TCP as PourStart), then lift. -->

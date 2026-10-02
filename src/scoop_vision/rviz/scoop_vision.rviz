@@ -1,0 +1,165 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: scooping_controller/ScoopVisionPanel
+    Name: Scoop Vision
+  - Class: rviz_common/Views
+    Name: Views
+# No Image display on purpose: an Image dock + this panel + Motion Planning
+# Tasks with no saved window layout squeezes the 3D view and RViz2 segfaults
+# in RenderWindow::exposeEvent (XWayland). Add one by hand if needed.
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Enabled: true
+      Name: Grid
+      Plane: XY
+      Cell Size: 0.1
+      Reference Frame: <Fixed Frame>
+    - Class: rviz_default_plugins/TF
+      Enabled: false
+      Name: TF
+      Marker Scale: 0.15
+    - Class: rviz_default_plugins/RobotModel
+      Enabled: true
+      Name: RobotModel
+      Description Topic:
+        Value: /robot_description
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Containers
+      Topic:
+        Value: /container_marker
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+    # Raw D455 depth cloud: should sit on the flour and the bin rim if the
+    # hand-eye calibration and layout are right.
+    - Alpha: 0.6
+      Class: rviz_default_plugins/PointCloud2
+      Enabled: true
+      Name: D455 Depth Cloud
+      Topic:
+        Value: /camera/depth/color/points
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+      Size (m): 0.003
+      Size (Pixels): 2
+      Style: Points
+      Color Transformer: RGB8
+      Decay Time: 0
+      Use Fixed Frame: true
+    # Fused height map from the last ~/capture (5 mm cells, coloured by height).
+    - Alpha: 1
+      Class: rviz_default_plugins/PointCloud2
+      Enabled: true
+      Name: Powder Height Map
+      Topic:
+        Value: /scoop_vision/surface
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Size (m): 0.005
+      Style: Flat Squares
+      Color Transformer: AxisColor
+      Axis: Z
+      Autocompute Value Bounds: true
+      Decay Time: 0
+      Use Fixed Frame: true
+    # Next scoop from ~/plan: TCP path, ghost scoop at each waypoint, an
+    # animated scoop running the motion, swept volume and a summary.
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Planned Scoop
+      Topic:
+        Value: /scoop_vision/plan_markers
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+    # Task container where ~/fit_container_pose found it (orange).
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Fitted Container
+      Topic:
+        Value: /scoop_vision/fitted_container
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+    # Scoop mesh animated along the planned motion (loops).
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Scoop Motion
+      Topic:
+        Value: /scoop_vision/scoop_motion
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+    # "Preview in MoveIt" (panel) → MTC plan of the shifted scoop, whole arm.
+    - Class: moveit_task_constructor/Motion Planning Tasks
+      Enabled: true
+      Interrupt Display: false
+      Loop Animation: true
+      Markers:
+        All at once?: false
+        Value: false
+      Name: Motion Planning Tasks
+      Robot:
+        Fixed Robot Color: 150; 50; 150
+        Robot Alpha: 0.5
+        Show Robot Collision: false
+        Show Robot Visual: true
+        Use Fixed Robot Color: false
+        Value: ""
+      Robot Description: robot_description
+      Scene:
+        Attached Body Color: 150; 50; 150
+        Scene Alpha: 0.25
+        Scene Color: 50; 230; 50
+        Value: true
+        Voxel Coloring: Z-Axis
+        Voxel Rendering: Occupied Voxels
+      Show Trail: false
+      State Display Time: 0.05 s
+      Task Solution Topic: /solution
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: base_link
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/FocusCamera
+    - Class: rviz_default_plugins/Measure
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 1.1
+      Focal Point:
+        X: 0.4
+        Y: -0.1
+        Z: 0.05
+      Name: Current View
+      Pitch: 0.7
+      Yaw: 3.6
+Window Geometry:
+  Height: 950
+  Scoop Vision:
+    collapsed: false
+  Width: 1600
+  X: 80
+  Y: 80

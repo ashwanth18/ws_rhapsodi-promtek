@@ -62,6 +62,8 @@ target_link_libraries(scooping_marker_server yaml-cpp)
 add_library(scooping_rviz_panel SHARED
   src/scooping_panel.cpp
   include/scooping_controller/scooping_panel.hpp
+  src/scoop_vision_panel.cpp
+  include/scooping_controller/scoop_vision_panel.hpp
 )
 target_compile_features(scooping_rviz_panel PUBLIC cxx_std_17)
 target_include_directories(scooping_rviz_panel PUBLIC

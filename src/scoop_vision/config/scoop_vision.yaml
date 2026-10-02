@@ -1,0 +1,56 @@
+# scoop_vision defaults (Niryo Ned3 Pro + table D455, wheat flour).
+scoop_vision:
+  ros__parameters:
+    container_frame: scooping_container_frame
+    depth_topic: /camera/depth/image_rect_raw
+    depth_info_topic: /camera/depth/camera_info
+    depth_scale: 0.001
+    stride: 2
+    capture_frames: 8
+    capture_timeout_s: 6.0
+    min_measured_fraction: 0.5
+    max_heightmap_age_s: 900.0
+    robot_key: niryo
+    mtc_node: /scooping_mtc_node
+    eef_frame: tcp_link
+    occlusion_radius_m: 0.07
+    # Every capture checks the bin rim against the layout and refuses if off.
+    require_alignment: true
+    alignment_tolerance_xy_m: 0.01
+    alignment_tolerance_z_m: 0.01
+    # Walls grown sideways by this before clearance checks (bin-pose and
+    # hand-eye error is horizontal): back/side walls get >= 8 + 12 = 20 mm.
+    wall_margin_xy_m: 0.012
+    # Plans only return shifts the arm can reach (MoveIt /compute_ik on all
+    # 5 poses). A full bin lifts the approach; without this it can be unreachable.
+    check_reachability: true
+    ik_group: arm
+    ik_timeout_s: 0.1
+
+    planner:
+      xy_step_m: 0.01
+      # Fraction of the powder the swept scoop passes through that ends up in
+      # the bowl. Start at 0.5; refit from /scoop_vision/last_plan vs the
+      # scooped mass on the scale.
+      fill_efficiency: 0.5
+      # >1: aim to overfill; cohesive flour heaps and the pour does precision.
+      target_fill_ratio: 1.2
+      # Niryo is light; limit how deep the scoop drags below the surface.
+      max_penetration_m: 0.065
+      # Go this much deeper than the fill model asks for (operator preference).
+      extra_depth_m: 0.0
+      # TEMPORARY (2026-10-01): hand-eye calibration reads the powder too high,
+      # so the scoop only scraped. Lower the measured surface by this much.
+      # Revert to 0.0 after recalibrating the camera. Live: Scoop Vision panel
+      # "Depth correction", or ros2 param set /scoop_vision planner.surface_correction_m
+      surface_correction_m: 0.03
+      min_penetration_m: 0.008
+      wall_clearance_m: 0.008
+      floor_clearance_m: 0.008
+      approach_clearance_m: 0.01
+      dz_min_m: -0.06
+      dz_max_m: 0.12
+      empty_fill_ratio: 0.15
+      # Prefer the highest part of the bed once fill is satisfied.
+      level_weight: 0.3
+      shift_weight_per_m: 0.2

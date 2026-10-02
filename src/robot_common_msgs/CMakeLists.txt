@@ -29,6 +29,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SaveScoopPoseSet.srv"
   "srv/ListScoopPoseSets.srv"
   "srv/LoadScoopPoseSet.srv"
+  "srv/PlanScoop.srv"
   DEPENDENCIES std_msgs geometry_msgs builtin_interfaces
 )
 

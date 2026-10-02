@@ -28,6 +28,7 @@
 #include "robot_orchestrator/phase_marker_node.hpp"
 #include "robot_orchestrator/log_remaining_weight_node.hpp"
 #include "robot_orchestrator/retry_if_need_rescoop_node.hpp"
+#include "robot_orchestrator/scoop_vision_nodes.hpp"
 #include <behaviortree_cpp/decorators/loop_node.h>
 #include <behaviortree_cpp/decorators/consume_queue.h>
 #include <robot_common_msgs/msg/container_spec.hpp>
@@ -66,6 +67,8 @@ void RegisterNodes(BT::BehaviorTreeFactory & factory)
   factory.registerNodeType<PhaseMarkerNode>("PhaseMarker");
   factory.registerNodeType<LogRemainingWeightNode>("LogRemainingWeight");
   factory.registerNodeType<RetryIfNeedRescoopNode>("RetryIfNeedRescoop");
+  factory.registerNodeType<CaptureScoopSurfaceNode>("CaptureScoopSurface");
+  factory.registerNodeType<PlanScoopFromVisionNode>("PlanScoopFromVision");
 
   // Register LoopNode for ContainerSpec queue consumption
   factory.registerNodeType<BT::LoopNode<robot_common_msgs::msg::ContainerSpec>>("LoopContainerSpec");
