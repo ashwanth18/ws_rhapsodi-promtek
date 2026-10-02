@@ -7,6 +7,10 @@ import EpisodeStrip from './components/operations/EpisodeStrip'
 import EpisodeWeightHero from './components/operations/EpisodeWeightHero'
 import LiveWeightChart from './components/operations/LiveWeightChart'
 import PhasePanel from './components/operations/PhasePanel'
+import PourControlLawCard, {
+  PourControlLawToggle,
+  usePourControlLawVisibility,
+} from './components/operations/PourControlLawCard'
 import RunContextCard from './components/operations/RunContextCard'
 import SessionProgressCard from './components/operations/SessionProgressCard'
 import WeightHero from './components/operations/WeightHero'
@@ -25,6 +29,7 @@ import DateTimeText from './components/DateTimeText'
 import { useRuntimeConfig } from './config/RuntimeConfig'
 import { useLightsoutLive } from './hooks/useLightsoutLive'
 import { usePhaseBaselines } from './hooks/usePhaseBaselines'
+import { pourOriginKey } from './hooks/pourOriginStore'
 import { useRuntimeMode } from './hooks/useRuntimeMode'
 import { useRos } from './ros/RosContext'
 import { ROSLIB } from './ros/roslib'
@@ -35,6 +40,7 @@ type Metadata = {
   batch_id?: string
   ingredient_id?: string
   target_weight_g?: number | string
+  tolerance_g?: number | string
 }
 
 type RobotRunRow = {
@@ -48,6 +54,7 @@ type RobotRunRow = {
   target_weight_g: number | null
   trace_run_id: string | null
   status: string | null
+  error_message: string | null
   requested_at: string | null
   started_at: string | null
   finished_at: string | null
@@ -84,14 +91,17 @@ const VIBRATION_TOPIC =
 const INCLINE_TOPIC =
   (import.meta as any).env.VITE_INCLINE_TOPIC || '/incline_control'
 
-function parseTargetWeight(metadata: Metadata | null): number | null {
-  const value = metadata?.target_weight_g
-  if (typeof value === 'number') return value
+function parseGrams(value: number | string | undefined): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string') {
     const parsed = Number.parseFloat(value)
     return Number.isFinite(parsed) ? parsed : null
   }
   return null
+}
+
+function parseTargetWeight(metadata: Metadata | null): number | null {
+  return parseGrams(metadata?.target_weight_g)
 }
 
 function processedPhaseIndex(detail: DetailRow | null): number {
@@ -127,7 +137,10 @@ function App() {
   const [loading, setLoading] = useState(false)
 
   const lightsout = useLightsoutLive(isLightsout, apiBase, runState, livePhase)
-  const baselines = usePhaseBaselines(weight, livePhase)
+  const weightmentKey = useMemo(() => pourOriginKey(metadata), [metadata])
+  const baselines = usePhaseBaselines(weight, livePhase, weightmentKey)
+  const { visible: showPourLawCard, setShowCard: setShowPourLawCard } =
+    usePourControlLawVisibility()
 
   useEffect(() => {
     const r = ros
@@ -210,12 +223,21 @@ function App() {
         name: WEBHOOK_METADATA_TOPIC,
         messageType: 'std_msgs/String',
       })
+      // Latched metadata redelivers on every (re)subscribe. Only treat a new
+      // weightment/run id as a reset — same id must keep cumulative origin
+      // across rescoop and Operations remounts.
+      let lastMetaKey: string | null = null
       metaTopic.subscribe((msg: { data: string }) => {
         try {
-          setMetadata(JSON.parse(msg.data || '{}'))
-          setLivePhaseEvents([])
-          setLivePhase(null)
-          baselines.reset()
+          const parsed = JSON.parse(msg.data || '{}') as Metadata
+          const key = pourOriginKey(parsed)
+          setMetadata(parsed)
+          if (key !== lastMetaKey) {
+            lastMetaKey = key
+            setLivePhaseEvents([])
+            setLivePhase(null)
+            baselines.reset(key)
+          }
         } catch {
           setMetadata(null)
         }
@@ -224,7 +246,7 @@ function App() {
     }
 
     return () => subs.forEach((t) => t.unsubscribe())
-    // baselines.reset is stable enough; avoid re-sub on every render
+    // baselines.reset is stable (useCallback); avoid re-sub on every render
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ros, profile.phaseTopic, profile.activeTopic, isLightsout])
 
@@ -234,7 +256,7 @@ function App() {
     setLivePhaseEvents([])
     setTopicActive(false)
     setMetadata(null)
-    baselines.reset()
+    baselines.reset(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.family])
 
@@ -306,10 +328,14 @@ function App() {
   const targetWeightG = isLightsout ? lightsout.targetWeightG : mesTargetWeightG
 
   const targetToleranceG = useMemo(() => {
-    if (typeof targetWeightG !== 'number') return null
-    if (profile.toleranceFrac != null) return Math.max(0.1, targetWeightG * profile.toleranceFrac)
-    return targetWeightG * 0.02
-  }, [targetWeightG, profile.toleranceFrac])
+    if (isLightsout) {
+      if (typeof targetWeightG !== 'number') return null
+      if (profile.toleranceFrac != null) return Math.max(0.1, targetWeightG * profile.toleranceFrac)
+    }
+    const fromMeta = parseGrams(metadata?.tolerance_g)
+    if (fromMeta != null && fromMeta > 0) return fromMeta
+    return 3
+  }, [isLightsout, targetWeightG, profile.toleranceFrac, metadata])
 
   const showLiveTimeline =
     runActive ||
@@ -494,7 +520,11 @@ function App() {
             : 'Live robot execution, weight telemetry, and batch progress.'
         }
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <PourControlLawToggle
+              visible={showPourLawCard}
+              onChange={setShowPourLawCard}
+            />
             {!isLightsout && (
               <Button variant="outline" onClick={() => navigate('/batches')}>
                 Batches
@@ -512,14 +542,18 @@ function App() {
         }
       />
 
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div
+        className={`mb-4 grid grid-cols-2 gap-3 ${
+          showPourLawCard ? 'lg:grid-cols-5' : 'lg:grid-cols-4'
+        }`}
+      >
         <MetricCard
           label="Robot State"
           value={statusLabel(
             runActive ? runState : isLightsout ? runState : latestRun?.status || runState
           )}
         />
-        {isLightsout ? (
+        {showPourLawCard ? <PourControlLawCard /> : null}        {isLightsout ? (
           <>
             <MetricCard
               label="Episode"
@@ -613,9 +647,12 @@ function App() {
           ) : (
             <WeightHero
               weight={
-                // Prefer net poured when we have a pour baseline (correct by construction).
-                baselines.pourBaselineG != null && baselines.netPouredG != null
-                  ? baselines.netPouredG
+                // Always prefer cumulative vs first pour of this weightment.
+                // Never fall back to segment netPouredG — that re-tares to 0 on
+                // every rescoop pour_start. If origin is not latched yet, show
+                // raw scale (pre-pour) rather than a false 0.
+                baselines.cumulativePouredG != null
+                  ? baselines.cumulativePouredG
                   : weight
               }
               targetWeightG={targetWeightG}
@@ -692,13 +729,21 @@ function App() {
                           : latestRun.status === 'running' ||
                               latestRun.status === 'starting'
                             ? 'warn'
-                            : latestRun.status === 'failed'
+                            : latestRun.status === 'failed' ||
+                                latestRun.status === 'mes_send_failed'
                               ? 'bad'
                               : 'neutral'
                       }
                       pulse={
                         latestRun.status === 'running' ||
                         latestRun.status === 'starting'
+                      }
+                      title={
+                        (latestRun.status === 'failed' ||
+                          latestRun.status === 'mes_send_failed') &&
+                        latestRun.error_message
+                          ? latestRun.error_message
+                          : undefined
                       }
                     />
                     <StatusBadge

@@ -15,6 +15,8 @@ find_package(rhapsodi_common_cpp REQUIRED)
 add_library(${PROJECT_NAME} SHARED
   src/pour_server.cpp
   src/pid_vibration.cpp
+  src/flow_rate_vibration.cpp
+  src/pid_inflight_vibration.cpp
   src/bangbang_trickle.cpp
 )
 target_include_directories(${PROJECT_NAME} PUBLIC
@@ -50,6 +52,14 @@ install(TARGETS pour_client_demo
 install(DIRECTORY include/
   DESTINATION include
 )
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_pid_flow test/test_pid_flow.cpp)
+  if(TARGET test_pid_flow)
+    target_link_libraries(test_pid_flow ${PROJECT_NAME})
+  endif()
+endif()
 
 ament_package()
 

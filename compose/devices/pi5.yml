@@ -75,6 +75,8 @@ services:
       NODE_EXPORTER_URL: ${NODE_EXPORTER_URL:-http://host.docker.internal:9100/metrics}
       HOST_PROC: /host/proc
       HOST_SYS: /host/sys
+      # Surfaced on /host_info for dashboard pour-law badge (pour_server param).
+      CONTROL_LAW_TYPE: ${CONTROL_LAW_TYPE:-bangbang}
     ports:
       - "8000:8000"
     volumes:
@@ -258,12 +260,49 @@ services:
       -p weight_topic:=/weight
       -p vibration_topic:=/vibration/intensity
       -p joint_state_topic:=/joint_states
+      -p control_law_type:=${CONTROL_LAW_TYPE:-bangbang}
+      -p pid_kp:=${PID_KP:-0.7}
+      -p pid_ki:=${PID_KI:-0.05}
+      -p pid_kd:=${PID_KD:-0.0}
+      -p pid_feedforward_intensity:=${PID_FEEDFORWARD_INTENSITY:-0.0}
+      -p pid_integral_limit:=${PID_INTEGRAL_LIMIT:-5.0}
+      -p pid_error_norm_g:=${PID_ERROR_NORM_G:-100.0}
+      -p pid_smooth_error_norm_g:=${PID_SMOOTH_ERROR_NORM_G:-250.0}
+      -p pid_slew_per_s:=${PID_SLEW_PER_S:-0.0}
+      -p pid_smooth_min_pour:=${PID_SMOOTH_MIN_POUR:-0.20}
+      -p pid_flow_endgame_below_g:=${PID_FLOW_ENDGAME_BELOW_G:-0.0}
+      -p pid_flow_window_s:=${PID_FLOW_WINDOW_S:-0.6}
+      -p pid_flow_land_time_s:=${PID_FLOW_LAND_TIME_S:-2.0}
+      -p pid_flow_flow_max_g_s:=${PID_FLOW_FLOW_MAX_G_S:-8.0}
+      -p pid_flow_stop_margin_g:=${PID_FLOW_STOP_MARGIN_G:-0.5}
+      -p pid_flow_kp:=${PID_FLOW_KP:-0.05}
+      -p pid_flow_ki:=${PID_FLOW_KI:-0.02}
+      -p pid_flow_u_thresh_init:=${PID_FLOW_U_THRESH_INIT:-0.20}
+      -p pid_flow_gain_init_g_s:=${PID_FLOW_GAIN_INIT_G_S:-8.0}
+      -p pid_flow_gain_alpha:=${PID_FLOW_GAIN_ALPHA:-0.15}
+      -p pid_flow_stall_g_s:=${PID_FLOW_STALL_G_S:-0.3}
+      -p pid_flow_stall_time_s:=${PID_FLOW_STALL_TIME_S:-1.0}
+      -p pid_flow_seek_rate:=${PID_FLOW_SEEK_RATE:-0.06}
+      -p pid_flow_seek_max_duty:=${PID_FLOW_SEEK_MAX_DUTY:-0.70}
+      -p pid_flow_seek_taper_g:=${PID_FLOW_SEEK_TAPER_G:-15.0}
+      -p pid_flow_exhausted_time_s:=${PID_FLOW_EXHAUSTED_TIME_S:-1.5}
+      -p pid_flow_ramp_up_rate:=${PID_FLOW_RAMP_UP_RATE:-0.08}
+      -p pid_flow_ramp_down_rate:=${PID_FLOW_RAMP_DOWN_RATE:-0.40}
+      -p pid_flow_dither_amp:=${PID_FLOW_DITHER_AMP:-0.0}
+      -p inflight_s:=${INFLIGHT_S:-0.80}
+      -p inflight_flow_gain:=${INFLIGHT_FLOW_GAIN:-8.0}
+      -p inflight_flow_gain_alpha:=${INFLIGHT_FLOW_GAIN_ALPHA:-0.15}
+      -p inflight_early_stop_margin_g:=${INFLIGHT_EARLY_STOP_MARGIN_G:-0.5}
       -p coarse_tilt_deg:=${COARSE_TILT_DEG:-15.0}
       -p coarse_threshold:=${COARSE_THRESHOLD:-0.40}
       -p fine_threshold:=${FINE_THRESHOLD:-0.05}
+      -p start_in_fine_below_g:=${START_IN_FINE_BELOW_G:-80.0}
+      -p start_in_trickle_below_g:=${START_IN_TRICKLE_BELOW_G:-10.0}
       -p coarse_vibration_intensity:=${COARSE_VIBRATION_INTENSITY:-0.9}
       -p fine_vibration_intensity:=${FINE_VIBRATION_INTENSITY:-0.70}
       -p trickle_vibration_intensity:=${TRICKLE_VIBRATION_INTENSITY:-0.5}
+      -p vibration_cmd_max:=${VIBRATION_CMD_MAX:-0.7}
+      -p min_pour_vibration:=${MIN_POUR_VIBRATION:-0.40}
       -p trickle_pulse_ms:=${TRICKLE_PULSE_MS:-180.0}
       -p trickle_pause_ms:=${TRICKLE_PAUSE_MS:-160.0}
       -p no_progress_timeout_s:=${NO_PROGRESS_TIMEOUT_S:-3.0}
@@ -310,12 +349,49 @@ services:
       -p weight_topic:=/weight
       -p vibration_topic:=/vibration/intensity
       -p joint_state_topic:=/joint_states
+      -p control_law_type:=${CONTROL_LAW_TYPE:-bangbang}
+      -p pid_kp:=${PID_KP:-0.7}
+      -p pid_ki:=${PID_KI:-0.05}
+      -p pid_kd:=${PID_KD:-0.0}
+      -p pid_feedforward_intensity:=${PID_FEEDFORWARD_INTENSITY:-0.0}
+      -p pid_integral_limit:=${PID_INTEGRAL_LIMIT:-5.0}
+      -p pid_error_norm_g:=${PID_ERROR_NORM_G:-100.0}
+      -p pid_smooth_error_norm_g:=${PID_SMOOTH_ERROR_NORM_G:-250.0}
+      -p pid_slew_per_s:=${PID_SLEW_PER_S:-0.0}
+      -p pid_smooth_min_pour:=${PID_SMOOTH_MIN_POUR:-0.20}
+      -p pid_flow_endgame_below_g:=${PID_FLOW_ENDGAME_BELOW_G:-0.0}
+      -p pid_flow_window_s:=${PID_FLOW_WINDOW_S:-0.6}
+      -p pid_flow_land_time_s:=${PID_FLOW_LAND_TIME_S:-2.0}
+      -p pid_flow_flow_max_g_s:=${PID_FLOW_FLOW_MAX_G_S:-8.0}
+      -p pid_flow_stop_margin_g:=${PID_FLOW_STOP_MARGIN_G:-0.5}
+      -p pid_flow_kp:=${PID_FLOW_KP:-0.05}
+      -p pid_flow_ki:=${PID_FLOW_KI:-0.02}
+      -p pid_flow_u_thresh_init:=${PID_FLOW_U_THRESH_INIT:-0.20}
+      -p pid_flow_gain_init_g_s:=${PID_FLOW_GAIN_INIT_G_S:-8.0}
+      -p pid_flow_gain_alpha:=${PID_FLOW_GAIN_ALPHA:-0.15}
+      -p pid_flow_stall_g_s:=${PID_FLOW_STALL_G_S:-0.3}
+      -p pid_flow_stall_time_s:=${PID_FLOW_STALL_TIME_S:-1.0}
+      -p pid_flow_seek_rate:=${PID_FLOW_SEEK_RATE:-0.06}
+      -p pid_flow_seek_max_duty:=${PID_FLOW_SEEK_MAX_DUTY:-0.70}
+      -p pid_flow_seek_taper_g:=${PID_FLOW_SEEK_TAPER_G:-15.0}
+      -p pid_flow_exhausted_time_s:=${PID_FLOW_EXHAUSTED_TIME_S:-1.5}
+      -p pid_flow_ramp_up_rate:=${PID_FLOW_RAMP_UP_RATE:-0.08}
+      -p pid_flow_ramp_down_rate:=${PID_FLOW_RAMP_DOWN_RATE:-0.40}
+      -p pid_flow_dither_amp:=${PID_FLOW_DITHER_AMP:-0.0}
+      -p inflight_s:=${INFLIGHT_S:-0.80}
+      -p inflight_flow_gain:=${INFLIGHT_FLOW_GAIN:-8.0}
+      -p inflight_flow_gain_alpha:=${INFLIGHT_FLOW_GAIN_ALPHA:-0.15}
+      -p inflight_early_stop_margin_g:=${INFLIGHT_EARLY_STOP_MARGIN_G:-0.5}
       -p coarse_tilt_deg:=${COARSE_TILT_DEG:-15.0}
       -p coarse_threshold:=${COARSE_THRESHOLD:-0.40}
       -p fine_threshold:=${FINE_THRESHOLD:-0.05}
+      -p start_in_fine_below_g:=${START_IN_FINE_BELOW_G:-80.0}
+      -p start_in_trickle_below_g:=${START_IN_TRICKLE_BELOW_G:-10.0}
       -p coarse_vibration_intensity:=${COARSE_VIBRATION_INTENSITY:-0.9}
       -p fine_vibration_intensity:=${FINE_VIBRATION_INTENSITY:-0.70}
       -p trickle_vibration_intensity:=${TRICKLE_VIBRATION_INTENSITY:-0.5}
+      -p vibration_cmd_max:=${VIBRATION_CMD_MAX:-0.7}
+      -p min_pour_vibration:=${MIN_POUR_VIBRATION:-0.40}
       -p trickle_pulse_ms:=${TRICKLE_PULSE_MS:-180.0}
       -p trickle_pause_ms:=${TRICKLE_PAUSE_MS:-160.0}
       -p no_progress_timeout_s:=${NO_PROGRESS_TIMEOUT_S:-3.0}
@@ -343,6 +419,7 @@ services:
       ros2 run data_collection_manager data_collection_manager
       --ros-args
       -p output_root:=${DATA_OUTPUT_ROOT:-/data/runs}
+      -p control_law_type:=${CONTROL_LAW_TYPE:-bangbang}
     depends_on:
       - processing
 

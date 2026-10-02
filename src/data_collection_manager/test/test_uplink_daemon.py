@@ -34,7 +34,7 @@ class FakeClient:
         self.completed_runs.append(run_key)
 
 
-def _make_run(manifest, tmp_path, run_key, with_bag=True):
+def _make_run(manifest, tmp_path, run_key, with_bag=True, complete=True):
     run_dir = tmp_path / run_key
     run_dir.mkdir(parents=True)
     metadata_path = run_dir / 'metadata.json'
@@ -46,6 +46,8 @@ def _make_run(manifest, tmp_path, run_key, with_bag=True):
         bag_dir.mkdir()
         (bag_dir / 'episode_1_0.mcap').write_bytes(b'x' * 100)
         manifest.record_artifact(run_key, TIER_1, bag_dir)
+    if complete:
+        manifest.mark_run_complete(run_key)
     return run_dir
 
 
@@ -75,6 +77,19 @@ def test_tier1_uploaded_once_tier0_has_synced(tmp_path):
     assert summary.tier1_acked_run_keys == ['run-1']
     assert client.completed_runs == ['run-1']
     assert manifest.get_run('run-1').tier1_acked_at is not None
+
+
+def test_open_run_is_not_uploaded(tmp_path):
+    manifest = RunManifest(tmp_path / 'manifest.sqlite')
+    _make_run(manifest, tmp_path, 'run-open', complete=False)
+    client = FakeClient()
+
+    summary = run_uplink_pass(manifest, client, device_id='robot-1')
+
+    assert summary.tier0_synced_run_keys == ['run-open']
+    assert summary.tier1_acked_run_keys == []
+    assert client.uploaded_blobs == []
+    assert manifest.get_run('run-open').tier1_acked_at is None
 
 
 def test_tier1_not_attempted_before_tier0_has_synced(tmp_path):

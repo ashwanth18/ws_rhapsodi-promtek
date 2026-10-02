@@ -40,11 +40,19 @@ See `docs/lexium-laptop-networking.md`.
 ## Project directory (required)
 
 Compose files under `devices/` use workspace-root binds such as `./data`,
-`./config`, and `./docker/nginx-dashboard.conf`. Those paths are resolved
-against **`--project-directory`**, not against `compose/devices/`.
+`./config`, and `./docker/nginx-dashboard.conf`.
 
 **Always** pass `--project-directory <workspace>` (fleet-agent and Ansible
 do this). From the repo root that is `--project-directory .`.
+
+**Include path caveat:** with `compose/devices/x86.yml` → `include: pi5.yml`,
+relative binds declared *inside* `pi5.yml` resolve against
+`compose/devices/` (the included file's directory), not the project
+directory. That is why `x86.yml` re-declares `./data` / `./config` /
+`./docker/...` onto the workspace root for every `/data` consumer.
+Without those overrides, the recorder writes `compose/devices/data` while
+the backend reads workspace `./data`, and Condor timeseries fails
+(`no_weight_items` — parquet invisible to backend).
 
 ```bash
 # Laptop

@@ -126,6 +126,9 @@ class DataCollectionManager(Node):
         # environment axis (real | sim); see docs/MODES.md. Overridable
         # per-run via webhook metadata when present.
         self.declare_parameter('environment', 'real')
+        # Pour vibration law used by pour_server (bangbang|pid|pid_inflight).
+        # Snapshot into metadata.json so Run History can attribute accuracy.
+        self.declare_parameter('control_law_type', 'bangbang')
         self.declare_parameter('webhook_metadata_wait_seconds', 1.0)
         self.declare_parameter('processing_url', device.processing_url)
 
@@ -171,6 +174,12 @@ class DataCollectionManager(Node):
         self._robot_id = str(self.get_parameter('robot_id').value)
         self._mode = str(self.get_parameter('mode').value)
         self._environment = str(self.get_parameter('environment').value or 'real')
+        self._control_law_type = (
+            str(self.get_parameter('control_law_type').value or 'bangbang')
+            .strip()
+            .lower()
+            or 'bangbang'
+        )
         self._webhook_metadata_wait_seconds = max(
             0.0,
             float(
@@ -341,6 +350,7 @@ class DataCollectionManager(Node):
             'episodes_total': self._episodes_total,
             'mode': self._resolved_mode(),
             'environment': self._resolved_environment(),
+            'pour_control_law': self._control_law_type,
             'bag_path': str(ctx.bag_path),
             'run_folder': str(ctx.folder),
             'episode_index': ctx.episode_index,

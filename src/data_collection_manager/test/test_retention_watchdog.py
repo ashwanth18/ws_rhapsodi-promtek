@@ -2,7 +2,9 @@ from data_collection_manager.manifest import TIER_0, TIER_1, RunManifest
 from data_collection_manager.retention_watchdog import run_retention_pass
 
 
-def _make_run_with_tier1_dir(manifest, tmp_path, run_key, acked, anomaly=False):
+def _make_run_with_tier1_dir(
+    manifest, tmp_path, run_key, acked, anomaly=False, complete=True
+):
     run_dir = tmp_path / run_key
     bag_dir = run_dir / 'episode_1'
     bag_dir.mkdir(parents=True)
@@ -16,6 +18,8 @@ def _make_run_with_tier1_dir(manifest, tmp_path, run_key, acked, anomaly=False):
     manifest.record_artifact(run_key, TIER_1, bag_dir)
     if anomaly:
         manifest.flag_anomaly(run_key, 'pour_overshoot')
+    if complete:
+        manifest.mark_run_complete(run_key)
     if acked:
         manifest.mark_tier1_acked(run_key)
     return run_dir, bag_dir
@@ -36,6 +40,18 @@ def test_prunes_acked_run_and_keeps_tier0(tmp_path):
     run = manifest.get_run('run-acked')
     assert run.tier1_pruned_at is not None
     assert run.tier1_bytes_freed == 110
+
+
+def test_does_not_prune_open_run_even_if_acked(tmp_path):
+    manifest = RunManifest(tmp_path / 'manifest.sqlite')
+    _run_dir, bag_dir = _make_run_with_tier1_dir(
+        manifest, tmp_path, 'run-open', acked=True, complete=False
+    )
+
+    summary = run_retention_pass(manifest)
+
+    assert summary.pruned_run_keys == []
+    assert bag_dir.exists()
 
 
 def test_does_not_prune_unacked_run(tmp_path):

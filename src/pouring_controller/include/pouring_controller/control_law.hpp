@@ -17,6 +17,10 @@ struct ControlCommand {
   double vibration_duty{0.0};   // 0..1
   double incline_deg{0.0};      // degrees
   double valve_open{0.0};       // 0..1
+  // PidFlow sets this after the seek ramp hits its cap and flow is still
+  // zero. pour_server turns it into need_rescoop without waiting for the
+  // no-progress timer. Other laws leave it false.
+  bool scoop_empty{false};
 };
 
 class ControlLaw {

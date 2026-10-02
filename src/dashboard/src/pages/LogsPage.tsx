@@ -22,6 +22,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import Select from '../components/ui/select'
 import StatusBadge, { type StatusTone } from '../components/ui/StatusBadge'
+import { formatControlLaw } from '../components/operations/PourControlLawCard'
 import { useRuntimeConfig } from '../config/RuntimeConfig'
 
 type Row = {
@@ -47,6 +48,7 @@ type Row = {
   pour_outcome?: string | null
   scoop_duration_s: number | null
   pour_duration_s: number | null
+  pour_control_law?: string | null
 }
 
 function rowSignedError(row: Row): number | null {
@@ -153,6 +155,12 @@ function toFilterIsoEnd(dateValue: string): string | undefined {
 function modeBadgeTone(mode: string): StatusTone {
   if (mode === 'mes-condor') return 'info'
   if (mode === 'mock-local' || mode === 'lightsout') return 'warn'
+  return 'neutral'
+}
+
+function controlLawBadgeTone(law: string | null | undefined): StatusTone {
+  if (law === 'pid_inflight' || law === 'pid') return 'info'
+  if (law === 'bangbang') return 'neutral'
   return 'neutral'
 }
 
@@ -537,6 +545,7 @@ export default function LogsPage() {
                   <th>Batch</th>
                   <th>Run ID</th>
                   <th>Mode</th>
+                  <th>Control law</th>
                   <th>Stop reason</th>
                   <th>Ingredient</th>
                   <th>
@@ -578,7 +587,7 @@ export default function LogsPage() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td className="py-6 text-center" colSpan={14}>
+                    <td className="py-6 text-center" colSpan={15}>
                       <span className="inline-flex items-center gap-2 text-[var(--text-secondary)]">
                         <svg
                           className="h-4 w-4 animate-spin"
@@ -606,7 +615,7 @@ export default function LogsPage() {
                     </td>
                   </tr>
                 ) : tableRows.length === 0 ? (
-                  <tr><td className="py-4" colSpan={14}>No data</td></tr>
+                  <tr><td className="py-4" colSpan={15}>No data</td></tr>
                 ) : (
                   tableRows.map((r) => {
                     const startMs = r.start_time_ns ? r.start_time_ns / 1_000_000 : null
@@ -627,6 +636,17 @@ export default function LogsPage() {
                         <td>
                           {r.mode ? (
                             <StatusBadge label={r.mode} tone={modeBadgeTone(r.mode)} />
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td>
+                          {r.pour_control_law ? (
+                            <StatusBadge
+                              label={formatControlLaw(r.pour_control_law)}
+                              tone={controlLawBadgeTone(r.pour_control_law)}
+                              title={`control_law_type=${r.pour_control_law}`}
+                            />
                           ) : (
                             '—'
                           )}

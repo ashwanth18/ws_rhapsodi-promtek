@@ -18,6 +18,19 @@ include:
   # Path is relative to --project-directory (workspace root), not this file.
   - path: compose/devices/pi5.yml
 
+# Volumes in included pi5.yml resolve relative to compose/devices/ (the include
+# file's directory), NOT --project-directory. Without these overrides,
+# data_collection writes under compose/devices/data while backend (overridden)
+# reads workspace ./data — Condor timeseries then fails with no_weight_items
+# because parquet paths are invisible. Keep every /data consumer on the
+# workspace-root ./data bind.
+x-laptop-data: &laptop-data
+  - ./data:/data
+x-laptop-ros-data: &laptop-ros-data
+  - ./data:/data
+  - ./data/ros_home:/root/.ros
+  - ./config:/ws/config:ro
+
 services:
   scooping_stack:
     volumes:
@@ -28,21 +41,101 @@ services:
       # More-specific rw mount overrides the ro config bind for layouts/.
       - ./config/layouts:/ws/config/layouts:rw
 
-  # Volumes in included pi5.yml resolve relative to compose/devices/ (include
-  # file dir), not --project-directory. Override data/config/nginx onto repo root
-  # so Controls /integrations/status reads the same Condor logs the agent writes.
   backend:
     volumes:
       - ./data:/data
       - ./config:/ws/config:ro
+      # Laptop: pour tolerance and run-start logic from the workspace tree.
+      # The published backend image still has the previous copy.
+      - ./src/backend/app/main.py:/app/app/main.py:ro
+      - ./src/backend/app/rosbridge_client.py:/app/app/rosbridge_client.py:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro,rslave
     # Laptop/Jaka may override mode→layout mapping without touching the
     # shared profiles.yaml used by the Pi (see MODE_LAYOUTS in robot-prod.laptop.env).
     environment:
       MODE_LAYOUTS: ${MODE_LAYOUTS:-}
 
-  condor_agent:
+  processing:
     volumes:
       - ./data:/data
+      # Laptop: phase-duration pairing from the workspace tree.
+      - ./src/backend/processing/main.py:/app/main.py:ro
+
+  ingestion:
+    volumes: *laptop-data
+
+  webhook_service:
+    volumes: *laptop-data
+
+  condor_agent:
+    volumes: *laptop-data
+
+  data_collection:
+    volumes:
+      - ./data:/data
+      - ./data/ros_home:/root/.ros
+      - ./config:/ws/config:ro
+      # Laptop: pick up manager_node metadata changes without a ros-image rebuild.
+      - ./src/data_collection_manager/data_collection_manager:/ws/install/lib/python3.12/site-packages/data_collection_manager:ro
+
+  retention_watchdog:
+    volumes:
+      - ./data:/data
+      - ./data/ros_home:/root/.ros
+      - ./config:/ws/config:ro
+      - ./src/data_collection_manager/data_collection_manager:/ws/install/lib/python3.12/site-packages/data_collection_manager:ro
+
+  uplink_daemon:
+    volumes:
+      - ./data:/data
+      - ./data/ros_home:/root/.ros
+      - ./config:/ws/config:ro
+      - ./src/data_collection_manager/data_collection_manager:/ws/install/lib/python3.12/site-packages/data_collection_manager:ro
+
+  pouring_controller:
+    volumes: *laptop-ros-data
+
+  # pi5.yml mounts .:/workspace relative to compose/devices/; override so
+  # colcon sees repo-root src/ (pouring_controller + robot_common_msgs).
+  pouring_controller_dev:
+    volumes:
+      - ./:/workspace:rw
+      - ./data:/data
+      - ./data/ros_home:/root/.ros
+      - ./config:/ws/config:ro
+
+  # pi5.yml mounts .:/workspace relative to compose/devices/.
+  # Layout ids are compose-substituted here. The dev command reads them from
+  # the container environment, and otherwise falls back to dual-container.
+  orchestrator_dev:
+    environment:
+      WEBHOOK_LAYOUT_ID: ${WEBHOOK_LAYOUT_ID:-dual-container-jaka}
+      BATCH_LAYOUT_ID: ${BATCH_LAYOUT_ID:-dual-container-jaka}
+      DEFAULT_LAYOUT_ID: ${DEFAULT_LAYOUT_ID:-dual-container-jaka}
+    volumes:
+      - ./:/workspace:rw
+      - ./data:/data
+      - ./data/ros_home:/root/.ros
+      - ./config:/ws/config:ro
+
+  rosbridge:
+    volumes: *laptop-ros-data
+
+  robot_start_adapter:
+    volumes: *laptop-ros-data
+
+  scale_launcher:
+    volumes:
+      - ./data:/data
+      - ./data/ros_home:/root/.ros
+      - ./config:/ws/config:ro
+    # Keep the by-id → /dev/scale device mapping from pi5.yml (Compose merges
+    # devices; volumes here replace the include-relative ./data bind).
+
+  microros_health_watchdog:
+    volumes: *laptop-ros-data
 
   dashboard:
     volumes:

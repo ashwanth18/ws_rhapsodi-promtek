@@ -275,6 +275,32 @@ def _settle_time_s(
     return None
 
 
+def _sum_phase_intervals(
+    phases: List[PhaseEvent], start_phase: str, end_phase: str
+) -> Optional[float]:
+    """Sum each start matched to the following end.
+
+    A later start replaces an unmatched one. An end with no open start is
+    skipped, so a missed first marker cannot make the duration negative.
+    Time between a finished interval and the next start is not included.
+    Aborted pours are included because the tree publishes pour_end when
+    PourToTarget returns, including scoop empty.
+    """
+    total_s = 0.0
+    open_ns: Optional[int] = None
+    matched = False
+    for phase in sorted(phases, key=lambda item: item.t_ns):
+        if phase.phase == start_phase:
+            open_ns = phase.t_ns
+        elif phase.phase == end_phase and open_ns is not None:
+            total_s += (phase.t_ns - open_ns) / 1e9
+            open_ns = None
+            matched = True
+    if not matched:
+        return None
+    return total_s
+
+
 def _compute_features(
     weights: List[WeightSample],
     phases: List[PhaseEvent],
@@ -290,28 +316,15 @@ def _compute_features(
     else:
         total_episode_time_s = None
 
-    pour_start_ns = next(
-        (p.t_ns for p in phases if p.phase == PHASE_START), None
-    )
-    pour_end_ns = next(
-        (p.t_ns for p in phases if p.phase == PHASE_END), None
-    )
-    scoop_start_ns = next(
-        (p.t_ns for p in phases if p.phase == SCOOP_START), None
-    )
-    scoop_end_ns = next(
-        (p.t_ns for p in phases if p.phase == SCOOP_END), None
-    )
-    pour_duration_s = (
-        (pour_end_ns - pour_start_ns) / 1e9
-        if pour_start_ns and pour_end_ns
-        else None
-    )
-    scoop_duration_s = (
-        (scoop_end_ns - scoop_start_ns) / 1e9
-        if scoop_start_ns and scoop_end_ns
-        else None
-    )
+    pour_starts = sorted(p.t_ns for p in phases if p.phase == PHASE_START)
+    pour_ends = sorted(p.t_ns for p in phases if p.phase == PHASE_END)
+    # Baseline is the vessel before the first pour. The batch final is the
+    # last pour_end: a scoop-empty pour also publishes pour_end, and that
+    # earlier marker is not the weight left on the scale.
+    pour_start_ns = pour_starts[0] if pour_starts else None
+    pour_end_ns = pour_ends[-1] if pour_ends else None
+    pour_duration_s = _sum_phase_intervals(phases, PHASE_START, PHASE_END)
+    scoop_duration_s = _sum_phase_intervals(phases, SCOOP_START, SCOOP_END)
 
     baseline = _baseline_weight(weights, pour_start_ns)
     pour_weights: List[WeightSample] = []

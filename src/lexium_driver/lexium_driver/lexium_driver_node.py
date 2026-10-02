@@ -1164,6 +1164,12 @@ class LexiumDriver(Node):
             if p.name == "speed_rate":
                 self.speed_rate = float(p.value)
                 self._apply_speed_rate(self.speed_rate)
+            elif p.name == "move_speed_deg":
+                self.move_speed_deg = float(p.value)
+            elif p.name == "move_acc_deg":
+                self.move_acc_deg = float(p.value)
+            elif p.name == "max_joint_speed_degps":
+                self.max_joint_speed_degps = float(p.value)
         return SetParametersResult(successful=True)
 
     def destroy_node(self) -> bool:

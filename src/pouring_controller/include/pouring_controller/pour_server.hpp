@@ -44,7 +44,7 @@ private:
   // Phase thresholds
   double coarse_thresh_{0.40};
   double fine_thresh_{0.05};
-  double start_in_fine_below_g_{40.0};
+  double start_in_fine_below_g_{80.0};
   double start_in_trickle_below_g_{10.0};
   double settle_time_s_{0.3};
   int hold_within_tol_count_{5};
@@ -79,8 +79,15 @@ private:
   double settle_vibration_intensity_{0.0};
   double fine_vibration_intensity_{0.70};
   double trickle_vibration_intensity_{0.5};
+  double vibration_cmd_max_{0.7};
+  double min_pour_vibration_{0.40};
   double trickle_pulse_ms_{180.0};
   double trickle_pause_ms_{160.0};
+  // pid_smooth, pid_flow, and pid_flow_80: publish the law directly
+  // (no settle stop / phase caps / pulses).
+  bool smooth_pour_{false};
+  // pid_flow and pid_flow_80 label the phase "flow" and honor scoop_empty.
+  bool flow_pour_{false};
 
   void sendTiltJoint(double target_deg);
   void onJointState(const sensor_msgs::msg::JointState::SharedPtr msg);

@@ -33,6 +33,7 @@ type ActiveRobotRun = {
   batch_id: string | null
   weightment_id: number
   status: string | null
+  error_message?: string | null
   ingredient_id: string | null
   ingredient_name: string | null
   target_weight_kg: number | null
@@ -228,6 +229,13 @@ export default function SidebarLayout({ children }: { children?: ReactNode }) {
                 label={robotStateLabel(effectiveState)}
                 tone={robotStateTone(effectiveState)}
                 pulse={effectiveState === 'running' || effectiveState === 'starting'}
+                title={
+                  (effectiveState === 'failed' ||
+                    effectiveState === 'mes_send_failed') &&
+                  activeRun?.error_message
+                    ? activeRun.error_message
+                    : undefined
+                }
               />
               {runtime?.mode && (
                 <StatusBadge

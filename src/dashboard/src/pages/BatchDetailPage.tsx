@@ -328,20 +328,20 @@ export default function BatchDetailPage() {
                 : row.robot_status === 'failed'
                   ? 'Failed'
                   : row.robot_status
-    const classes =
+    const tone =
       row.robot_status === 'succeeded'
-        ? 'bg-[var(--status-good-bg)] text-[var(--status-good-fg)]'
-        : row.robot_status === 'starting' ||
-            row.robot_status === 'running'
-          ? 'bg-[var(--status-info-bg)] text-[var(--status-info-fg)]'
+        ? 'good'
+        : row.robot_status === 'starting' || row.robot_status === 'running'
+          ? 'info'
           : row.robot_status === 'awaiting_processing'
-            ? 'bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]'
-            : 'bg-[var(--status-bad-bg)] text-[var(--status-bad-fg)]'
-    return (
-      <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${classes}`}>
-        {label}
-      </span>
-    )
+            ? 'warn'
+            : 'bad'
+    const errorTitle =
+      (row.robot_status === 'failed' || row.robot_status === 'mes_send_failed') &&
+      row.robot_error
+        ? row.robot_error
+        : undefined
+    return <StatusBadge label={label} tone={tone} title={errorTitle} />
   }
 
   const toggleRobotDetail = (weightmentId: number) => {

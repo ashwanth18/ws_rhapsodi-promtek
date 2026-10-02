@@ -248,6 +248,23 @@ def datetime_to_ns(value: datetime | None) -> int | None:
     return int(value.timestamp() * 1_000_000_000)
 
 
+def pour_control_law_from_metadata(metadata_json: str | None) -> str | None:
+    """Extract pour_control_law from a run's metadata.json blob."""
+    if not metadata_json:
+        return None
+    try:
+        meta = json.loads(metadata_json) if isinstance(metadata_json, str) else metadata_json
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(meta, dict):
+        return None
+    raw = meta.get('pour_control_law') or meta.get('control_law_type')
+    if raw is None:
+        return None
+    law = str(raw).strip().lower()
+    return law or None
+
+
 def ensure_webhook_weightment_columns() -> None:
     statements = [
         'ALTER TABLE webhook_weightments ADD COLUMN IF NOT EXISTS actual_weight_kg DOUBLE PRECISION',
@@ -1717,6 +1734,12 @@ def host_info() -> dict:
         'utc_unix': now.timestamp(),
         'utc_iso': now.isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
         'metrics': _collect_host_metrics(),
+        # Configured pour vibration control law (bangbang|pid). Matches
+        # pouring_controller CONTROL_LAW_TYPE from the cell env file.
+        'pour_control_law': (
+            (os.environ.get('CONTROL_LAW_TYPE') or 'bangbang').strip().lower()
+            or 'bangbang'
+        ),
     }
 
 
@@ -2250,12 +2273,14 @@ def reconcile_stale_robot_runs(db) -> None:
         )
         .all()
     )
+    # Status stays running until MES is sent. A bag callback fills
+    # finished_at and processed_id even when the tree failed and the
+    # completion read missed it, so those fields must not hide the run
+    # from this timeout.
     running_candidates = (
         db.query(RobotWeightmentRun)
         .filter(
             RobotWeightmentRun.status == 'running',
-            RobotWeightmentRun.finished_at.is_(None),
-            RobotWeightmentRun.processed_id.is_(None),
             RobotWeightmentRun.mes_weighment_sent.is_(False),
         )
         .all()
@@ -2358,7 +2383,7 @@ def build_robot_run_contract(db, row: WebhookWeightment) -> dict:
     )
     target_weight_kg = float(row.target_weight_kg)
     target_weight_g = target_weight_kg * 1000.0
-    weight_tolerance_g = target_weight_g * 0.02
+    weight_tolerance_g = 1.0
     return {
         'weightment_id': row.id,
         'event_id': row.event_id,
@@ -2445,6 +2470,13 @@ def start_robot_run_for_weightment_row(
     contract['trace_run_id'] = trace_run_id
     run_row.trace_run_id = trace_run_id
     run_row.request_payload_json = json.dumps(contract)
+    # Commit running before the adapter call. That call blocks on rosbridge and
+    # can outlast ROBOT_START_TIMEOUT_SECONDS while the tree is already pouring.
+    # The stale-start watchdog keys off status=starting and started_at IS NULL,
+    # so leaving those unset fails a live pour.
+    run_row.status = 'running'
+    run_row.started_at = utc_now_dt()
+    run_row.start_utc = utc_now()
     db.commit()
     try:
         service_response = start_robot_run_via_adapter(contract)
@@ -2460,9 +2492,6 @@ def start_robot_run_for_weightment_row(
         )
         if run_row is None:
             raise RuntimeError('Robot run disappeared before start update')
-        run_row.status = 'running'
-        run_row.started_at = utc_now_dt()
-        run_row.start_utc = utc_now()
         run_row.result_payload_json = json.dumps(
             {'start_service_response': service_response}
         )
@@ -3189,11 +3218,37 @@ def processed(req: ProcessedRequest) -> ProcessedResponse:
             and run_row.status in {'starting', 'running'}
             and not run_row.mes_weighment_sent
         ):
-            # Recover from missed runtime completion callbacks by treating the
-            # processed MCAP result as authoritative completion evidence.
-            run_row.status = 'awaiting_processing'
-            run_row.error_message = None
-            db.commit()
+            # A bag only means recording stopped. An e-stop or scoop fault
+            # stops the bag too; MES completion is allowed only after the
+            # orchestrator latches succeeded.
+            outcome, failure_reason = rosbridge_robot_client.read_orchestrator_outcome()
+            if outcome in {'failed', 'stopped'}:
+                if run_row.event_id:
+                    set_event_batch_auto_run(db, run_row.event_id, False)
+                run_row.status = 'failed'
+                run_row.error_message = (
+                    failure_reason
+                    or f'Orchestrator finished with state {outcome}'
+                )
+                run_row.finished_at = run_row.finished_at or utc_now_dt()
+                db.commit()
+                logger.info(
+                    'Processed callback kept run failed: run_id=%s state=%s reason=%s',
+                    run_row.id,
+                    outcome,
+                    run_row.error_message,
+                )
+            elif outcome == 'succeeded':
+                run_row.status = 'awaiting_processing'
+                run_row.error_message = None
+                db.commit()
+            else:
+                logger.warning(
+                    'Processed callback did not complete run_id=%s; '
+                    'orchestrator state=%s',
+                    run_row.id,
+                    outcome or 'unknown',
+                )
         if (
             run_row is not None
             and run_row.status == 'awaiting_processing'
@@ -3362,6 +3417,9 @@ def list_lightsout_processed(
                     'stop_reason': processed_row.stop_reason,
                     'powder_id': processed_row.powder_id,
                     'powder_name': processed_row.powder_name,
+                    'pour_control_law': pour_control_law_from_metadata(
+                        run_row.metadata_json
+                    ),
                 }
             )
     finally:

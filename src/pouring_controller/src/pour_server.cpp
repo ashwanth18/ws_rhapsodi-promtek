@@ -1,5 +1,7 @@
 #include "pouring_controller/pour_server.hpp"
 #include "pouring_controller/pid_vibration.hpp"
+#include "pouring_controller/flow_rate_vibration.hpp"
+#include "pouring_controller/pid_inflight_vibration.hpp"
 #include "pouring_controller/bangbang_trickle.hpp"
 
 #include <algorithm>
@@ -22,7 +24,7 @@ PourServer::PourServer(const rclcpp::NodeOptions & options)
   this->declare_parameter<double>("stale_ms", 500.0);
   this->declare_parameter<double>("coarse_threshold", 0.40);
   this->declare_parameter<double>("fine_threshold", 0.05);
-  this->declare_parameter<double>("start_in_fine_below_g", 40.0);
+  this->declare_parameter<double>("start_in_fine_below_g", 80.0);
   this->declare_parameter<double>("start_in_trickle_below_g", 10.0);
   this->declare_parameter<double>("settle_time_s", 2.0);
   this->declare_parameter<int>("hold_within_tol_count", 5);
@@ -37,18 +39,56 @@ PourServer::PourServer(const rclcpp::NodeOptions & options)
   this->declare_parameter<double>("fine_tilt_deg", 0.0);
   this->declare_parameter<double>("trickle_tilt_deg", 0.0);
   this->declare_parameter<double>("joint_move_time_s", 0.5);
-  this->declare_parameter<std::string>("control_law_type", "bangbang"); // pid|bangbang
+  this->declare_parameter<std::string>("control_law_type", "bangbang"); // bangbang|pid|pid_smooth|pid_flow|pid_flow_80|pid_inflight
   this->declare_parameter<double>("coarse_vibration_intensity", 0.9);
   this->declare_parameter<double>("settle_vibration_intensity", 0.0);
   this->declare_parameter<double>("fine_vibration_intensity", 0.70);
   this->declare_parameter<double>("trickle_vibration_intensity", 0.5);
+  // Global PID/inflight command ceiling (smooth start; was hard-coded 1.0).
+  this->declare_parameter<double>("vibration_cmd_max", 0.7);
+  // Below this intensity powder often does not move — bump nonzero cmds up to it.
+  this->declare_parameter<double>("min_pour_vibration", 0.40);
   this->declare_parameter<double>("trickle_pulse_ms", 180.0);
   this->declare_parameter<double>("trickle_pause_ms", 160.0);
-  this->declare_parameter<double>("pid_kp", 0.02);
-  this->declare_parameter<double>("pid_ki", 0.001);
+  this->declare_parameter<double>("pid_kp", 0.7);
+  this->declare_parameter<double>("pid_ki", 0.05);
   this->declare_parameter<double>("pid_kd", 0.0);
   this->declare_parameter<double>("pid_feedforward_intensity", 0.0);
-  this->declare_parameter<double>("pid_integral_limit", 200.0);
+  this->declare_parameter<double>("pid_integral_limit", 5.0);
+  // Absolute grams of error that map to normalized error = 1.0 for PID.
+  // Fixed scale (not target-relative) so a 56 g rescoop top-up is gentler than
+  // a 500 g first pour — target-relative would re-saturate every new goal.
+  this->declare_parameter<double>("pid_error_norm_g", 100.0);
+  // pid_smooth only: wider norm so duty eases with remaining error.
+  // pid_slew_per_s defaults to 0 (no software ramp).
+  this->declare_parameter<double>("pid_smooth_error_norm_g", 250.0);
+  this->declare_parameter<double>("pid_slew_per_s", 0.0);
+  this->declare_parameter<double>("pid_smooth_min_pour", 0.20);
+  // Unused by the named laws. pid_flow is the whole-pour cascade (0 g).
+  // pid_flow_80 is PidSmooth until 80 g remain, then the cascade.
+  this->declare_parameter<double>("pid_flow_endgame_below_g", 0.0);
+  this->declare_parameter<double>("pid_flow_window_s", 0.6);
+  this->declare_parameter<double>("pid_flow_land_time_s", 2.0);
+  this->declare_parameter<double>("pid_flow_flow_max_g_s", 8.0);
+  this->declare_parameter<double>("pid_flow_stop_margin_g", 0.5);
+  this->declare_parameter<double>("pid_flow_kp", 0.05);
+  this->declare_parameter<double>("pid_flow_ki", 0.02);
+  this->declare_parameter<double>("pid_flow_u_thresh_init", 0.20);
+  this->declare_parameter<double>("pid_flow_gain_init_g_s", 8.0);
+  this->declare_parameter<double>("pid_flow_gain_alpha", 0.15);
+  this->declare_parameter<double>("pid_flow_stall_g_s", 0.3);
+  this->declare_parameter<double>("pid_flow_stall_time_s", 1.0);
+  this->declare_parameter<double>("pid_flow_seek_rate", 0.06);
+  this->declare_parameter<double>("pid_flow_seek_max_duty", 0.70);
+  this->declare_parameter<double>("pid_flow_seek_taper_g", 15.0);
+  this->declare_parameter<double>("pid_flow_exhausted_time_s", 1.5);
+  this->declare_parameter<double>("pid_flow_ramp_up_rate", 0.08);
+  this->declare_parameter<double>("pid_flow_ramp_down_rate", 0.40);
+  this->declare_parameter<double>("pid_flow_dither_amp", 0.0);
+  this->declare_parameter<double>("inflight_s", 0.80);
+  this->declare_parameter<double>("inflight_flow_gain", 8.0);
+  this->declare_parameter<double>("inflight_flow_gain_alpha", 0.15);
+  this->declare_parameter<double>("inflight_early_stop_margin_g", 0.5);
   this->declare_parameter<std::string>("joint_state_topic", "/joint_states");
 
   ema_alpha_ = this->get_parameter("ema_alpha").as_double();
@@ -76,6 +116,10 @@ PourServer::PourServer(const rclcpp::NodeOptions & options)
   settle_vibration_intensity_ = this->get_parameter("settle_vibration_intensity").as_double();
   fine_vibration_intensity_ = this->get_parameter("fine_vibration_intensity").as_double();
   trickle_vibration_intensity_ = this->get_parameter("trickle_vibration_intensity").as_double();
+  vibration_cmd_max_ = std::clamp(
+    this->get_parameter("vibration_cmd_max").as_double(), 0.0, 1.0);
+  min_pour_vibration_ = std::clamp(
+    this->get_parameter("min_pour_vibration").as_double(), 0.0, 1.0);
   trickle_pulse_ms_ = this->get_parameter("trickle_pulse_ms").as_double();
   trickle_pause_ms_ = this->get_parameter("trickle_pause_ms").as_double();
 
@@ -93,12 +137,24 @@ PourServer::PourServer(const rclcpp::NodeOptions & options)
 
   // control plugin selection
   const auto law = this->get_parameter("control_law_type").as_string();
-  if (law == "pid") {
+  // pid_flow: cascade for the whole pour. pid_flow_80: PidSmooth until 80 g left.
+  const bool flow_whole = (law == "pid_flow");
+  const bool flow_80 = (law == "pid_flow_80");
+  const bool flow_law = flow_whole || flow_80;
+  smooth_pour_ = (law == "pid_smooth" || flow_law);
+  flow_pour_ = flow_law;
+  if (law == "pid_inflight") {
+    control_ = std::make_shared<PidInflightVibration>();
+  } else if (flow_law) {
+    control_ = std::make_shared<PidFlow>();
+  } else if (law == "pid_smooth") {
+    control_ = std::make_shared<PidSmooth>();
+  } else if (law == "pid") {
     control_ = std::make_shared<PidVibration>();
   } else {
     control_ = std::make_shared<BangBangTrickle>();
   }
-  control_->configure(0.0, 1.0);
+  control_->configure(0.0, vibration_cmd_max_);
   if (auto* bangbang = dynamic_cast<BangBangTrickle*>(control_.get())) {
     bangbang->coarse_open = std::clamp(coarse_vibration_intensity_, 0.0, 1.0);
     bangbang->fine_open = std::clamp(fine_vibration_intensity_, 0.0, 1.0);
@@ -110,7 +166,65 @@ PourServer::PourServer(const rclcpp::NodeOptions & options)
     pid->kd = this->get_parameter("pid_kd").as_double();
     pid->ff_bias = this->get_parameter("pid_feedforward_intensity").as_double();
     pid->integ_limit = this->get_parameter("pid_integral_limit").as_double();
+    pid->error_norm_g = this->get_parameter("pid_error_norm_g").as_double();
   }
+  if (auto* smooth = dynamic_cast<PidSmooth*>(control_.get())) {
+    smooth->error_norm_g = this->get_parameter("pid_smooth_error_norm_g").as_double();
+    smooth->slew_per_s = this->get_parameter("pid_slew_per_s").as_double();
+    smooth->min_pour = std::clamp(
+      this->get_parameter("pid_smooth_min_pour").as_double(), 0.0, 1.0);
+  }
+  if (auto* flow = dynamic_cast<PidFlow*>(control_.get())) {
+    // The law name is the version recorded on the run. Do not let the
+    // endgame param relabel one version as the other.
+    flow->endgame_below_g = flow_80 ? 80.0 : 0.0;
+    flow->window_s = this->get_parameter("pid_flow_window_s").as_double();
+    flow->land_time_s = this->get_parameter("pid_flow_land_time_s").as_double();
+    flow->flow_max_g_s = this->get_parameter("pid_flow_flow_max_g_s").as_double();
+    flow->stop_margin_g = this->get_parameter("pid_flow_stop_margin_g").as_double();
+    flow->kp_flow = this->get_parameter("pid_flow_kp").as_double();
+    flow->ki_flow = this->get_parameter("pid_flow_ki").as_double();
+    flow->u_thresh_init = std::clamp(
+      this->get_parameter("pid_flow_u_thresh_init").as_double(), 0.0, 1.0);
+    flow->gain_init = this->get_parameter("pid_flow_gain_init_g_s").as_double();
+    flow->gain_alpha = this->get_parameter("pid_flow_gain_alpha").as_double();
+    flow->stall_g_s = this->get_parameter("pid_flow_stall_g_s").as_double();
+    flow->stall_time_s = this->get_parameter("pid_flow_stall_time_s").as_double();
+    flow->seek_rate = this->get_parameter("pid_flow_seek_rate").as_double();
+    flow->seek_max_duty = std::clamp(
+      this->get_parameter("pid_flow_seek_max_duty").as_double(), 0.0, 1.0);
+    flow->seek_taper_g = this->get_parameter("pid_flow_seek_taper_g").as_double();
+    flow->exhausted_time_s = this->get_parameter("pid_flow_exhausted_time_s").as_double();
+    flow->ramp_up_rate = this->get_parameter("pid_flow_ramp_up_rate").as_double();
+    flow->ramp_down_rate = this->get_parameter("pid_flow_ramp_down_rate").as_double();
+    flow->dither_amp = std::max(0.0, this->get_parameter("pid_flow_dither_amp").as_double());
+  }
+  if (auto* pid_if = dynamic_cast<PidInflightVibration*>(control_.get())) {
+    pid_if->kp = this->get_parameter("pid_kp").as_double();
+    pid_if->ki = this->get_parameter("pid_ki").as_double();
+    pid_if->kd = this->get_parameter("pid_kd").as_double();
+    pid_if->ff_bias = this->get_parameter("pid_feedforward_intensity").as_double();
+    pid_if->integ_limit = this->get_parameter("pid_integral_limit").as_double();
+    pid_if->error_norm_g = this->get_parameter("pid_error_norm_g").as_double();
+    pid_if->inflight_s = this->get_parameter("inflight_s").as_double();
+    pid_if->flow_gain = this->get_parameter("inflight_flow_gain").as_double();
+    pid_if->flow_gain_alpha = this->get_parameter("inflight_flow_gain_alpha").as_double();
+    pid_if->early_stop_margin_g =
+      this->get_parameter("inflight_early_stop_margin_g").as_double();
+  }
+  RCLCPP_INFO(
+    this->get_logger(),
+    "Pour control_law_type=%s vibration_cmd_max=%.2f min_pour_vibration=%.2f "
+    "pid_smooth_min_pour=%.2f pid_flow_endgame_below_g=%.1f pid_flow_seek_max_duty=%.2f "
+    "pid_flow_ramp_up_rate=%.2f pid_flow_ramp_down_rate=%.2f",
+    law.c_str(),
+    vibration_cmd_max_,
+    min_pour_vibration_,
+    std::clamp(this->get_parameter("pid_smooth_min_pour").as_double(), 0.0, 1.0),
+    flow_80 ? 80.0 : 0.0,
+    std::clamp(this->get_parameter("pid_flow_seek_max_duty").as_double(), 0.0, 1.0),
+    this->get_parameter("pid_flow_ramp_up_rate").as_double(),
+    this->get_parameter("pid_flow_ramp_down_rate").as_double());
 
   // Create action server without shared_from_this() (avoid bad_weak_ptr in constructor)
   action_server_ = rclcpp_action::create_server<PourToTarget>(
@@ -195,8 +309,9 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
   const double baseline_g = raw_weight_;
   RCLCPP_INFO(get_logger(), "Pour start: target=%.3f tol=%.3f baseline=%.3f",
               goal->target_weight, goal->tolerance, baseline_g);
-  const double configured_incline_step =
-    no_progress_incline_step_deg_ > 0.0 ? no_progress_incline_step_deg_ : 5.0;
+  // 0 disables incline-before-rescoop. Do not rewrite 0 to the 5° default:
+  // the cell sets NO_PROGRESS_INCLINE_STEP_DEG=0 so a stall goes straight to rescoop.
+  const double configured_incline_step = std::max(0.0, no_progress_incline_step_deg_);
   const double configured_max_incline =
     max_incline_deg_ > 0.0 ? max_incline_deg_ : 20.0;
   RCLCPP_INFO(
@@ -299,12 +414,17 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
       first_iter_logged = true;
     }
 
-    // phase transitions
+    // phase transitions. pid_smooth and pid_flow stay in one regime so vibration
+    // is not stopped or recapped on a coarse/settle/fine/trickle boundary.
     Phase old_phase = phase;
     static rclcpp::Time settle_start; // track settle start
+    if (!smooth_pour_) {
     switch (phase) {
       case COARSE:
-        if (abs_err <= coarse_band) { phase = SETTLE; settle_start = now(); }
+        if (abs_err <= coarse_band) {
+          phase = SETTLE;
+          settle_start = now();
+        }
         break;
       case SETTLE:
         // wait settle_time
@@ -316,8 +436,13 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
       case TRICKLE:
         break;
     }
+    }
     std::string phase_name = "coarse";
-    if (phase == SETTLE) {
+    if (flow_pour_) {
+      phase_name = "flow";
+    } else if (smooth_pour_) {
+      phase_name = "smooth";
+    } else if (phase == SETTLE) {
       phase_name = "settle";
     } else if (phase == FINE) {
       phase_name = "fine";
@@ -362,9 +487,13 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
     ctx.filtered_weight = net_g; ctx.raw_weight = net_g; ctx.phase = phase_name;
     ctx.dt_s = 1.0 / std::max(1.0, sample_rate_hz_);
     ControlCommand cmd = control_->update(ctx);
-    double vibration_intensity = std::clamp(cmd.vibration_duty, 0.0, 1.0);
+    double vibration_intensity = std::clamp(cmd.vibration_duty, 0.0, vibration_cmd_max_);
+    if (!smooth_pour_) {
     if (phase == COARSE) {
-      vibration_intensity = std::max(vibration_intensity, std::clamp(coarse_vibration_intensity_, 0.0, 1.0));
+      // Cap (same as FINE/TRICKLE) — previously max() floored at coarse and
+      // forced a hard 0.8–1.0 blast at pour start for PID laws.
+      vibration_intensity = std::min(
+        vibration_intensity, std::clamp(coarse_vibration_intensity_, 0.0, 1.0));
     } else if (phase == SETTLE) {
       vibration_intensity = std::clamp(settle_vibration_intensity_, 0.0, 1.0);
     } else if (phase == FINE) {
@@ -380,7 +509,45 @@ void PourServer::execute(const std::shared_ptr<GoalHandle> goal_handle)
         }
       }
     }
+    // Escape the no-flow deadband: nonzero but sub-threshold cmds rarely move powder.
+    constexpr double kCmdEps = 0.02;
+    if (vibration_intensity > kCmdEps &&
+        vibration_intensity < min_pour_vibration_ &&
+        phase != SETTLE) {
+      vibration_intensity = min_pour_vibration_;
+    }
+    }  // phase caps / settle stop / trickle pulse — skipped for pid_smooth and pid_flow
     send_cmd(vibration_intensity, 0.0, incline_deg);
+
+    // PidFlow already ramped to its seek cap and powder still did not move.
+    // That is stronger evidence the scoop is empty than the no-progress timer,
+    // which would also fire during the deliberate seek.
+    if (cmd.scoop_empty) {
+      stop_cmd();
+      publish_status(false, "", 0.0, 0.0, 0.0);
+      result->achieved = false;
+      result->timeout = true;
+      result->overshoot = false;
+      result->final_weight = static_cast<float>(raw_weight_);
+      result->final_net_g = static_cast<float>(net_g);
+      result->need_rescoop = true;
+      result->proceed_next = false;
+      result->message = "Scoop empty";
+      RCLCPP_WARN(
+        get_logger(),
+        "Pour scoop empty: phase=%s net=%.3fg duty=%.2f (baseline=%.3f)",
+        phase_name.c_str(),
+        net_g,
+        vibration_intensity,
+        baseline_g);
+      health_->warn(
+        "pour_scoop_empty",
+        "Pour seek reached cap with no flow, needs rescoop",
+        "{\"phase\":\"" + phase_name + "\",\"net_g\":" + std::to_string(net_g) +
+          ",\"duty\":" + std::to_string(vibration_intensity) + "}");
+      goal_handle->succeed(result);
+      return;
+    }
 
     // feedback
     feedback->current_weight = static_cast<float>(raw_weight_);

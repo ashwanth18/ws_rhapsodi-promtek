@@ -14,8 +14,8 @@ lexium_driver:
     joint_offset_deg: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
     # --- Motion shaping (moveJ has no duration, so timing is approximated) ---
-    move_speed_deg: 30.0         # max joint speed cap for moveJ (deg/s)
-    move_acc_deg: 60.0           # max joint accel cap for moveJ (deg/s^2)
+    move_speed_deg: 50.0         # max joint speed cap for moveJ (deg/s)
+    move_acc_deg: 90.0           # max joint accel cap for moveJ (deg/s^2)
     speed_from_trajectory: true  # derive per-segment speed/acc from MoveIt's plan
                                  # (honours the velocity/accel scaling sliders);
                                  # move_speed_deg/move_acc_deg act as caps
@@ -39,7 +39,7 @@ lexium_driver:
     require_remote_control: true # require control_source == 3 (Remote) before motion
     auto_power_on: false         # leave power/enable to the operator by default
     auto_enable: false
-    speed_rate: 0.1              # conservative speed override applied on startup (0..1)
+    speed_rate: 0.25             # idle speed override applied on startup (0..1)
     motion_wait_timeout: 60.0
     command_timeout: 10.0        # default TCP command ack timeout (moveJ, etc.)
     state_command_timeout: 45.0  # power/enable commands can be slow after power cycle

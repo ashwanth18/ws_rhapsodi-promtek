@@ -37,6 +37,7 @@ Parameters:
 - `mode_topic` (default: `/lightsout_training/mode`)
 - `robot_id` (default: `robot-1`)
 - `mode` (default: `lightsout`)
+- `control_law_type` (default: `bangbang`) — snapshotted into `metadata.json` as `pour_control_law`
 - `processing_url` (default: `http://localhost:8002/process`)
 
 ## Simulation (no hardware)
@@ -81,6 +82,6 @@ Each run creates:
 For webhook runs, the same folder also includes:
 
 - `metadata.json`
-  - contains `run_id`, `weightment_id`, `batch_id`, `ingredient_id`, `location_id`, `target_weight_g`, and bag path
+  - contains `run_id`, `weightment_id`, `batch_id`, `ingredient_id`, `location_id`, `target_weight_g`, `pour_control_law` (bangbang|pid|pid_smooth|pid_flow|pid_flow_80|pid_inflight), and bag path
 - `webhook_run/`
   - MCAP bag directory for the single webhook robot run

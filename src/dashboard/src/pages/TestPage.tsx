@@ -207,6 +207,13 @@ export default function TestPage() {
                   label={activeRun.status || 'unknown'}
                   tone={runTone(activeRun.status)}
                   pulse={['starting', 'running'].includes(activeRun.status ?? '')}
+                  title={
+                    (activeRun.status === 'failed' ||
+                      activeRun.status === 'mes_send_failed') &&
+                    activeRun.error_message
+                      ? activeRun.error_message
+                      : undefined
+                  }
                 />
                 <span className="font-mono text-xs text-[var(--text-secondary)]">
                   run {activeRun.run_id} · wt {activeRun.weightment_id}

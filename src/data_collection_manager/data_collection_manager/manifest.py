@@ -291,8 +291,10 @@ class RunManifest:
 
     def list_prunable_tier1_runs(self) -> List[RunRecord]:
         """Runs whose Tier-1 artifacts are safe to delete right now:
-        acknowledged by the ingestion service, not already pruned, and not
-        exempted by an anomaly flag. Oldest-created first.
+        acknowledged by the ingestion service, recording finished
+        (completed_at set), not already pruned, and not exempted by an
+        anomaly flag. Oldest-created first. An in-progress bag is never
+        eligible, even if an ack arrived early.
         """
         with self._lock:
             cur = self._conn.execute(
@@ -300,6 +302,7 @@ class RunManifest:
                 SELECT * FROM runs
                 WHERE tier1_acked_at IS NOT NULL
                   AND tier1_pruned_at IS NULL
+                  AND completed_at IS NOT NULL
                   AND anomaly_flag = 0
                 ORDER BY created_at ASC
                 """
@@ -343,14 +346,18 @@ class RunManifest:
         return [RunRecord.from_row(r) for r in rows]
 
     def list_runs_needing_tier1_upload(self) -> List[RunRecord]:
-        """Runs whose Tier 0 has already synced (so the server has a run
-        record to attach Tier-1 blobs to) but whose Tier 1 hasn't been
-        acked yet."""
+        """Runs whose recording has finished and whose Tier 0 has synced.
+
+        An open bag must not be uploaded: acking it lets retention delete
+        webhook_run while the recorder is still writing, and processing
+        then cannot find the bag.
+        """
         with self._lock:
             cur = self._conn.execute(
                 """
                 SELECT * FROM runs
-                WHERE tier0_synced_at IS NOT NULL
+                WHERE completed_at IS NOT NULL
+                  AND tier0_synced_at IS NOT NULL
                   AND tier1_acked_at IS NULL
                   AND tier1_pruned_at IS NULL
                 ORDER BY created_at ASC

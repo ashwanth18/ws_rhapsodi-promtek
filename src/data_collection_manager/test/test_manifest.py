@@ -37,6 +37,8 @@ def test_prunable_requires_ack_and_excludes_anomalies(tmp_path):
     manifest.upsert_run('run-acked', 'robot-1', tmp_path / 'r2')
     manifest.upsert_run('run-anomaly', 'robot-1', tmp_path / 'r3')
 
+    manifest.mark_run_complete('run-acked')
+    manifest.mark_run_complete('run-anomaly')
     manifest.mark_tier1_acked('run-acked')
     manifest.mark_tier1_acked('run-anomaly')
     manifest.flag_anomaly('run-anomaly', 'pour_overshoot')
@@ -56,6 +58,8 @@ def test_prunable_ordered_oldest_first(tmp_path):
     manifest.upsert_run(
         'run-older', 'robot-1', tmp_path / 'b', created_at='2026-01-01T00:00:00+00:00'
     )
+    manifest.mark_run_complete('run-newer')
+    manifest.mark_run_complete('run-older')
     manifest.mark_tier1_acked('run-newer')
     manifest.mark_tier1_acked('run-older')
 
@@ -66,6 +70,7 @@ def test_prunable_ordered_oldest_first(tmp_path):
 def test_mark_tier1_pruned_removes_from_prunable_list(tmp_path):
     manifest = _manifest(tmp_path)
     manifest.upsert_run('run-1', 'robot-1', tmp_path / 'r1')
+    manifest.mark_run_complete('run-1')
     manifest.mark_tier1_acked('run-1')
     assert len(manifest.list_prunable_tier1_runs()) == 1
 
