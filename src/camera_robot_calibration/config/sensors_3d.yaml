@@ -1,0 +1,13 @@
+# Named sensors (string list). MoveIt reads `sensors` then `<name>.sensor_plugin`.
+# padding_* is the robot self-filter (drops points on the URDF / scoop).
+sensors:
+  - d455_pointcloud
+d455_pointcloud:
+  sensor_plugin: occupancy_map_monitor/PointCloudOctomapUpdater
+  point_cloud_topic: /camera/color/points
+  max_range: 1.5
+  point_subsample: 4
+  padding_offset: 0.04
+  padding_scale: 1.0
+  max_update_rate: 1.0
+  filtered_cloud_topic: /moveit_filtered_cloud

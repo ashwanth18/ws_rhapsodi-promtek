@@ -1,0 +1,9 @@
+# Laptop RSP owns robot TF (scoop URDF). Do not bridge Niryo's short tcp_link.
+/**:
+  ros__parameters:
+    topic_whitelist:
+      - "^(?!/tf$|/tf_static$).*"
+    service_whitelist:
+      - ".*"
+    action_whitelist:
+      - ".*"

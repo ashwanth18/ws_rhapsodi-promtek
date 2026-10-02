@@ -1,0 +1,9 @@
+# Physical size of the sheet on the robot (ruler), not the PNG design size.
+# This print was fitted to A4 (~42 mm squares). Design PNG is 30 mm at 100%.
+squares_x: 5
+squares_y: 7
+square_length_m: 0.042
+marker_length_m: 0.0308
+dictionary: DICT_5X5_250
+legacy_pattern: false
+print_dpi: 300

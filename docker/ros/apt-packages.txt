@@ -27,4 +27,6 @@ ros-jazzy-rosbridge-server
 ros-jazzy-rmw-cyclonedds-cpp
 ros-jazzy-rviz2
 ros-jazzy-warehouse-ros-sqlite
+ros-jazzy-realsense2-camera
+ros-jazzy-cv-bridge
 vim

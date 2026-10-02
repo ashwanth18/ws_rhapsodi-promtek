@@ -1,0 +1,48 @@
+# Optional RealSense D455 hand-eye calibration overlay.
+# Not started by default — use Compose profile `handeye`.
+#
+# Example (Pi):
+#   docker compose -f compose/devices/pi5.yml -f compose/devices/handeye-calibrate.yml \
+#     --profile handeye --project-directory <workspace> --env-file robot-prod.env \
+#     up -d handeye_calibrate
+#
+# Laptop / x86: swap pi5.yml for x86.yml the same way.
+#
+# Requires a ros-prod image rebuilt after camera_robot_calibration + easy_handeye2
+# + ros-jazzy-realsense2-camera were added. Does not move the arm until
+# dry_run:=false and start_sampler:=true (defaults below keep dry_run true for safety).
+
+services:
+  handeye_calibrate:
+    profiles: ["handeye"]
+    image: ${ROS_PROD_IMAGE:-iserenity/rhapsodi-promtek:ros-prod}
+    network_mode: host
+    ipc: host
+    privileged: true
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      ROS_LOCALHOST_ONLY: ${ROS_LOCALHOST_ONLY:-0}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+      FASTDDS_BUILTIN_TRANSPORTS: ${FASTDDS_BUILTIN_TRANSPORTS:-UDPv4}
+      ROBOT_IP: ${ROBOT_IP:-169.254.200.200}
+      RHAPSODI_DEVICE_CONFIG: ${RHAPSODI_DEVICE_CONFIG:-/ws/config/device.yaml}
+      ROBOT_PROFILES_DIR: ${ROBOT_PROFILES_DIR:-/ws/config/robots}
+      # Persist easy_handeye2 YAML under the bind-mounted home.
+      HOME: /root
+    volumes:
+      - ./data:/data
+      - ./data/ros_home:/root/.ros
+      - ./data/easy_handeye2:/root/.ros2/easy_handeye2
+      - ./config:/ws/config:ro
+    # dry_run:=true by default so bringing the profile up does not move hardware.
+    # For a real calibration run, override env:
+    #   HANDEYE_DRY_RUN=false HANDEYE_SERIAL_NO=_YOURSERIAL
+    command:
+      [
+        "bash",
+        "-lc",
+        "extra=''; sn='${HANDEYE_SERIAL_NO:-}'; if [ -n \"$$sn\" ]; then extra=\"serial_no:=$$sn\"; fi; exec ros2 launch camera_robot_calibration niryo_d455_calibrate.launch.py dry_run:=${HANDEYE_DRY_RUN:-true} bringup_robot:=${HANDEYE_BRINGUP_ROBOT:-true} start_sampler:=${HANDEYE_START_SAMPLER:-true} start_realsense:=${HANDEYE_START_REALSENSE:-true} $$extra",
+      ]
+    restart: "no"

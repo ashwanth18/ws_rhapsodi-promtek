@@ -1,0 +1,7 @@
+Print charuco_5x7_dict5x5_30mm.png at 100% scale (no fit-to-page, no fill-page).
+Physical size at 100%: 150.0 mm x 210.0 mm (5x7 squares @ 30 mm).
+Dictionary: DICT_5X5_250, marker length 22 mm.
+
+If you instead scale the PNG to fill A4 (210 x 297 mm), squares become ~42 mm.
+Then set config/charuco_board.yaml square_length_m: 0.042 (marker 0.0308) and
+recalibrate. Wrong square size shifts PnP vs depth by the same scale (~1.4x).

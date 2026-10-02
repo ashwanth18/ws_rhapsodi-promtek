@@ -1,0 +1,141 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+  - Class: rviz_common/Tool Properties
+    Name: Tool Properties
+    Expanded:
+      - /Publish Point1
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Enabled: true
+      Name: Grid
+      Plane: XY
+      Cell Size: 0.1
+      Reference Frame: <Fixed Frame>
+    - Class: rviz_default_plugins/TF
+      Enabled: true
+      Name: TF
+      Marker Scale: 0.15
+    - Class: rviz_default_plugins/RobotModel
+      Enabled: true
+      Name: RobotModel
+      Description Topic:
+        Value: /robot_description
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+    - Alpha: 1
+      Class: rviz_default_plugins/PointCloud2
+      Enabled: true
+      Name: D455 Cloud
+      Topic:
+        Value: /camera/color/points
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+      Size (m): 0.006
+      Size (Pixels): 3
+      Style: Flat Squares
+      Color Transformer: RGB8
+      Decay Time: 0
+      Use Fixed Frame: true
+    - Class: rviz_default_plugins/Image
+      Enabled: true
+      Name: Color
+      Topic:
+        Value: /camera/color/image_raw
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+    - Class: rviz_default_plugins/Image
+      Enabled: true
+      Name: ChArUco Overlay
+      Topic:
+        Value: /charuco_detector/overlay
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Click Goal
+      Topic:
+        Value: /click_move/marker
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Containers
+      Topic:
+        Value: /container_marker
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+    - Class: moveit_rviz_plugin/PlanningScene
+      Enabled: true
+      Move Group Namespace: ""
+      Name: PlanningScene
+      Planning Scene Topic: /monitored_planning_scene
+      Robot Description: robot_description
+      Scene Geometry:
+        Scene Alpha: 0.5
+        Scene Color: 50; 230; 50
+        Show Scene Geometry: true
+        Voxel Coloring: Z-Axis
+        Voxel Rendering: Occupied Voxels
+    - Alpha: 1
+      Class: rviz_default_plugins/PointCloud2
+      Enabled: false
+      Name: Self-filtered Cloud
+      Topic:
+        Value: /moveit_filtered_cloud
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+      Size (m): 0.008
+      Style: Flat Squares
+      Color Transformer: AxisColor
+      Decay Time: 0
+      Use Fixed Frame: true
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: base_link
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/FocusCamera
+    - Class: rviz_default_plugins/Measure
+    - Class: rviz_default_plugins/PublishPoint
+      Topic:
+        Value: /clicked_point
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 1.2
+      Focal Point:
+        X: 0.2
+        Y: 0
+        Z: 0.2
+      Name: Current View
+      Pitch: 0.5
+      Yaw: 0.8
+Window Geometry:
+  Height: 900
+  Width: 1400
+  X: 80
+  Y: 80

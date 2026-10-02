@@ -55,6 +55,7 @@ src/micro_ros_setup/
 src/uros/drive_base/
 src/uros/micro-ROS-Agent/
 src/uros/micro_ros_msgs/
+src/easy_handeye2/
 
 
 data/db/

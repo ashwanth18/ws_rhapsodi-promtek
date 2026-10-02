@@ -24,3 +24,9 @@ repositories:
     url: https://github.com/micro-ROS/micro_ros_msgs.git
     version: e65ab21bd0733ebff2af6317d573cc584efa5893
 
+  # Nested packages: easy_handeye2/ and easy_handeye2_msgs/ (colcon discovers both).
+  easy_handeye2:
+    type: git
+    url: https://github.com/marcoesposito1988/easy_handeye2.git
+    version: 29bd50a7939e853d768d203d2abc61eb6e50facc
+

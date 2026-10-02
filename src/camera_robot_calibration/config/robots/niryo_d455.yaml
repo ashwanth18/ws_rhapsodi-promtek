@@ -1,0 +1,46 @@
+# Niryo Ned3 Pro + table-mounted RealSense D455 (eye-on-base).
+calibration_name: niryo_d455_eob
+calibration_type: eye_on_base
+
+frames:
+  robot_base_frame: base_link
+  # Flange for easy_handeye2; board-to-flange is solved out by Tsai-Lenz.
+  robot_effector_frame: hand_link
+  # MoveTo / planning tip (SRDF group arm ends here).
+  eef_link: tcp_link
+  tracking_base_frame: camera_color_optical_frame
+  tracking_marker_frame: charuco_board
+
+# Match Niryo recording contract (not RealSense default /camera/camera/...).
+topics:
+  image: /camera/color/image_raw
+  camera_info: /camera/color/camera_info
+  overlay: /charuco_detector/overlay
+
+moveit:
+  planning_group: arm
+  moveit_package: niryo_ned3pro_moveit_config
+  moveit_robot_name: niryo_ned3pro
+  urdf_package: niryo_robot_description
+  urdf_path: urdf/ned3pro/niryo_ned3pro.urdf.xacro
+  driver_package: niryo_ned_ros2_driver
+  driver_launch: launch/driver.launch.py
+
+realsense:
+  camera_namespace: ""
+  camera_name: camera
+  # Leave empty to use the first connected device; set serial_no launch arg to pin.
+  serial_no: ""
+  align_depth: false
+  pointcloud: false
+
+sampling:
+  num_samples: 12
+  rotation_deg: 25.0
+  translation_m: 0.02
+  settle_s: 1.5
+  detect_timeout_s: 5.0
+  velocity_scaling: 0.15
+  acceleration_scaling: 0.15
+  move_to_action: /move_to
+  dry_run: false

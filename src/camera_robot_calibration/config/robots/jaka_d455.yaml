@@ -1,0 +1,42 @@
+# JAKA Zu5 / Lexium + table-mounted RealSense D455 (eye-on-base).
+# Isolated robot bringup in this package is Niryo-only. For Jaka, start the
+# laptop scooping stack first, then:
+#   ros2 launch camera_robot_calibration niryo_d455_calibrate.launch.py \
+#     robot_config:=<this file> bringup_robot:=false ...
+calibration_name: jaka_d455_eob
+calibration_type: eye_on_base
+
+frames:
+  robot_base_frame: link0
+  robot_effector_frame: Link6
+  eef_link: tcp_link
+  tracking_base_frame: camera_color_optical_frame
+  tracking_marker_frame: charuco_board
+
+topics:
+  image: /camera/color/image_raw
+  camera_info: /camera/color/camera_info
+  overlay: /charuco_detector/overlay
+
+moveit:
+  planning_group: jaka_zu5
+  moveit_package: jaka_zu5_moveit_config
+  moveit_robot_name: jaka_zu5
+
+realsense:
+  camera_namespace: ""
+  camera_name: camera
+  serial_no: ""
+  align_depth: false
+  pointcloud: false
+
+sampling:
+  num_samples: 12
+  rotation_deg: 25.0
+  translation_m: 0.02
+  settle_s: 1.5
+  detect_timeout_s: 5.0
+  velocity_scaling: 0.15
+  acceleration_scaling: 0.15
+  move_to_action: /move_to
+  dry_run: false
