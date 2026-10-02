@@ -60,6 +60,15 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/bt_trees)
   )
 endif()
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_check_overshoot test/test_check_overshoot.cpp)
+  target_link_libraries(test_check_overshoot ${PROJECT_NAME} behaviortree_cpp::behaviortree_cpp)
+  ament_target_dependencies(test_check_overshoot rclcpp)
+  target_compile_definitions(test_check_overshoot PRIVATE
+    BT_TREES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/bt_trees")
+endif()
+
 ament_package()
 
 

@@ -130,6 +130,8 @@ It starts from the explicit service:
 
 This tree expects the backend adapter to resolve the pickup/weigh/home target names and convert kilograms to grams before the run starts. The backend calls this service through the central rosbridge server instead of a custom ROS-side bridge node.
 
+`ComputeRemaining` clamps the remaining weight at 0, so a scoop that overshoots still ends the rescoop loop. After the arm returns, `CheckOvershoot` fails the run when the net weight is more than `tolerance_g` above the target. The run ends `failed`, and `/orchestrator/failure_reason` gives the dosed and target grams, for example `Weightment overshoot: dosed 37.5 g for a 20.0 g target (+17.5 g, tolerance 1.0 g)`.
+
 ### End-to-end test commands
 
 Build everything once:

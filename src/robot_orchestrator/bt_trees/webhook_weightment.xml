@@ -173,6 +173,10 @@
               velocity_scaling="0.70"
               acceleration_scaling="0.70" />
       <PhaseMarker phase="transport_end"/>
+      <!-- After the arm is home: fail the run if the scale is over target + tolerance. -->
+      <CheckOvershoot batch_target="{webhook_target_weight_g}"
+                      tolerance="{webhook_tolerance_g}"
+                      overshoot="{webhook_overshoot_g}"/>
     </Sequence>
   </BehaviorTree>
 </root>

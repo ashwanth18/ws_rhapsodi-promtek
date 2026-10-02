@@ -15,6 +15,7 @@
 #include "robot_orchestrator/compute_effective_target_node.hpp"
 #include "robot_orchestrator/wait_seconds_node.hpp"
 #include "robot_orchestrator/check_remaining_node.hpp"
+#include "robot_orchestrator/check_overshoot_node.hpp"
 #include "robot_orchestrator/weight_fresh_node.hpp"
 #include "robot_orchestrator/capture_baseline_node.hpp"
 #include "robot_orchestrator/compute_scoop_offset_node.hpp"
@@ -54,6 +55,7 @@ void RegisterNodes(BT::BehaviorTreeFactory & factory)
   factory.registerNodeType<ComputeEffectiveTargetNode>("ComputeEffectiveTarget");
   factory.registerNodeType<WaitSecondsNode>("WaitSeconds");
   factory.registerNodeType<CheckRemainingNode>("CheckRemaining");
+  factory.registerNodeType<CheckOvershootNode>("CheckOvershoot");
   factory.registerNodeType<WeightFreshNode>("WeightFresh");
   factory.registerNodeType<CaptureBaselineNode>("CaptureBaseline");
   factory.registerNodeType<ComputeScoopOffsetNode>("ComputeScoopOffset");
