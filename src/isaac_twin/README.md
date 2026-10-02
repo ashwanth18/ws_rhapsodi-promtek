@@ -120,9 +120,10 @@ that does not need Isaac (seeding, bed / scoop / RS3 / table labels) is in `part
   - A frame takes about 60 ms. About 50 ms of that is the main thread waiting on PhysX's
     GPU particle solve (4 substeps), about 9 ms is RTX rendering, and the powder readback
     takes 3 ms.
-  - The GPU sits at its 80 W power limit (about 75% busy, 2.4 of 3.1 GHz), so the particle
-    twin is GPU-power-bound. Ubuntu does not run NVIDIA Dynamic Boost (`nvidia-powerd`) by
-    default, so the laptop GPU stays at its base power.
+  - The GPU is not the limit. Without NVIDIA Dynamic Boost (`nvidia-powerd`, not run by
+    default on Ubuntu) it sat at its 80 W cap. With it the cap is 175 W, but the GPU only
+    draws about 100 W at 2.6 GHz and 66 °C (65–70% busy), and FPS goes from about 15 to 16.
+    The PhysX particle steps run in sequence, so a faster or more powerful GPU barely helps.
   - What did not help: `/physics/updateParticlesToUsd=false` (positions still update),
     hiding the grains, and dropping the D455.
   - Trade-offs:
