@@ -73,7 +73,7 @@ Any shell that talks to the twin needs `source src/isaac_twin/scripts/twin_env.s
 
 ```bash
 ros2 service call /isaac_twin/reset_powder std_srvs/srv/Trigger    # refill RS6, empty scoop and RS3
-ros2 topic echo /isaac_twin/powder_status                          # bed / scoop / RS3 / table grams
+ros2 topic echo /isaac_twin/payload_g                              # also bed_mass_g, rs3_mass_g
 ```
 
 ### Flow checks (sim only)
@@ -92,7 +92,7 @@ real caches.
 
 Settings are in `config/twin.yaml` (`powder`, `scoop`). They are **not fitted** to the real
 cell yet. `powder.model` (or `--powder`) picks one of two models. Both publish the same
-`/isaac_twin/powder_status`, `/weight` and reset service, so the ROS stack and BT do not
+`/isaac_twin/*_g` topics, `/weight` and reset service, so the ROS stack and BT do not
 change.
 
 ### Particles (default)
