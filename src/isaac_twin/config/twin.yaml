@@ -27,6 +27,42 @@ powder:
   density_g_per_ml: 0.55
   color_rgb: [0.95, 0.93, 0.86]
   mesh_update_hz: 10
+  # particles: PhysX PBD granular grains on the GPU (Isaac only).
+  # heightfield: kinematic surface + scoop model below (also the gym env's model).
+  model: particles
+  # Starting guesses, not fitted to flour (4 mm: ~110k grains of 23 mg for a
+  # 40 mm bed, RTF ~0.5 on an RTX 5080 laptop).
+  particles:
+    spacing_m: 0.004
+    color_rgb: [0.80, 0.08, 0.06]
+    friction: 0.6
+    particle_friction_scale: 1.0
+    cohesion: 0.02
+    adhesion: 0.0
+    damping: 0.1
+    # Grain radius = rest_ratio x spacing (< 0.5 leaves clearance in the seed).
+    rest_ratio: 0.45
+    # Settled / seeded bed height: the bed is seeded to fill_depth_m / settle_ratio
+    # and each grain weighs spacing³ x settle_ratio x density, so the settled
+    # bed matches the heightfield's depth and grams (the status log prints depth).
+    settle_ratio: 0.66
+    jitter: 0.04
+    solver_iterations: 48
+    ccd: true
+    max_velocity_m_s: 1.0
+    max_depenetration_m_s: 0.2
+    physics_hz: 120
+    # Scoop collider: voxels (cubes on the bowl surface) | sdf | convexDecomposition.
+    # The importer's box collider fills the bowl, so it is switched off.
+    scoop_collider: voxels
+    scoop_voxel_m: 0.003
+    scoop_sdf_resolution: 256
+    # RS6/RS3 colliders: convexDecomposition | none (triangle mesh) | sdf.
+    vessel_collider: convexDecomposition
+    # Random velocity (m/s, x /vibration/intensity) given to the grains in
+    # the scoop each frame while vibrating.
+    vibration_kick_m_s: 0.15
+    readback_hz: 10
 
 scoop:
   # Fraction of the carved powder that ends up in the bowl.

@@ -58,6 +58,52 @@ def cartesian_path(poses: list[Pose]) -> list[tuple[np.ndarray, int]]:
     return out
 
 
+def timed_scoop(
+    chain: Chain,
+    joints: list[np.ndarray],
+    q_start: np.ndarray,
+    tcp_speed_m_s: float = 0.2,
+    shake_s: float = 5.0,
+    shake_intensity: float = 0.75,
+    settle_s: float = 1.5,
+    lead_s: float = 3.0,
+    hold_s: float = 5.0,
+    max_step_rad: float = 0.01,
+) -> list[tuple[float, np.ndarray, float]]:
+    """``(t, joints, vibration)`` knots for one authored scoop, as the BT runs it:
+    move to approach, joint-space through the markers at ``tcp_speed_m_s``, the
+    MTC shake-off at the lift pose, then hold at transport-ready."""
+    names = chain.joint_names
+    knots = [(0.0, np.asarray(q_start, dtype=float), 0.0), (lead_s, np.asarray(joints[0], dtype=float), 0.0)]
+    t = lead_s
+    prev_tcp = chain.tip_pose(dict(zip(names, joints[0])))
+    for seg, (a, b) in enumerate(zip(joints[:-1], joints[1:])):
+        if seg == 3:
+            knots.append((t + shake_s, knots[-1][1], shake_intensity))
+            knots.append((t + shake_s + settle_s, knots[-1][1], 0.0))
+            t += shake_s + settle_s
+        n = max(1, int(np.ceil(np.abs(b - a).max() / max_step_rad)))
+        for s in range(1, n + 1):
+            q = a + (b - a) * (s / n)
+            tcp = chain.tip_pose(dict(zip(names, q)))
+            t += max(float(np.linalg.norm(tcp[:3, 3] - prev_tcp[:3, 3])) / tcp_speed_m_s, 1e-3)
+            prev_tcp = tcp
+            knots.append((t, q, 0.0))
+    knots.append((t + hold_s, knots[-1][1], 0.0))
+    return knots
+
+
+def sample_knots(knots: list[tuple[float, np.ndarray, float]], t: float) -> tuple[np.ndarray, float]:
+    """Joints (linear between knots) and vibration (of the segment being run) at ``t``."""
+    if t <= knots[0][0]:
+        return knots[0][1], 0.0
+    for (t0, q0, _), (t1, q1, vib) in zip(knots[:-1], knots[1:]):
+        if t <= t1:
+            u = (t - t0) / max(t1 - t0, 1e-9)
+            return q0 + (q1 - q0) * u, vib
+    return knots[-1][1], 0.0
+
+
 def joint_path(chain: Chain, joints: list[np.ndarray], max_step_rad: float = 0.01) -> list[tuple[np.ndarray, int]]:
     """``(base_link -> tcp, segment)``: joint-space interpolation, like MTC's
     pipeline-planned segments between the scoop poses."""

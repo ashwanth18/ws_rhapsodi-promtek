@@ -317,6 +317,10 @@ class PowderCell:
     def rs3_g(self) -> float:
         return self.grams(self.rs3_m3)
 
+    @property
+    def table_g(self) -> float:
+        return self.grams(self.table_m3)
+
     @staticmethod
     def tilt_deg(base_to_tcp: np.ndarray) -> float:
         return math.degrees(math.acos(float(np.clip(base_to_tcp[2, 2], -1.0, 1.0))))

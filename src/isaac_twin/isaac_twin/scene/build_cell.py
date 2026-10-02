@@ -37,8 +37,18 @@ def _args():
     ap.add_argument("--layouts-dir", default=str(_SRC.parent / "config" / "layouts"))
     ap.add_argument("--calibration", default="", help="Calib name (default from twin.yaml)")
     ap.add_argument("--fill-depth", type=float, default=None, help="Powder depth above the RS6 floor (m)")
+    ap.add_argument(
+        "--powder", choices=("particles", "heightfield"), default="", help="Powder model (default: twin.yaml powder.model)"
+    )
     ap.add_argument("--headless", action="store_true")
     ap.add_argument("--max-seconds", type=float, default=0.0, help="Quit after this much sim time (0 = run)")
+    ap.add_argument("--dump-particles", default="", help="Save particle positions and the TCP pose (base frame, .npz) on exit")
+    ap.add_argument(
+        "--replay-scoop",
+        type=float,
+        default=0.0,
+        help="Tuning without ROS: after this many seconds, run the authored scoop + shake-off directly",
+    )
     return ap.parse_args()
 
 
@@ -72,9 +82,28 @@ from std_srvs.srv import Trigger  # noqa: E402
 
 from isaac_twin import cell  # noqa: E402
 from isaac_twin.kinematics import Chain  # noqa: E402
+from isaac_twin.particle_powder import ParticleAccounting, bed_depth_m, particle_grams, seed_bed  # noqa: E402
 from isaac_twin.powder import PowderCell, ScoopParams  # noqa: E402
 from isaac_twin.scene.d455 import add_d455  # noqa: E402
-from isaac_twin.scoop_path import cartesian_path, chained_ik, joint_path, load_scoop_poses, pose_matrix  # noqa: E402
+from isaac_twin.scene.particles import (  # noqa: E402
+    ParticlePowder,
+    add_static_collider,
+    configure_physics_scenes,
+    disable_link_gravity,
+    filter_robot_from,
+    scoop_collider,
+)
+from isaac_twin.scoop_path import (  # noqa: E402
+    cartesian_path,
+    chained_ik,
+    joint_path,
+    load_scoop_poses,
+    pose_matrix,
+    sample_knots,
+    timed_scoop,
+)
+from isaacsim.core.utils.types import ArticulationAction  # noqa: E402
+from scoop_vision.transforms import apply_mtc_shape  # noqa: E402
 from isaac_twin.scene.joint_bridge import create_joint_bridge  # noqa: E402
 from scoop_vision.container import ContainerModel  # noqa: E402
 from scoop_vision.mesh import load_stl  # noqa: E402
@@ -87,6 +116,10 @@ FLOOR_BELOW_BASE_M = 0.75
 
 def _log(msg: str) -> None:
     print(f"[isaac_twin] {msg}", flush=True)
+
+
+def _transform(points: np.ndarray, t: np.ndarray) -> np.ndarray:
+    return points @ t[:3, :3].T + t[:3, 3]
 
 
 def _set_matrix(prim, t: np.ndarray) -> None:
@@ -120,9 +153,10 @@ def _tri_mesh(stage, path: str, tris: np.ndarray):
     return mesh
 
 
-def build_layout(stage, layout_doc: dict):
-    """Table/RS6/RS3 as visual-only prims (no colliders: the arm is position
-    driven and MTC lets the scoop touch the task vessel)."""
+def build_layout(stage, layout_doc: dict, vessel_collider: str = ""):
+    """Table/RS6/RS3 prims. Visual only unless ``vessel_collider`` (particle powder);
+    the robot is filtered from them either way, since it is position driven
+    and MTC lets the scoop touch the task vessel."""
     UsdGeom.Xform.Define(stage, CELL_ROOT)
     objects = {}
     for obj in cell.layout_objects(layout_doc):
@@ -140,6 +174,8 @@ def build_layout(stage, layout_doc: dict):
             prim = cube.GetPrim()
             objects[obj.id] = (obj, None)
         _bind(prim, mat)
+        if vessel_collider:
+            add_static_collider(prim, vessel_collider)
         _log(f"layout object {obj.id} ({obj.geometry_type}) at {np.round(obj.pose[:3, 3], 4).tolist()}")
     floor = UsdGeom.Cube.Define(stage, f"{CELL_ROOT}/floor")
     floor.CreateSizeAttr(1.0)
@@ -147,6 +183,8 @@ def build_layout(stage, layout_doc: dict):
     floor_xf.AddTranslateOp().Set(Gf.Vec3d(0.0, 0.0, -FLOOR_BELOW_BASE_M - 0.005))
     floor_xf.AddScaleOp().Set(Gf.Vec3f(6.0, 6.0, 0.01))
     _bind(floor.GetPrim(), _material(stage, f"{CELL_ROOT}/Looks/floor", (0.35, 0.35, 0.37)))
+    if vessel_collider:
+        add_static_collider(floor.GetPrim())
     return objects
 
 
@@ -301,19 +339,45 @@ def main() -> None:
     calib_path = cell.find_calibration(ARGS.calibration or cfg["calibration"])
     render_hz = float(cfg["render_hz"])
     rendering_dt = 1.0 / render_hz
-    _log(f"layout {layout_path}, calibration {calib_path}")
+    pcfg = cfg["powder"]
+    model = ARGS.powder or pcfg.get("model", "heightfield")
+    particles = model == "particles"
+    physics_hz = float(pcfg["particles"].get("physics_hz", cfg["physics_hz"]) if particles else cfg["physics_hz"])
+    _log(f"layout {layout_path}, calibration {calib_path}, powder model {model}, physics {physics_hz:.0f} Hz")
 
-    sim = SimulationContext(
-        stage_units_in_meters=1.0, physics_dt=1.0 / float(cfg["physics_hz"]), rendering_dt=rendering_dt
-    )
+    sim = SimulationContext(stage_units_in_meters=1.0, physics_dt=1.0 / physics_hz, rendering_dt=rendering_dt)
     stage = omni.usd.get_context().get_stage()
     UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
     UsdGeom.Xform.Define(stage, "/World")
     add_lights(stage)
 
-    objects = build_layout(stage, layout_doc)
+    vessel_collider = str(pcfg["particles"].get("vessel_collider", "convexDecomposition")) if particles else ""
+    objects = build_layout(stage, layout_doc, vessel_collider=vessel_collider)
     root = import_robot(ARGS.urdf, cfg["robot"])
-    set_gravity(stage, bool(cfg["robot"].get("gravity", False)))
+    tool_cfg = cell.robot_tool_config("niryo")
+    tool_tris = load_stl(cell.resolve_uri(tool_cfg["mesh_resource"])) * 0.001
+    tool = ScoopTool(tool_tris, tool_cfg["tcp_visual_offset_xyz"])
+    if particles:
+        scenes = configure_physics_scenes(stage, gravity=True, gpu=True)
+        robot_top = "/" + root.strip("/").split("/")[0]
+        n_links = disable_link_gravity(stage, robot_top)
+        n_filtered = filter_robot_from(stage, robot_top, CELL_ROOT)
+        part = pcfg["particles"]
+        scoop = scoop_collider(
+            stage,
+            robot_top,
+            "tool_link",
+            tool_tris,
+            kind=str(part.get("scoop_collider", "voxels")),
+            resolution=int(part.get("scoop_sdf_resolution", 256)),
+            voxel_m=float(part.get("scoop_voxel_m", 0.003)),
+        )
+        _log(
+            f"particles: gravity + GPU dynamics on {scenes}, gravity off on {n_links} robot links, "
+            f"robot filtered from {n_filtered} cell colliders, scoop {scoop}"
+        )
+    else:
+        set_gravity(stage, bool(cfg["robot"].get("gravity", False)))
 
     base_to_link = cell.camera_link_in_base(cell.load_calibration(calib_path))
     add_d455(stage, base_to_link, cfg["camera"], render_hz)
@@ -334,29 +398,55 @@ def main() -> None:
     with open(ARGS.urdf, encoding="utf-8") as fh:
         urdf_xml = fh.read()
     chain = Chain(urdf_xml, "base_link", "tcp_link")
-    tool_cfg = cell.robot_tool_config("niryo")
-    tool = ScoopTool(load_stl(cell.resolve_uri(tool_cfg["mesh_resource"])) * 0.001, tool_cfg["tcp_visual_offset_xyz"])
 
-    pcfg = cfg["powder"]
-    worker = CapacityWorker()
-    powder = PowderCell(
-        rs6_model,
-        task_obj.pose,
-        rs3_model,
-        rs3_pose,
-        tool,
-        fill_depth_m=float(ARGS.fill_depth if ARGS.fill_depth is not None else pcfg["fill_depth_m"]),
-        params=ScoopParams.from_twin_config(cfg),
-        on_capacity_miss=worker.request,
-        capacity_cache_dir=Path.home() / ".cache" / "isaac_twin",
-    )
-    worker.powder = powder
-    worker.start()
-    warm = _scoop_path_poses(Path(ARGS.layouts_dir) / layout_id / "poses.yaml", task_obj.pose, chain)
-    gravities = [g for pose in warm for g in powder.capacity_gravities(pose)]
-    worker.prewarm(list({powder.bowl.key(g): g for g in gravities if powder.bowl.cached(g) is None}.values()))
-    bed_mesh = PowderMesh(stage, f"{CELL_ROOT}/{task_id}/powder", powder.bed, pcfg["color_rgb"])
-    _log(f"powder bed {powder.bed_g:.0f} g ({powder.fill_depth_m * 1000:.0f} mm), interior cells {powder.bed.mask.sum()}")
+    fill_depth = float(ARGS.fill_depth if ARGS.fill_depth is not None else pcfg["fill_depth_m"])
+    bed_mesh = None
+    if particles:
+        part = pcfg["particles"]
+        spacing = float(part["spacing_m"])
+        settle = float(part.get("settle_ratio", 1.0))
+        accounting = ParticleAccounting(
+            rs6_model,
+            task_obj.pose,
+            rs3_model,
+            rs3_pose,
+            tool.tris_tcp,
+            particle_grams(spacing, float(pcfg["density_g_per_ml"]), settle),
+        )
+
+        def reseed(depth: float) -> np.ndarray:
+            pts = seed_bed(rs6_model, depth / settle, spacing, jitter=float(part.get("jitter", 0.04)))
+            return _transform(pts, task_obj.pose)
+
+        powder = ParticlePowder(stage, accounting, reseed(fill_depth), part, fill_depth, reseed=reseed)
+        _log(
+            f"particle bed {powder.count} grains x {accounting.particle_g * 1000:.1f} mg = "
+            f"{powder.count * accounting.particle_g:.0f} g ({fill_depth * 1000:.0f} mm settled, "
+            f"seeded {fill_depth / settle * 1000:.0f} mm, {spacing * 1000:.1f} mm grains)"
+        )
+    else:
+        worker = CapacityWorker()
+        powder = PowderCell(
+            rs6_model,
+            task_obj.pose,
+            rs3_model,
+            rs3_pose,
+            tool,
+            fill_depth_m=fill_depth,
+            params=ScoopParams.from_twin_config(cfg),
+            on_capacity_miss=worker.request,
+            capacity_cache_dir=Path.home() / ".cache" / "isaac_twin",
+        )
+        worker.powder = powder
+        worker.start()
+        warm = _scoop_path_poses(Path(ARGS.layouts_dir) / layout_id / "poses.yaml", task_obj.pose, chain)
+        gravities = [g for pose in warm for g in powder.capacity_gravities(pose)]
+        worker.prewarm(list({powder.bowl.key(g): g for g in gravities if powder.bowl.cached(g) is None}.values()))
+        bed_mesh = PowderMesh(stage, f"{CELL_ROOT}/{task_id}/powder", powder.bed, pcfg["color_rgb"])
+        _log(
+            f"powder bed {powder.bed_g:.0f} g ({powder.fill_depth_m * 1000:.0f} mm), "
+            f"interior cells {powder.bed.mask.sum()}"
+        )
 
     rclpy.init()
     ros = PowderRos(powder)
@@ -369,8 +459,18 @@ def main() -> None:
     dof_names = list(robot.dof_names)
     _log(f"articulation dofs {dof_names}; publishing on ROS_DOMAIN_ID from env")
 
+    replay = None
+    if ARGS.replay_scoop:
+        poses = apply_mtc_shape(load_scoop_poses(Path(ARGS.layouts_dir) / layout_id / "poses.yaml"))
+        ik = chained_ik(chain, [task_obj.pose @ pose_matrix(p) for p in poses])
+        if ik is None:
+            raise RuntimeError("authored scoop is not reachable by IK")
+        q_now = dict(zip(dof_names, robot.get_joint_positions().tolist()))
+        replay = timed_scoop(chain, ik, np.array([q_now[n] for n in chain.joint_names]))
+        _log(f"replaying the authored scoop at t={ARGS.replay_scoop:.0f}s for {replay[-1][0]:.1f}s")
+
     mesh_period = 1.0 / float(pcfg["mesh_update_hz"])
-    last_mesh = last_pub = last_status = 0.0
+    last_mesh = last_pub = last_status = last_replay_log = 0.0
     wall_start = last_status_wall = time.monotonic()
     sim_t = 0.0
     while APP.is_running():
@@ -382,8 +482,21 @@ def main() -> None:
             powder.reset()
             _log("powder reset")
         q = dict(zip(dof_names, robot.get_joint_positions().tolist()))
-        powder.step(rendering_dt, chain.tip_pose(q), ros.vibration)
-        if sim_t - last_mesh >= mesh_period:
+        vibration = ros.vibration
+        if replay is not None and sim_t >= ARGS.replay_scoop:
+            target, vibration = sample_knots(replay, sim_t - ARGS.replay_scoop)
+            by_name = dict(zip(chain.joint_names, target))
+            robot.apply_action(ArticulationAction(joint_positions=np.array([by_name.get(n, q[n]) for n in dof_names])))
+            if sim_t - last_replay_log >= 1.0:
+                err = max(abs(by_name[n] - q[n]) for n in chain.joint_names if n in q)
+                tcp_z = chain.tip_pose(q)[2, 3]
+                _log(
+                    f"replay t={sim_t - ARGS.replay_scoop:.1f}s vib={vibration:.2f} track_err={err:.3f}rad tcp_z={tcp_z:.3f} "
+                    f"bed={powder.bed_g:.0f}g scoop={powder.payload_g:.1f}g rs3={powder.rs3_g:.1f}g table={powder.table_g:.1f}g"
+                )
+                last_replay_log = sim_t
+        powder.step(rendering_dt, chain.tip_pose(q), vibration)
+        if bed_mesh is not None and sim_t - last_mesh >= mesh_period:
             bed_mesh.update()
             last_mesh = sim_t
         if sim_t - last_pub >= 0.1:
@@ -391,9 +504,13 @@ def main() -> None:
             last_pub = sim_t
         if sim_t - last_status >= 10.0:
             wall = time.monotonic()
+            depth = ""
+            if particles:
+                surface = bed_depth_m(rs6_model, task_obj.pose, powder.positions()) + powder.radius
+                depth = f" depth={surface * 1000:.0f}mm"
             _log(
                 f"t={sim_t:.0f}s rtf={10.0 / max(wall - last_status_wall, 1e-6):.2f} bed={powder.bed_g:.0f}g "
-                f"scoop={powder.payload_g:.1f}g rs3={powder.rs3_g:.1f}g"
+                f"scoop={powder.payload_g:.1f}g rs3={powder.rs3_g:.1f}g table={powder.table_g:.1f}g{depth}"
             )
             last_status, last_status_wall = sim_t, wall
         rclpy.spin_once(ros.node, timeout_sec=0.0)
@@ -407,6 +524,10 @@ def main() -> None:
         if ARGS.max_seconds and sim_t >= ARGS.max_seconds:
             break
 
+    if ARGS.dump_particles and particles:
+        q = dict(zip(dof_names, robot.get_joint_positions().tolist()))
+        np.savez(ARGS.dump_particles, positions=powder.positions(), tcp=chain.tip_pose(q))
+        _log(f"particles saved to {ARGS.dump_particles}")
     ros.node.destroy_node()
     rclpy.shutdown()
     sim.stop()
