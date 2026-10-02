@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from isaac_twin.powder import PowderBed, PowderCell, ScoopParams
+from isaac_twin.powder import UPRIGHT, BowlCapacity, PowderBed, PowderCell, ScoopParams, gravity_in_tcp
 from scoop_vision.container import ContainerModel
 from scoop_vision.scoop_tool import ScoopTool
 
@@ -102,6 +102,7 @@ def test_async_capacity_holds_payload_until_known(bin_model):
         bin_model, np.eye(4), None, None, _flat_scoop(), fill_depth_m=0.03,
         params=ScoopParams(spill_tau_s=0.01, heap_factor=1.0), on_capacity_miss=misses.append,
     )
+    cell.bowl._table.clear()
     level = bin_model.floor_z + 0.03
     tcp = np.eye(4)
     tcp[:3, 3] = [0.0, 0.0, level - 0.009]
@@ -111,7 +112,7 @@ def test_async_capacity_holds_payload_until_known(bin_model):
     for _ in range(20):
         cell.step(0.01, tcp)
     assert misses and cell.payload_g == pytest.approx(loaded)
-    cell.capacity(misses[-1])  # what the worker thread does
+    cell.bowl.compute(misses[-1])  # what the worker thread does
     for _ in range(50):
         cell.step(0.01, tcp)
     assert cell.payload_g <= cell.grams(cell.capacity_m3) + 1e-9
@@ -125,15 +126,21 @@ def _tilted(deg: float) -> np.ndarray:
     return t
 
 
-@pytest.mark.parametrize("tilted_capacity, drains", [(2e-5, False), (0.5e-5, True)])
-def test_vibration_feeds_only_toward_the_lip(bin_model, tilted_capacity, drains):
+def _cell_with_capacities(bin_model, level, tilted, **params):
+    """Tray tipped 15 deg; repose 0 so held == level fill at the tilt."""
     cell = PowderCell(
         bin_model, np.eye(4), None, None, _flat_scoop(), fill_depth_m=0.03,
-        params=ScoopParams(heap_factor=1.5, min_pour_tilt_deg=10.0, vibration_flow_g_per_s=4.0, spill_tau_s=0.01),
+        params=ScoopParams(repose_deg=0.0, repose_vibrating_deg=0.0, spill_tau_s=0.01, **params),
     )
     tcp = _tilted(15.0)
-    cell._capacity_cache[cell._capacity_key(np.eye(4))] = 1e-5
-    cell._capacity_cache[cell._capacity_key(tcp)] = tilted_capacity
+    cell.bowl._table[cell.bowl.key(UPRIGHT)] = level
+    cell.bowl._table[cell.bowl.key(gravity_in_tcp(tcp))] = tilted
+    return cell, tcp
+
+
+@pytest.mark.parametrize("tilted_capacity, drains", [(2e-5, False), (0.5e-5, True)])
+def test_vibration_feeds_only_toward_the_lip(bin_model, tilted_capacity, drains):
+    cell, tcp = _cell_with_capacities(bin_model, 1e-5, tilted_capacity, min_pour_tilt_deg=10.0, vibration_flow_g_per_s=4.0)
     cell.payload_m3 = 0.4e-5
     for _ in range(50):
         cell.step(0.01, tcp, vibration=1.0)
@@ -143,20 +150,42 @@ def test_vibration_feeds_only_toward_the_lip(bin_model, tilted_capacity, drains)
         assert cell.payload_m3 == pytest.approx(0.4e-5)
 
 
-def test_vibration_knocks_off_the_heap(bin_model):
-    cell = PowderCell(
-        bin_model, np.eye(4), None, None, _flat_scoop(), fill_depth_m=0.03,
-        params=ScoopParams(heap_factor=1.5, spill_tau_s=0.01),
-    )
-    tcp = _tilted(15.0)
-    cell._capacity_cache[cell._capacity_key(np.eye(4))] = 1e-5
-    cell._capacity_cache[cell._capacity_key(tcp)] = 2e-5
+def test_vibration_flows_the_heap_off_at_the_feed_rate(bin_model):
+    cell, tcp = _cell_with_capacities(bin_model, 1e-5, 2e-5, heap_factor=1.5, vibration_flow_g_per_s=4.0)
     cell.payload_m3 = 2.8e-5
     cell.step(0.01, tcp)
     assert cell.payload_m3 == pytest.approx(2.8e-5)
     for _ in range(50):
         cell.step(0.01, tcp, vibration=1.0)
+    assert cell.payload_m3 == pytest.approx(2.8e-5 - 2.0 / (1e6 * 0.55), rel=1e-6)
+    for _ in range(150):
+        cell.step(0.01, tcp, vibration=1.0)
     assert cell.payload_m3 == pytest.approx(2e-5, rel=1e-6)
+
+
+def test_symmetric_tray_holds_most_upright(bin_model):
+    cell = PowderCell(bin_model, np.eye(4), None, None, _flat_scoop(), fill_depth_m=0.03)
+    np.testing.assert_allclose(cell.hold, UPRIGHT, atol=1e-9)
+
+
+@pytest.mark.parametrize("repose, holds_level", [(35.0, True), (0.0, False)])
+def test_repose_holds_at_a_tilt(bin_model, repose, holds_level):
+    cell = PowderCell(
+        bin_model, np.eye(4), None, None, _flat_scoop(), fill_depth_m=0.03, params=ScoopParams(repose_deg=repose)
+    )
+    upright = cell.bowl.compute(UPRIGHT)
+    tilted = cell.capacity(_tilted(20.0))
+    assert tilted == pytest.approx(upright) if holds_level else tilted < 0.8 * upright
+
+
+def test_capacity_cache_persists(tmp_path):
+    tool = _flat_scoop()
+    first = BowlCapacity(tool, tmp_path)
+    value = first.compute(UPRIGHT)
+    hold = first.hold_direction()
+    again = BowlCapacity(tool, tmp_path)
+    assert again.cached(UPRIGHT) == pytest.approx(value)
+    np.testing.assert_allclose(again.hold_direction(), hold)
 
 
 def test_scoop_fills_then_pours_into_rs3(bin_model):
@@ -185,12 +214,11 @@ def test_scoop_fills_then_pours_into_rs3(bin_model):
     assert held > 0
     assert held <= cell.grams(cell.capacity_m3) * 1.01 + 1e-9
 
-    # Over RS3, tipped 90 degrees: capacity ~0, everything slides into RS3.
+    # Over RS3, tipped 90 degrees and vibrated: everything goes into RS3.
     pour = np.eye(4)
     pour[:3, :3] = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]], dtype=float)
     pour[:3, 3] = [0.0, -0.4, 0.15]
-    cell.update_capacity(pour)
-    for _ in range(200):
+    for _ in range(400):
         cell.step(0.01, pour, vibration=1.0)
     assert cell.payload_g == pytest.approx(0.0, abs=1e-6)
     assert cell.rs3_g > 0

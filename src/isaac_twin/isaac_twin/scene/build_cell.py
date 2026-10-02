@@ -217,22 +217,22 @@ class PowderMesh:
 
 
 class CapacityWorker(threading.Thread):
-    """Scoop capacity (~0.2 s each) off the render thread; PowderCell waits for it."""
+    """Scoop capacity (~0.3 s each) off the render thread; PowderCell waits for it."""
 
     def __init__(self) -> None:
         super().__init__(daemon=True)
         self.powder = None
-        self._pose = None
+        self._gravity = None
         self._backlog: list[np.ndarray] = []
         self._event = threading.Event()
 
-    def request(self, base_to_tcp: np.ndarray) -> None:
-        self._pose = base_to_tcp.copy()
+    def request(self, gravity_tcp: np.ndarray) -> None:
+        self._gravity = np.array(gravity_tcp, dtype=float)
         self._event.set()
 
-    def prewarm(self, poses: list[np.ndarray]) -> None:
+    def prewarm(self, gravities: list[np.ndarray]) -> None:
         """Compute these when idle, so a fast pass through them does not hold the payload."""
-        self._backlog.extend(p.copy() for p in poses)
+        self._backlog.extend(np.array(g, dtype=float) for g in gravities)
         self._event.set()
 
     def run(self) -> None:
@@ -240,11 +240,11 @@ class CapacityWorker(threading.Thread):
             if not self._backlog:
                 self._event.wait()
             self._event.clear()
-            pose, self._pose = self._pose, None
-            if pose is None and self._backlog:
-                pose = self._backlog.pop(0)
-            if pose is not None and self.powder is not None:
-                self.powder.capacity(pose)
+            gravity, self._gravity = self._gravity, None
+            if gravity is None and self._backlog:
+                gravity = self._backlog.pop(0)
+            if gravity is not None and self.powder is not None:
+                self.powder.bowl.compute(gravity)
 
 
 def _scoop_path_poses(poses_yaml: Path, base_to_container: np.ndarray, chain: Chain) -> list[np.ndarray]:
@@ -348,11 +348,13 @@ def main() -> None:
         fill_depth_m=float(ARGS.fill_depth if ARGS.fill_depth is not None else pcfg["fill_depth_m"]),
         params=ScoopParams.from_twin_config(cfg),
         on_capacity_miss=worker.request,
+        capacity_cache_dir=Path.home() / ".cache" / "isaac_twin",
     )
     worker.powder = powder
     worker.start()
     warm = _scoop_path_poses(Path(ARGS.layouts_dir) / layout_id / "poses.yaml", task_obj.pose, chain)
-    worker.prewarm(list({PowderCell._capacity_key(p): p for p in warm}.values()))
+    gravities = [g for pose in warm for g in powder.capacity_gravities(pose)]
+    worker.prewarm(list({powder.bowl.key(g): g for g in gravities if powder.bowl.cached(g) is None}.values()))
     bed_mesh = PowderMesh(stage, f"{CELL_ROOT}/{task_id}/powder", powder.bed, pcfg["color_rgb"])
     _log(f"powder bed {powder.bed_g:.0f} g ({powder.fill_depth_m * 1000:.0f} mm), interior cells {powder.bed.mask.sum()}")
 

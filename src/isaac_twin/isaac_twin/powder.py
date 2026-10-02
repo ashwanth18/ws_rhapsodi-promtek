@@ -2,16 +2,21 @@
 
 Geometry only, no particles. The bed is a 2.5D surface on the
 ``ContainerModel`` grid (same mesh/grid scoop_vision plans on). The scoop's
-lower envelope carves it; carved powder goes into the bowl, and powder above
-the bowl's capacity at the current tilt slides off its lowest point into
-RS3, back into RS6, or onto the table. Good enough to exercise the
+lower envelope carves it; carved powder goes into the bowl. The bowl holds
+what a liquid would if its surface could slope up to the powder's angle of
+repose (less while vibrating); the rest slides off its lowest point into RS3,
+back into RS6, or onto the table. Good enough to exercise the
 capture → plan → scoop → pour flow, not to calibrate fill.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
+import threading
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -20,9 +25,44 @@ from scoop_vision.container import ContainerModel
 from scoop_vision.mesh import voxel_dedupe
 from scoop_vision.scoop_tool import ScoopTool
 
+# Gravity in the tcp frame with the tcp z axis up.
+UPRIGHT = np.array([0.0, 0.0, -1.0])
+
 
 def _transform(points: np.ndarray, t: np.ndarray) -> np.ndarray:
     return points @ t[:3, :3].T + t[:3, 3]
+
+
+def gravity_in_tcp(base_to_tcp: np.ndarray) -> np.ndarray:
+    return base_to_tcp[:3, :3].T @ np.array([0.0, 0.0, -1.0])
+
+
+def _rotation_between(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Smallest rotation taking unit vector ``a`` to ``b``."""
+    v = np.cross(a, b)
+    c = float(np.dot(a, b))
+    if c < -1.0 + 1e-9:
+        perp = np.cross(a, [1.0, 0.0, 0.0])
+        if np.linalg.norm(perp) < 1e-6:
+            perp = np.cross(a, [0.0, 1.0, 0.0])
+        perp /= np.linalg.norm(perp)
+        return 2.0 * np.outer(perp, perp) - np.eye(3)
+    vx = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+    return np.eye(3) + vx + vx @ vx / (1.0 + c)
+
+
+def rotate_toward(a: np.ndarray, b: np.ndarray, max_rad: float) -> np.ndarray:
+    """Unit vector ``a`` turned toward ``b`` by at most ``max_rad``."""
+    angle = math.acos(float(np.clip(np.dot(a, b), -1.0, 1.0)))
+    if angle <= max_rad:
+        return np.asarray(b, dtype=float)
+    axis = np.cross(a, b)
+    n = np.linalg.norm(axis)
+    if n < 1e-12:
+        return np.asarray(a, dtype=float)
+    axis /= n
+    s, c = math.sin(max_rad), math.cos(max_rad)
+    return a * c + np.cross(axis, a) * s + axis * np.dot(axis, a) * (1 - c)
 
 
 class PowderBed:
@@ -109,11 +149,97 @@ class PowderBed:
         return np.stack([xs[i, j], ys[i, j], self.surface[i, j]], axis=1)
 
 
+class BowlCapacity:
+    """Level-fill volume of the scoop vs gravity direction in the tcp frame.
+
+    Each value is a ``ScoopTool.capacity_m3`` voxelisation (~0.3 s), so they
+    are cached per scoop mesh: in memory, and in ``cache_dir`` if given.
+    """
+
+    STEP = 0.03  # gravity unit-vector quantum (~1.7 deg)
+
+    def __init__(self, tool: ScoopTool, cache_dir: str | Path | None = None, cell: float = 0.002) -> None:
+        self.tool = tool
+        self.cell = cell
+        self._lock = threading.Lock()
+        self._table: dict[tuple, float] = {}
+        self._hold: np.ndarray | None = None
+        self._path = None
+        if cache_dir is not None:
+            digest = hashlib.sha1(np.ascontiguousarray(tool.tris_tcp, dtype=np.float64).tobytes())
+            digest.update(f"{cell}:{self.STEP}".encode())
+            self._path = Path(cache_dir) / f"scoop_capacity_{digest.hexdigest()[:16]}.json"
+            if self._path.is_file():
+                doc = json.loads(self._path.read_text(encoding="utf-8"))
+                self._table = {tuple(k): v for k, v in doc.get("table", [])}
+                self._hold = np.asarray(doc["hold"]) if doc.get("hold") else None
+
+    @classmethod
+    def key(cls, gravity: np.ndarray) -> tuple:
+        return tuple(int(v) for v in np.round(np.asarray(gravity) / cls.STEP))
+
+    def cached(self, gravity: np.ndarray) -> float | None:
+        return self._table.get(self.key(gravity))
+
+    def compute(self, gravity: np.ndarray) -> float:
+        key = self.key(gravity)
+        value = self._table.get(key)
+        if value is None:
+            g = np.asarray(gravity, dtype=float)
+            rot = _rotation_between(g / np.linalg.norm(g), np.array([0.0, 0.0, -1.0]))
+            value = float(self.tool.capacity_m3(matrix_to_quat(rot), cell=self.cell))
+            with self._lock:
+                self._table[key] = value
+                self._save()
+        return value
+
+    def hold_direction(self) -> np.ndarray:
+        """Gravity (tcp frame) at which the bowl holds the most, within 60° of upright."""
+        if self._hold is not None:
+            return self._hold
+
+        def around(center: np.ndarray, tilts, azimuths) -> list[np.ndarray]:
+            x = np.cross(center, [1.0, 0.0, 0.0])
+            if np.linalg.norm(x) < 1e-6:
+                x = np.cross(center, [0.0, 1.0, 0.0])
+            x /= np.linalg.norm(x)
+            y = np.cross(center, x)
+            out = []
+            for t in tilts:
+                for a in azimuths:
+                    d = math.cos(t) * center + math.sin(t) * (math.cos(a) * x + math.sin(a) * y)
+                    out.append(d / np.linalg.norm(d))
+            return out
+
+        coarse = [UPRIGHT] + around(UPRIGHT, np.radians([15, 30, 45, 60]), np.radians(np.arange(0, 360, 45)))
+        best = max(coarse, key=self.compute)
+        fine = [best] + around(best, np.radians([5, 10]), np.radians(np.arange(0, 360, 45)))
+        self._hold = max(fine, key=self.compute)
+        with self._lock:
+            self._save()
+        return self._hold
+
+    def _save(self) -> None:
+        if self._path is None:
+            return
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        doc = {
+            "hold": None if self._hold is None else [float(v) for v in self._hold],
+            "table": [[list(k), v] for k, v in self._table.items()],
+        }
+        tmp = self._path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(doc), encoding="utf-8")
+        tmp.replace(self._path)
+
+
 @dataclass
 class ScoopParams:
     density_g_per_ml: float = 0.55
     capture_ratio: float = 1.0
     heap_factor: float = 1.3
+    # The powder surface in the bowl can slope this much before it slides.
+    repose_deg: float = 35.0
+    repose_vibrating_deg: float = 10.0
     vibration_flow_g_per_s: float = 4.0
     min_pour_tilt_deg: float = 10.0
     spill_tau_s: float = 0.3
@@ -126,6 +252,8 @@ class ScoopParams:
             density_g_per_ml=float(pcfg["density_g_per_ml"]),
             capture_ratio=float(scfg["capture_ratio"]),
             heap_factor=float(scfg["heap_factor"]),
+            repose_deg=float(scfg["repose_deg"]),
+            repose_vibrating_deg=float(scfg["repose_vibrating_deg"]),
             vibration_flow_g_per_s=float(scfg["vibration_flow_g_per_s"]),
             min_pour_tilt_deg=float(scfg["min_pour_tilt_deg"]),
             spill_tau_s=float(scfg["spill_tau_s"]),
@@ -145,9 +273,10 @@ class PowderCell:
         fill_depth_m: float,
         params: ScoopParams | None = None,
         on_capacity_miss=None,
+        capacity_cache_dir: str | Path | None = None,
     ) -> None:
-        """``on_capacity_miss(base_to_tcp)``: compute capacity elsewhere (Isaac
-        worker thread) instead of inline; overflow waits until it is cached."""
+        """``on_capacity_miss(gravity_tcp)``: compute ``bowl.compute`` elsewhere
+        (Isaac worker thread) instead of inline; the payload is held until cached."""
         self.bed = PowderBed(rs6, fill_depth_m)
         self.base_to_rs6 = base_to_rs6
         self.rs6_from_base = np.linalg.inv(base_to_rs6)
@@ -158,7 +287,8 @@ class PowderCell:
         self.params = params or ScoopParams()
         self.fill_depth_m = fill_depth_m
         self.on_capacity_miss = on_capacity_miss
-        self._capacity_cache: dict[tuple, float] = {}
+        self.bowl = BowlCapacity(tool, capacity_cache_dir)
+        self.hold = self.bowl.hold_direction()
         self.reset()
 
     def reset(self, fill_depth_m: float | None = None) -> None:
@@ -188,32 +318,34 @@ class PowderCell:
         return self.grams(self.rs3_m3)
 
     @staticmethod
-    def _capacity_key(base_to_tcp: np.ndarray) -> tuple:
-        """Gravity in the tcp frame: yaw about vertical does not change capacity."""
-        down = base_to_tcp[:3, :3].T @ np.array([0.0, 0.0, -1.0])
-        return tuple(np.round(down / 0.03).astype(int))
-
-    def capacity(self, base_to_tcp: np.ndarray) -> float:
-        """Bowl capacity (m³) at this tilt, cached."""
-        key = self._capacity_key(base_to_tcp)
-        if key not in self._capacity_cache:
-            self._capacity_cache[key] = self.tool.capacity_m3(matrix_to_quat(base_to_tcp[:3, :3]), cell=0.002)
-        return self._capacity_cache[key]
-
-    @staticmethod
     def tilt_deg(base_to_tcp: np.ndarray) -> float:
         return math.degrees(math.acos(float(np.clip(base_to_tcp[2, 2], -1.0, 1.0))))
+
+    def held_gravity(self, gravity: np.ndarray, vibrating: bool) -> np.ndarray:
+        """Gravity the held powder behaves as if under: tilted toward the bowl's
+        best-holding direction by up to the angle of repose."""
+        repose = self.params.repose_vibrating_deg if vibrating else self.params.repose_deg
+        return rotate_toward(gravity, self.hold, math.radians(repose))
+
+    def capacity_gravities(self, base_to_tcp: np.ndarray) -> list[np.ndarray]:
+        """Every capacity ``step`` can look up at this pose (for prewarming)."""
+        g = gravity_in_tcp(base_to_tcp)
+        return [g, self.held_gravity(g, False), self.held_gravity(g, True), UPRIGHT]
+
+    def capacity(self, base_to_tcp: np.ndarray, vibrating: bool = False) -> float:
+        """What the bowl holds (m³) at this pose, computed now if needed."""
+        return self.bowl.compute(self.held_gravity(gravity_in_tcp(base_to_tcp), vibrating))
 
     def update_capacity(self, base_to_tcp: np.ndarray) -> None:
         self.capacity_m3 = self.capacity(base_to_tcp)
 
-    def _current_capacity(self, base_to_tcp: np.ndarray) -> float | None:
-        cached = self._capacity_cache.get(self._capacity_key(base_to_tcp))
+    def _lookup(self, gravity: np.ndarray) -> float | None:
+        cached = self.bowl.cached(gravity)
         if cached is not None:
             return cached
         if self.on_capacity_miss is None:
-            return self.capacity(base_to_tcp)
-        self.on_capacity_miss(base_to_tcp)
+            return self.bowl.compute(gravity)
+        self.on_capacity_miss(gravity)
         return None
 
     def step(self, dt: float, base_to_tcp: np.ndarray, vibration: float = 0.0) -> None:
@@ -228,21 +360,28 @@ class PowderCell:
             return
 
         p = self.params
+        g = gravity_in_tcp(base_to_tcp)
+        vibrating = vibration > 0
+        held = self._lookup(self.held_gravity(g, vibrating))
+        if held is None:
+            return
+        self.capacity_m3 = held
         spill = 0.0
-        capacity = self._current_capacity(base_to_tcp)
-        if capacity is not None:
-            self.capacity_m3 = capacity
-            # Shaking knocks the heap off: only the level fill stays.
-            heap = 1.0 if vibration > 0 else p.heap_factor
-            excess = self.payload_m3 - capacity * heap
+        if not vibrating:
+            # At rest: anything past the repose-angle surface (plus heap) avalanches.
+            excess = self.payload_m3 - held * p.heap_factor
             if excess > 0:
-                spill += excess * min(1.0, dt / max(p.spill_tau_s, 1e-3))
-        if vibration > 0 and capacity is not None and self.tilt_deg(base_to_tcp) >= p.min_pour_tilt_deg:
-            # Vibration feeds powder over the lip only when tipped toward it
-            # (holds less than level); tipped back (lift, transport) it holds.
-            level = self._current_capacity(np.eye(4))
-            if level is not None and capacity < level:
-                spill += vibration * p.vibration_flow_g_per_s * dt / (1e6 * p.density_g_per_ml)
+                spill = excess * min(1.0, dt / max(p.spill_tau_s, 1e-3))
+        else:
+            # Vibrating: the powder flows at the feed rate, down to what the
+            # bowl holds at the vibrating repose angle, or over the lip without
+            # limit while tipped toward it (holds less than level).
+            flow = vibration * p.vibration_flow_g_per_s * dt / (1e6 * p.density_g_per_ml)
+            toward_lip = False
+            if self.tilt_deg(base_to_tcp) >= p.min_pour_tilt_deg:
+                water, level = self._lookup(g), self._lookup(UPRIGHT)
+                toward_lip = water is not None and level is not None and water < level
+            spill = flow if toward_lip else min(flow, max(self.payload_m3 - held, 0.0))
         spill = min(spill, self.payload_m3)
         if spill <= 0:
             return

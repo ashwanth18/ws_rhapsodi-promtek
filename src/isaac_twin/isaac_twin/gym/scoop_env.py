@@ -92,7 +92,10 @@ class ScoopEnv(gym.Env):
         twin = yaml.safe_load(twin_config.read_text(encoding="utf-8"))
         self.fill_depth_m = float(fill_depth_m if fill_depth_m is not None else twin["powder"]["fill_depth_m"])
         self.fill_depth_range_m = fill_depth_range_m
-        self.powder = PowderCell(self.container, np.eye(4), None, None, self.tool, self.fill_depth_m, ScoopParams.from_twin_config(twin))
+        self.powder = PowderCell(
+            self.container, np.eye(4), None, None, self.tool, self.fill_depth_m, ScoopParams.from_twin_config(twin),
+            capacity_cache_dir=Path.home() / ".cache" / "isaac_twin",
+        )
 
         self.capacity_g = self.powder.grams(self.planner.capacity_m3)
         self.target_g = float(target_g if target_g is not None else params.target_fill_ratio * self.capacity_g)

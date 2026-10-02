@@ -87,13 +87,19 @@ Settings are in `config/twin.yaml` (`powder`, `scoop`). They are **not fitted** 
 cell yet.
 
 - The scoop points carve the bed; carved powder goes into the bowl (`capture_ratio`).
-- Once the scoop leaves the bed, anything above the bowl's level capacity at the current
-  tilt times `heap_factor` slides off over `spill_tau_s`. Capacity comes from the scoop
-  mesh (`ScoopTool.capacity_m3`).
-- Vibration knocks the heap off (only the level fill stays). It feeds powder over the lip
-  at `vibration_flow_g_per_s` × intensity, but only while the scoop is tipped toward the lip
-  (it holds less than level) by at least `min_pour_tilt_deg`.
+- **At rest**, the bowl holds a liquid's level fill (`ScoopTool.capacity_m3` on the scoop
+  mesh) with the surface allowed to slope `repose_deg` toward the bowl's best-holding angle
+  (about 25° back for the Niryo scoop, 109 ml), times `heap_factor`. Anything above that
+  slides off over `spill_tau_s` once the scoop leaves the bed.
+- **While vibrating**, the slope drops to `repose_vibrating_deg` with no heap. Powder above
+  that flows at `vibration_flow_g_per_s` × intensity. While the scoop is tipped toward its
+  lip (it holds less than level) by at least `min_pour_tilt_deg`, the flow continues until
+  the scoop is empty.
 - Spilled powder lands in RS3, in RS6, or on the table, depending on what is under the lip.
+- Capacities are cached per scoop mesh in `~/.cache/isaac_twin/scoop_capacity_*.json`. The
+  first run spends about 15 s searching for the best-holding angle. Isaac precomputes the
+  capacities along the authored scoop in the background; until a value is ready, the
+  payload is held.
 
 ## Gym env (phase 2)
 
@@ -105,7 +111,8 @@ It reads the cell's `scoop_vision.yaml` with the twin overrides on top.
   - The path interpolates joints between the IK solutions, like MTC's pipeline-planned
     segments. Without IK it uses straight lines.
   - The MTC post-lift shake-off (5 s at 0.75, then 1.5 s settle) runs at the lift pose.
-  - For the authored scoop this matches the Isaac twin's scooped mass (40 g).
+  - For the authored scoop the env keeps 64.6 g; the Isaac BT scoop kept 64.1 g
+    (21.0 g poured + 43.1 g left in the scoop).
 - **Action:** `(dx, dy, dz)`, scoop_vision's `pattern_offset`. Bounds come from
   `ScoopPlanner.shift_window()` and `planner.dz_min_m` / `dz_max_m`.
 - **Observation:**
@@ -137,25 +144,18 @@ ros2 run isaac_twin scoop_env_compare --episodes 2 --max-scoops 12 --json /tmp/s
     the layout targets into `~/.cache/isaac_twin/` and points `move_to` there
     (`draft_targets:=false` to disable).
   - Copy it into `config/layouts` only after checking it on the real cell.
-- Powder dumps when the scoop tips toward the lip: the bowl is modelled like water (level
-  capacity × `heap_factor`), with no angle of repose. A full scoop empties into RS3 on
-  arrival at PourStart (5° forward holds ~7 g). `pour_server` then sees no progress and
-  asks for a rescoop.
-- The BT's `ComputeRemaining` clamps the remaining weight at 0, so an overshoot (37.5 g for a
-  20 g target in the twin) ends the weightment as SUCCESS.
-- The powder parameters are unfitted; fit them from real scoop logs before trusting absolute
-  grams. In the twin a scoop carves about 98 g, and over half slides off as the scoop leaves
-  the bed lip-down. The shake-off then leaves the level fill at the lift tilt: about 40 g
-  in Isaac and the env for the authored scoop.
-  - `scoop_env_compare`: heuristic 34 ± 3 g per scoop, fitted `fill_efficiency` ≈ 0.44
-    (planner 0.5).
-  - `target_fill_ratio` 1.2 (48 g) is above what the shaken bowl holds, so the twin always
-    under-fills against it.
-- The lip-down exit spill depends on arm speed. Isaac precomputes bowl capacity along the
-  authored scoop at startup. Otherwise the first fast scoop holds its payload until the
-  capacity worker catches up.
-- With `min_pour_tilt_deg: 10`, the PourStart pose (5°) does not pour, so TRICKLE-phase
-  dosing never flows.
+- The powder parameters (`heap_factor`, both repose angles, flow rate) are unfitted guesses
+  for flour. Fit them from real scoop and pour logs before trusting absolute grams.
+  - Twin flow check, 20 g webhook target: one scoop of about 64 g held through PourStart
+    and the draft PourTilt. `pour_server` dosed 21.0 g in about 10 s and the BT finished
+    SUCCESS.
+  - `scoop_env_compare`: heuristic 52 ± 14 g per scoop against the 48 g target, fitted
+    `fill_efficiency` ≈ 0.79 (planner 0.5). Re-planning with 0.79 cuts the error from 27% to
+    23%, but the next fit gives about 1.0. Retention is not proportional to the engaged
+    volume, so a single `fill_efficiency` cannot match it.
+- The BT's `ComputeRemaining` clamped the remaining weight at 0, so an overshoot (37.5 g for
+  a 20 g target in an earlier twin run) ended the weightment as SUCCESS. That is fixed in
+  `robot_orchestrator` on its own branch.
 
 ## Tests
 
