@@ -115,6 +115,22 @@ that does not need Isaac (seeding, bed / scoop / RS3 / table labels) is in `part
 - **Physics:** gravity is on in the scene and off on each robot link. The arm still tracks
   its commands exactly. The scene runs at 120 Hz with 48 solver iterations, at RTF ~0.5 on
   an RTX 5080 laptop.
+- **Speed:** the status line prints FPS and the time per frame in `sim.step` and the powder
+  readback. FPS is `render_hz` × RTF. On the RTX 5080 laptop, headless:
+  - A frame takes about 60 ms. About 50 ms of that is the main thread waiting on PhysX's
+    GPU particle solve (4 substeps), about 9 ms is RTX rendering, and the powder readback
+    takes 3 ms.
+  - The GPU sits at its 80 W power limit (about 75% busy, 2.4 of 3.1 GHz), so the particle
+    twin is GPU-power-bound. Ubuntu does not run NVIDIA Dynamic Boost (`nvidia-powerd`) by
+    default, so the laptop GPU stays at its base power.
+  - What did not help: `/physics/updateParticlesToUsd=false` (positions still update),
+    hiding the grains, and dropping the D455.
+  - Trade-offs:
+    - A `sdf` scoop collider saves about 11 ms per frame, but leaks about 1 g/s from a held
+      scoop.
+    - 60 Hz physics compresses the bed to 34 mm and halves retention.
+    - 5 mm grains run at about 0.75 RTF.
+    - The Isaac viewport and RViz cost another ~0.1 RTF.
 - **Grams:** read back from USD at `readback_hz`. A grain counts as scoop if it is inside the
   scoop's TCP-frame box, as RS3 or bed if it is over that container below its rim + 3 cm,
   and as table otherwise.

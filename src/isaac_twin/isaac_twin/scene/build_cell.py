@@ -473,11 +473,15 @@ def main() -> None:
     last_mesh = last_pub = last_status = last_replay_log = 0.0
     wall_start = last_status_wall = time.monotonic()
     sim_t = 0.0
+    frames, step_s, powder_s = 0, 0.0, 0.0
     while APP.is_running():
+        t0 = time.perf_counter()
         sim.step(render=True)
+        step_s += time.perf_counter() - t0
         if not sim.is_playing():
             continue
         sim_t += rendering_dt
+        frames += 1
         if ros.take_reset():
             powder.reset()
             _log("powder reset")
@@ -495,7 +499,9 @@ def main() -> None:
                     f"bed={powder.bed_g:.0f}g scoop={powder.payload_g:.1f}g rs3={powder.rs3_g:.1f}g table={powder.table_g:.1f}g"
                 )
                 last_replay_log = sim_t
+        t0 = time.perf_counter()
         powder.step(rendering_dt, chain.tip_pose(q), vibration)
+        powder_s += time.perf_counter() - t0
         if bed_mesh is not None and sim_t - last_mesh >= mesh_period:
             bed_mesh.update()
             last_mesh = sim_t
@@ -508,11 +514,15 @@ def main() -> None:
             if particles:
                 surface = bed_depth_m(rs6_model, task_obj.pose, powder.positions()) + powder.radius
                 depth = f" depth={surface * 1000:.0f}mm"
+            n = max(frames, 1)
             _log(
-                f"t={sim_t:.0f}s rtf={10.0 / max(wall - last_status_wall, 1e-6):.2f} bed={powder.bed_g:.0f}g "
+                f"t={sim_t:.0f}s rtf={10.0 / max(wall - last_status_wall, 1e-6):.2f} "
+                f"fps={frames / max(wall - last_status_wall, 1e-6):.1f} (step {step_s / n * 1000:.0f} ms, "
+                f"powder {powder_s / n * 1000:.1f} ms) bed={powder.bed_g:.0f}g "
                 f"scoop={powder.payload_g:.1f}g rs3={powder.rs3_g:.1f}g table={powder.table_g:.1f}g{depth}"
             )
             last_status, last_status_wall = sim_t, wall
+            frames, step_s, powder_s = 0, 0.0, 0.0
         rclpy.spin_once(ros.node, timeout_sec=0.0)
         # Hold sim time to wall time so ros2_control and the BT see real rates;
         # after a slow frame (first render, shader compile) do not sprint.
