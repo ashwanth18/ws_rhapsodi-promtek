@@ -3,6 +3,8 @@
 Isaac Sim digital twin of the Niryo scooping cell (dual-container layout), plus a
 gymnasium env over the same cell model.
 
+How it works and how to rebuild it: `docs/ISAAC_TWIN.md`. Agent notes: `CLAUDE.md`.
+
 The twin runs the **real** cell software against simulated hardware:
 
 | Real cell | Twin |
